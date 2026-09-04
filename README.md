@@ -8,7 +8,7 @@ Othelio is a personal tokenized-stock basket protocol built on Base. Users manag
 
 - **`contracts/`**: Foundry framework containing `OthelioAssetRegistry`, `BasketOracle`, `OthelioBasketModule`, `OthelioBasketGuard`, `OthelioSafeFactory`, and `TokenizedAssetConstants`.
 - **`indexer/`**: High-performance **Rust Event Indexer** (`othelio-indexer`) built with Tokio, Ethers-rs, and SQLx.
-- **`backend/`**: Fastify REST & GraphQL API serving basket holdings, portfolio NAV, and Time-Weighted Return (TWR) performance.
+- **`backend/`**: NestJS REST API serving basket holdings, portfolio NAV, and Time-Weighted Return (TWR) performance.
 - **`fe/`**: Next.js frontend built with Wagmi, Viem, and dynamic WebGL emblem visuals.
 - **`database/`**: PostgreSQL migrations (`001_initial.sql`) for indexer state, events, and snapshot historical series.
 
@@ -40,7 +40,7 @@ This single command automatically boots:
 - ⛓️ **Anvil EVM Chain** (`http://localhost:8545`)
 - 📜 **Auto-Contract Deployment** (`DeployOthelio.s.sol`)
 - 🦀 **Rust Event Indexer** (`othelio-indexer`)
-- ⚡ **Fastify Backend API** (`http://localhost:3001`)
+- 🦁 **NestJS Backend API** (`http://localhost:3001`)
 - 🎨 **Next.js Frontend App** (`http://localhost:3000`)
 
 ---
