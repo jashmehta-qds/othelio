@@ -1,0 +1,21 @@
+{
+  "regions": [
+    { "id": "sidebar-brand", "kind": "text", "grid": "A0:A0", "note": "Othelio wordmark; omit the neobank subtitle" },
+    { "id": "sidebar-nav", "kind": "control", "grid": "A1:B4", "note": "Primary navigation, simplified to overview baskets activity agents settings" },
+    { "id": "network-status", "kind": "control", "grid": "A5:B5", "note": "Base Sepolia connected selector" },
+    { "id": "portfolio-summary", "kind": "control", "grid": "A6:B8", "note": "Redesigned user identity and total portfolio value module" },
+    { "id": "basket-heading", "kind": "text", "grid": "B0:E1", "note": "Basket identity, network, address, and oversized value using landing-page title face" },
+    { "id": "basket-controls", "kind": "control", "grid": "F0:G2", "note": "Agent selector and compact basket actions" },
+    { "id": "allocation-heading", "kind": "text", "grid": "B3:G3", "note": "Allocation river heading, legend, and view selector" },
+    { "id": "allocation-assets", "kind": "text", "grid": "B4:C6", "note": "Four constituent labels, symbols, and target values" },
+    { "id": "allocation-river", "kind": "chrome", "grid": "D4:G6", "note": "Responsive semantic allocation bands connecting target to actual weights" },
+    { "id": "activity-heading", "kind": "text", "grid": "B7:G7", "note": "Recent activity heading and view action" },
+    { "id": "activity-table", "kind": "control", "grid": "B8:G9", "note": "Recent basket operations table" },
+    { "id": "preview-panel", "kind": "chrome", "grid": "H0:J9", "container": true, "note": "Elevated rebalance preview drawer background" },
+    { "id": "preview-title", "kind": "text", "grid": "H0:J2", "note": "Rebalance title and safety explanation" },
+    { "id": "preview-changes", "kind": "control", "grid": "H2:J5", "note": "Allocation change comparison" },
+    { "id": "execution-details", "kind": "text", "grid": "H6:J7", "note": "Execution network cost slippage and fail-safe detail" },
+    { "id": "review-callout", "kind": "control", "grid": "H7:J8", "note": "Review-before-signing assurance using secondary accent, not yellow" },
+    { "id": "preview-actions", "kind": "control", "grid": "H8:J9", "note": "Cancel and review continuation buttons" }
+  ]
+}

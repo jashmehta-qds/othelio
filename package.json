@@ -1,0 +1,20 @@
+{
+  "name": "othelio",
+  "private": true,
+  "workspaces": [
+    "fe",
+    "backend",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @othelio/fe",
+    "dev:backend": "npm run dev -w @othelio/backend",
+    "dev:indexer": "docker compose up --build indexer",
+    "build": "npm run build -w @othelio/shared && npm run build -w @othelio/fe && npm run build -w @othelio/backend",
+    "test": "npm run test -ws --if-present",
+    "typecheck": "npm run typecheck -ws --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

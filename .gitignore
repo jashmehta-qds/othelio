@@ -1,0 +1,36 @@
+# Dependencies & Build
+node_modules/
+dist/
+.next/
+fe/.next/
+out/
+coverage/
+
+# Rust Indexer
+target/
+indexer/target/
+
+# Foundry Smart Contracts
+contracts/cache/
+contracts/out/
+contracts/lib/
+foundry-pp/
+
+# Agent & AI Tooling
+.agents/
+**/.agents/
+.trellis/
+**/.trellis/
+.claude/
+.codex/
+.cursor/
+.impeccable/
+
+# Environment & Secrets
+.env
+.env.local
+
+# OS & Editor
+.DS_Store
+*.swp
+*.swo
