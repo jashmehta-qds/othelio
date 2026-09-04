@@ -23,16 +23,25 @@ Ensure you have the following installed on your machine:
 
 ---
 
-## 🚀 Local End-to-End Setup Guide
+## ⚡ 1-Command Local Development (Recommended)
 
-### 1. Clone & Setup Environment
+Start the entire Othelio stack (Anvil local chain, Postgres DB, Contract deployment, Rust indexer, Backend API, and Next.js frontend) with a single command:
+
 ```bash
-# Copy environment variables template
+# 1. Setup environment file (if not done yet)
 cp .env.example .env
 
-# Install Node workspace dependencies
-npm install
+# 2. Start the entire local stack in 1 command
+npm run dev
 ```
+
+This single command automatically boots:
+- 🛢️ **PostgreSQL 17** (with auto-migrated tables)
+- ⛓️ **Anvil EVM Chain** (`http://localhost:8545`)
+- 📜 **Auto-Contract Deployment** (`DeployOthelio.s.sol`)
+- 🦀 **Rust Event Indexer** (`othelio-indexer`)
+- ⚡ **Fastify Backend API** (`http://localhost:3001`)
+- 🎨 **Next.js Frontend App** (`http://localhost:3000`)
 
 ---
 

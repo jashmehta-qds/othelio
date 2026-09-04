@@ -11,27 +11,39 @@ services:
       - ./database/migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U othelio"]
-      interval: 5s
-      timeout: 5s
+      interval: 3s
+      timeout: 3s
       retries: 10
 
-  backend:
-    image: node:22-alpine
-    working_dir: /workspace
-    command: npm run dev:backend
-    env_file: .env
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint: anvil --host 0.0.0.0 --port 8545
+    ports: ["8545:8545"]
+
+  contracts-deployer:
+    image: ghcr.io/foundry-rs/foundry:latest
+    working_dir: /workspace/contracts
     volumes: [".:/workspace"]
-    ports: ["3001:3001"]
+    environment:
+      COINBASE_REGISTRY_ADDRESS: "0x0000000000000000000000000000000000000000"
+    entrypoint: >
+      sh -c "sleep 2 && forge script script/DeployOthelio.s.sol --rpc-url http://anvil:8545 --broadcast"
     depends_on:
-      postgres: { condition: service_healthy }
+      - anvil
 
   indexer:
     build:
       context: ./indexer
       dockerfile: Dockerfile
-    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
+      RPC_URL: http://anvil:8545
+      CHAIN_ID: "31337"
+      FACTORY_ADDRESS: "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"
+      MODULE_ADDRESS: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
     depends_on:
       postgres: { condition: service_healthy }
+      contracts-deployer: { condition: service_completed_successfully }
 
 volumes:
   othelio-postgres:
