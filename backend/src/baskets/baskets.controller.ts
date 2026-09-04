@@ -1,9 +1,12 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
-import { BasketsService } from './baskets.service.js';
+import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import { BasketsService } from './baskets.service';
 
 @Controller('v1/baskets')
 export class BasketsController {
-  constructor(private readonly basketsService: BasketsService) {}
+  constructor(
+    @Inject(BasketsService)
+    private readonly basketsService: BasketsService,
+  ) {}
 
   @Get()
   async getBaskets(

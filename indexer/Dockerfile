@@ -1,7 +1,7 @@
 # Stage 1: Build stage
-FROM rust:1.80-alpine as builder
+FROM rust:alpine as builder
 
-RUN apk add --no-libc-dev build-base openssl-dev pkgconfig
+RUN apk add --no-cache build-base openssl-dev pkgconfig musl-dev
 
 WORKDIR /app
 COPY Cargo.toml ./

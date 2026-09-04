@@ -1,0 +1,92 @@
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { fetchApi } from '@/lib/api';
+
+export interface IndexedBasket {
+  chain_id: number;
+  address: string;
+  controller: string;
+  name: string;
+  symbol: string;
+  created_block: number;
+  created_tx: string;
+  created_at: string;
+}
+
+export interface BasketAsset {
+  chain_id: number;
+  basket_address: string;
+  asset_address: string;
+  target_weight_bps: number;
+}
+
+export interface BasketSnapshot {
+  chain_id: number;
+  basket_address: string;
+  block_number: number;
+  total_nav_usdc: number;
+  shares_outstanding: string;
+  holdings: any;
+  prices: any;
+  priced_at: string;
+}
+
+export interface BasketDetailsResponse {
+  data: IndexedBasket & {
+    assets: BasketAsset[];
+    snapshot: BasketSnapshot | null;
+  };
+}
+
+export interface BasketEvent {
+  chain_id: number;
+  tx_hash: string;
+  log_index: number;
+  block_number: number;
+  block_hash: string;
+  basket_address: string;
+  event_type: 'WEIGHTS_UPDATED' | 'WITHDRAWN';
+  actor_address: string;
+  payload: any;
+  occurred_at: string;
+}
+
+export function useBasketsList(chainId = 31337, controller?: string) {
+  const query = controller ? `?chainId=${chainId}&controller=${controller}` : `?chainId=${chainId}`;
+  return useQuery<{ data: IndexedBasket[] }>({
+    queryKey: ['baskets', chainId, controller],
+    queryFn: () => fetchApi<{ data: IndexedBasket[] }>(`/v1/baskets${query}`),
+  });
+}
+
+export function useBasketDetails(address: string, chainId = 31337) {
+  return useQuery<BasketDetailsResponse>({
+    queryKey: ['basket', address, chainId],
+    queryFn: () => fetchApi<BasketDetailsResponse>(`/v1/baskets/${address}?chainId=${chainId}`),
+    enabled: Boolean(address),
+  });
+}
+
+export function useBasketActivity(address: string, chainId = 31337) {
+  return useQuery<{ data: BasketEvent[] }>({
+    queryKey: ['basket-activity', address, chainId],
+    queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/${address}/activity?chainId=${chainId}`),
+    enabled: Boolean(address),
+  });
+}
+
+export function usePrepareOperation() {
+  return useMutation({
+    mutationFn: async ({
+      operation,
+      payload,
+    }: {
+      operation: 'mint' | 'withdraw' | 'rebalance';
+      payload: Record<string, any>;
+    }) => {
+      return fetchApi<{ data: { to: string; calldata: string } }>(`/v1/prepare/${operation}`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+  });
+}

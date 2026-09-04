@@ -1,13 +1,14 @@
 import Link from "next/link";
 import IndexField from "@/components/IndexField";
 import LiveIndexCounter from "@/components/LiveIndexCounter";
+import { WalletHeaderButton } from "@/components/WalletHeaderButton";
 
 export default function Home() {
   return (
     <main className="quiet-home">
       <header className="quiet-nav">
         <Link href="/" className="quiet-wordmark" aria-label="Othelio home">Othelio</Link>
-        <Link href="/app" className="quiet-launch">Launch app</Link>
+        <WalletHeaderButton />
       </header>
 
       <section className="quiet-hero-grid" aria-labelledby="quiet-title">

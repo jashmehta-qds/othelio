@@ -38,12 +38,64 @@ export const supportedAssets: Holding[] = [
   { symbol: "AMZNc", name: "Amazon", target: 0, current: 0, quantity: 0, value: 0, color: "#b88a58" },
 ];
 
+export function getCreatedBaskets(): Basket[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("othelio_created_baskets");
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCreatedBasket(basket: Basket) {
+  if (typeof window === "undefined") return;
+  try {
+    const existing = getCreatedBaskets();
+    const updated = [basket, ...existing.filter((b) => b.address.toLowerCase() !== basket.address.toLowerCase())];
+    localStorage.setItem("othelio_created_baskets", JSON.stringify(updated));
+  } catch (err) {
+    console.error("Failed to save created basket:", err);
+  }
+}
+
 export function getBasket(address: string) {
+  const created = getCreatedBaskets();
+  const foundCreated = created.find((b) => b.address.toLowerCase() === address.toLowerCase());
+  if (foundCreated) return foundCreated;
   return baskets.find((basket) => basket.address.toLowerCase() === address.toLowerCase());
 }
 
 export function formatAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+export function formatCompactNumber(num: number): string {
+  if (num < 0) return `-${formatCompactNumber(Math.abs(num))}`;
+  if (num < 1000) {
+    return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  if (num < 10000) {
+    // Less than 10,000: round down to 10s -> 4.56k
+    const floored10s = Math.floor(num / 10) * 10;
+    const valInK = floored10s / 1000;
+    return `${valInK.toFixed(2)}k`;
+  }
+  if (num < 100000) {
+    // 10,000 to 100,000: round down to hundreds -> 10.5k
+    const flooredHundreds = Math.floor(num / 100) * 100;
+    const valInK = flooredHundreds / 1000;
+    return `${valInK % 1 === 0 ? valInK.toFixed(0) : valInK.toFixed(1)}k`;
+  }
+  if (num < 1000000) {
+    // 100,000 to 1,000,000: round down to thousands -> 142k
+    const flooredThousands = Math.floor(num / 1000);
+    return `${flooredThousands}k`;
+  }
+  // 1,000,000 and above: round down to 10-thousands -> 3.45m
+  const floored10k = Math.floor(num / 10000) * 10000;
+  const valInM = floored10k / 1000000;
+  return `${valInM % 1 === 0 ? valInM.toFixed(0) : valInM.toFixed(2)}m`;
 }
 
 export const portfolioValue = baskets.reduce((sum, basket) => sum + basket.value, 0);

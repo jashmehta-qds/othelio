@@ -7,7 +7,7 @@ export class DatabaseService implements OnModuleDestroy {
 
   constructor() {
     const connectionString =
-      process.env.DATABASE_URL || 'postgresql://othelio:othelio@localhost:5432/othelio';
+      process.env.DATABASE_URL || 'postgresql://othelio:othelio@localhost:5433/othelio';
     this.pool = new pg.Pool({ connectionString });
   }
 

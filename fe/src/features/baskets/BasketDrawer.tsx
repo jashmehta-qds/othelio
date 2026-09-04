@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAccount, useBalance, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { formatUnits } from "viem";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets, type Basket } from "@/lib/baskets";
+import { CONTRACT_ADDRESSES, OTHELIO_FACTORY_ABI } from "@/lib/contracts";
 
 export type BasketAction = "mint" | "withdraw" | "rebalance" | null;
 
@@ -36,5 +39,80 @@ export function BasketDrawer({ basket, action, onClose }: { basket: Basket; acti
 
 function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" | "withdraw"; onClose: () => void }) {
   const isMint = kind === "mint";
-  return <aside className="rebalance-drawer amount-drawer" aria-label={`${isMint ? "Mint" : "Withdraw"} ${basket.name}`}><div className="drawer-scroll"><header><div><h2>{isMint ? "Mint" : "Withdraw"}</h2><span>Preview</span></div><button onClick={onClose} aria-label={`Close ${kind}`}>×</button></header><p className="drawer-intro">{isMint ? "Deposit USDC to acquire the basket’s current constituent mix." : "Burn basket shares and receive the proportional underlying assets."}</p><label className="amount-field"><span>{isMint ? "You deposit" : "Shares to burn"}</span><div><input inputMode="decimal" defaultValue={isMint ? "1,000.00" : "5.00"}/><b>{isMint ? "USDC" : basket.symbol}</b></div><small>Available: {isMint ? "$2,140.00 USDC" : `238.20 ${basket.symbol}`}</small></label><div className="quote-summary"><div><span>{isMint ? "Estimated shares" : "Estimated basket value"}</span><strong>{isMint ? `9.84 ${basket.symbol}` : "$507.12"}</strong></div><div><span>Estimated network fee</span><strong>$0.01</strong></div><div><span>Quote validity</span><strong>5 minutes</strong></div></div><div className="review-note"><span className="shield">✓</span><p><strong>Review before signing</strong><small>No assets move until you approve the transaction in your wallet.</small></p></div></div><footer><button onClick={onClose}>Cancel</button><button className="primary">Review <AppIcon type="arrow"/></button></footer></aside>;
+  const { address: userAddress, isConnected } = useAccount();
+  const { data: balanceData, isLoading: isBalanceLoading } = useBalance({ address: userAddress });
+  const { data: hash, isPending, writeContract } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const formattedBalance = balanceData
+    ? `${Number(formatUnits(balanceData.value, balanceData.decimals)).toFixed(2)} ${balanceData.symbol}`
+    : "$0.00 USDC";
+
+  const handleExecute = () => {
+    if (!isConnected || !userAddress) {
+      alert("Please connect your Web3 wallet first.");
+      return;
+    }
+
+    // Trigger Basket Factory Registration transaction
+    writeContract({
+      address: CONTRACT_ADDRESSES[31337].factory,
+      abi: OTHELIO_FACTORY_ABI,
+      functionName: 'registerBasket',
+      args: [basket.address as `0x${string}`, userAddress, basket.name],
+    });
+  };
+
+  return (
+    <aside className="rebalance-drawer amount-drawer" aria-label={`${isMint ? "Mint" : "Withdraw"} ${basket.name}`}>
+      <div className="drawer-scroll">
+        <header>
+          <div>
+            <h2>{isMint ? "Mint" : "Withdraw"}</h2>
+            <span>Preview</span>
+          </div>
+          <button onClick={onClose} aria-label={`Close ${kind}`}>×</button>
+        </header>
+        <p className="drawer-intro">
+          {isMint ? "Deposit USDC to acquire the basket’s current constituent mix." : "Burn basket shares and receive the proportional underlying assets."}
+        </p>
+        <label className="amount-field">
+          <span>{isMint ? "You deposit" : "Shares to burn"}</span>
+          <div>
+            <input inputMode="decimal" defaultValue={isMint ? "1,000.00" : "5.00"} />
+            <b>{isMint ? "USDC" : basket.symbol}</b>
+          </div>
+          <small>Available: {isMint ? (isBalanceLoading ? "Loading..." : formattedBalance) : `0.00 ${basket.symbol}`}</small>
+        </label>
+        <div className="quote-summary">
+          <div>
+            <span>{isMint ? "Estimated shares" : "Estimated basket value"}</span>
+            <strong>{isMint ? `9.84 ${basket.symbol}` : "$507.12"}</strong>
+          </div>
+          <div>
+            <span>Estimated network fee</span>
+            <strong>$0.01</strong>
+          </div>
+          <div>
+            <span>Transaction Status</span>
+            <strong>{isSuccess ? "Confirmed ✓" : isConfirming ? "Confirming..." : isPending ? "Waiting wallet..." : "Ready"}</strong>
+          </div>
+        </div>
+        <div className="review-note">
+          <span className="shield">✓</span>
+          <p>
+            <strong>Review before signing</strong>
+            <small>No assets move until you approve the transaction in your wallet.</small>
+          </p>
+        </div>
+      </div>
+      <footer>
+        <button onClick={onClose}>Cancel</button>
+        <button className="primary" disabled={isPending || isConfirming} onClick={handleExecute}>
+          {isPending ? "Confirming..." : isSuccess ? "Success ✓" : "Submit Transaction"} <AppIcon type="arrow" />
+        </button>
+      </footer>
+    </aside>
+  );
 }
+

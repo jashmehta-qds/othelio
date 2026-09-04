@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { PrepareController } from './prepare.controller.js';
-import { PrepareService } from './prepare.service.js';
+import { PrepareController } from './prepare.controller';
+import { PrepareService } from './prepare.service';
 
 @Module({
   controllers: [PrepareController],

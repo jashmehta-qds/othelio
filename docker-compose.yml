@@ -5,7 +5,7 @@ services:
       POSTGRES_USER: othelio
       POSTGRES_PASSWORD: othelio
       POSTGRES_DB: othelio
-    ports: ["5432:5432"]
+    ports: ["5433:5432"]
     volumes:
       - othelio-postgres:/var/lib/postgresql/data
       - ./database/migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro

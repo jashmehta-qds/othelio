@@ -1,23 +1,36 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { addressSchema, chainIdSchema } from '@othelio/shared';
-import { DatabaseService } from '../database/database.service.js';
+import { DatabaseService } from '../database/database.service';
 
 @Injectable()
 export class BasketsService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService)
+    private readonly db: DatabaseService,
+  ) {}
 
   async getBaskets(chainIdInput: string, controllerInput?: string) {
-    const chainId = chainIdSchema.parse(chainIdInput);
-    const controller = controllerInput
-      ? addressSchema.parse(controllerInput).toLowerCase()
-      : null;
+    try {
+      const chainId = chainIdSchema.parse(chainIdInput);
+      const controller = controllerInput
+        ? addressSchema.parse(controllerInput).toLowerCase()
+        : null;
 
-    const result = await this.db.query(
-      'SELECT * FROM baskets WHERE chain_id=$1 AND ($2::text IS NULL OR controller=$2) ORDER BY created_block DESC LIMIT 100',
-      [chainId, controller],
-    );
+      let sql = 'SELECT * FROM baskets WHERE chain_id=$1';
+      const params: any[] = [chainId];
+      if (controller) {
+        sql += ' AND controller=$2';
+        params.push(controller);
+      }
+      sql += ' ORDER BY created_block DESC LIMIT 100';
 
-    return { data: result.rows };
+      const result = await this.db.query(sql, params);
+
+      return { data: result.rows };
+    } catch (err) {
+      console.error('ERROR IN GET_BASKETS:', err);
+      throw err;
+    }
   }
 
   async getBasketByAddress(addressInput: string, chainIdInput?: string) {

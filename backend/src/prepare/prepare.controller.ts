@@ -1,9 +1,12 @@
-import { Body, Controller, Param, Post } from '@nestjs/common';
-import { PrepareService } from './prepare.service.js';
+import { Body, Controller, Inject, Param, Post } from '@nestjs/common';
+import { PrepareService } from './prepare.service';
 
 @Controller('v1/prepare')
 export class PrepareController {
-  constructor(private readonly prepareService: PrepareService) {}
+  constructor(
+    @Inject(PrepareService)
+    private readonly prepareService: PrepareService,
+  ) {}
 
   @Post(':operation')
   async prepareOperation(

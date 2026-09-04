@@ -1,10 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 use dotenvy::dotenv;
-use ethers::abi::AbiDecode;
 use ethers::prelude::*;
 use ethers::providers::{Http, Provider};
-use ethers::types::{Address, Filter, H256, U256};
+use ethers::types::{Address, Filter};
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -30,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
 
     let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://othelio:othelio@localhost:5432/othelio".to_string());
