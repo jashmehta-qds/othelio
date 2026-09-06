@@ -62,7 +62,6 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
         setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(interval);
-            onClose();
             return 0;
           }
           return prev - 1;
@@ -70,7 +69,13 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [isSuccess, onClose]);
+  }, [isSuccess]);
+
+  useEffect(() => {
+    if (isSuccess && countdown === 0) {
+      onClose();
+    }
+  }, [isSuccess, countdown, onClose]);
 
   const selected = Object.keys(targets)
     .map((symbol) => supportedAssets.find((asset) => asset.symbol === symbol))
@@ -437,6 +442,14 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
     },
   });
 
+  const { data: allowanceRaw, refetch: refetchAllowance } = useReadContract({
+    address: usdcAddress,
+    abi: [{ inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], name: 'allowance', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' }],
+    functionName: 'allowance',
+    args: userAddress && moduleAddr ? [userAddress, moduleAddr] : undefined,
+    query: { enabled: Boolean(userAddress && moduleAddr) },
+  });
+
   const [depositAmount, setDepositAmount] = useState<string>(isMint ? "1000" : "5");
 
   const { isPending: isWritePending, writeContractAsync } = useWriteContract();
@@ -479,7 +492,6 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(interval);
-            onClose();
             return 0;
           }
           return prev - 1;
@@ -487,7 +499,13 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [isSuccess, onClose]);
+  }, [isSuccess]);
+
+  useEffect(() => {
+    if (isSuccess && countdown === 0) {
+      onClose();
+    }
+  }, [isSuccess, countdown, onClose]);
 
   const handleExecute = async () => {
     if (!isConnected || !userAddress) {
@@ -515,16 +533,20 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         const quote = res?.data;
 
         const usdcAmount = BigInt(Math.round(Number(depositAmount || "0") * 1_000_000));
+        const currentAllowance = (allowanceRaw as bigint) || BigInt(0);
 
         if (moduleAddr && moduleAddr !== '0x0000000000000000000000000000000000000000') {
           try {
-            // 1. Approve OthelioBasketModule to spend USDC
-            await writeContractAsync({
-              address: usdcAddress,
-              abi: [{ inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' }],
-              functionName: 'approve',
-              args: [moduleAddr, usdcAmount],
-            });
+            // 1. Approve OthelioBasketModule if allowance is lower than required usdcAmount
+            if (currentAllowance < usdcAmount) {
+              await writeContractAsync({
+                address: usdcAddress,
+                abi: [{ inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' }],
+                functionName: 'approve',
+                args: [moduleAddr, usdcAmount * BigInt(100)],
+              });
+              await refetchAllowance();
+            }
 
             const hasValidDexCalldata = Boolean(
               quote?.dexCalldata &&
@@ -534,8 +556,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
               quote.target !== '0x0000000000000000000000000000000000000000'
             );
 
-            // 2. Call fundWithSwaps on Module
-            const tx = await writeContractAsync({
+            // 2. Call fundWithSwaps on Module and set activeHash ONLY to the mint transaction
+            const mintTx = await writeContractAsync({
               address: moduleAddr,
               abi: OTHELIO_BASKET_MODULE_ABI,
               functionName: "fundWithSwaps",
@@ -552,7 +574,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                 },
               ],
             });
-            setActiveHash(tx);
+            setActiveHash(mintTx);
             return;
           } catch (contractErr) {
             console.warn("Module fundWithSwaps failed, falling back to direct USDC transfer to Safe basket:", contractErr);

@@ -71,6 +71,7 @@ export function useBasketActivity(address: string, chainId = 31337) {
     queryKey: ['basket-activity', address, chainId],
     queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/${address}/activity?chainId=${chainId}`),
     enabled: Boolean(address),
+    refetchInterval: 3000,
   });
 }
 
@@ -104,5 +105,18 @@ export function useSupportedAssets() {
   return useQuery<{ data: SupportedAssetResponse[] }>({
     queryKey: ['supported-assets'],
     queryFn: () => fetchApi<{ data: SupportedAssetResponse[] }>('/v1/baskets/assets/supported'),
+  });
+}
+
+export function useAssetPrices() {
+  return useQuery<Record<string, number>>({
+    queryKey: ['asset-prices'],
+    queryFn: async () => {
+      const res = await fetch('/api/prices');
+      if (!res.ok) throw new Error('Failed to fetch asset prices');
+      return res.json();
+    },
+    refetchInterval: 60000, // 1-minute interval
+    staleTime: 60000,
   });
 }

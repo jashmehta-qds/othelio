@@ -19,7 +19,7 @@ abigen!(
     IOthelioEvents,
     r#"[
         event BasketCreated(address indexed safe, address indexed owner, string name, uint256 createdAt)
-        event BasketFunded(address indexed safe, address indexed owner, address inputAsset, uint256 inputAmount, address[] boughtAssets, uint256[] boughtAmounts, uint256 totalNAV)
+        event BasketFunded(address indexed safe, address indexed funder, address inputAsset, uint256 inputAmount, address[] acquiredAssets, uint256[] acquiredAmounts, uint256 totalNAVAfter)
         event BasketRebalanced(address indexed safe, address indexed controller, address[] soldAssets, uint256[] soldAmounts, address[] boughtAssets, uint256[] boughtAmounts, uint256 totalNAV)
         event BasketWithdrawn(address indexed safe, address indexed owner, address outputAsset, uint256 navRedeemed, address[] withdrawnAssets, uint256[] withdrawnAmounts, uint256 remainingNAV)
     ]"#
@@ -187,20 +187,20 @@ async fn process_block_range(
                 }
                 IOthelioEventsEvents::BasketFundedFilter(e) => {
                     let safe = format!("{:#x}", e.safe);
-                    let owner = format!("{:#x}", e.owner);
-                    let nav_usdc = (e.total_nav.as_u128() as f64) / 1_000_000.0;
+                    let funder = format!("{:#x}", e.funder);
+                    let nav_usdc = (e.total_nav_after.as_u128() as f64) / 1_000_000.0;
 
                     let payload = json!({
                         "inputAsset": format!("{:#x}", e.input_asset),
                         "inputAmount": e.input_amount.to_string(),
-                        "boughtAssets": e.bought_assets.iter().map(|a| format!("{:#x}", a)).collect::<Vec<_>>(),
-                        "boughtAmounts": e.bought_amounts.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
-                        "totalNAV": e.total_nav.to_string(),
+                        "boughtAssets": e.acquired_assets.iter().map(|a| format!("{:#x}", a)).collect::<Vec<_>>(),
+                        "boughtAmounts": e.acquired_amounts.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
+                        "totalNAV": e.total_nav_after.to_string(),
                     });
 
                     sqlx::query(
                         "INSERT INTO basket_events (chain_id, tx_hash, log_index, block_number, block_hash, basket_address, event_type, actor_address, payload, occurred_at)
-                         VALUES ($1, $2, $3, $4, $5, LOWER($6), 'MINTED', LOWER($7), $8, NOW())
+                         VALUES ($1, $2, $3, $4, $5, LOWER($6), 'FUNDED', LOWER($7), $8, NOW())
                          ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING"
                     )
                     .bind(chain_id)
@@ -209,7 +209,7 @@ async fn process_block_range(
                     .bind(block_number as i64)
                     .bind(&block_hash)
                     .bind(&safe)
-                    .bind(&owner)
+                    .bind(&funder)
                     .bind(&payload)
                     .execute(pool)
                     .await?;
@@ -228,7 +228,7 @@ async fn process_block_range(
                     .execute(pool)
                     .await?;
 
-                    info!("[Rust Indexer] Indexed BasketFunded: safe={} owner={} totalNAV=${:.2}", safe, owner, nav_usdc);
+                    info!("[Rust Indexer] Indexed BasketFunded: safe={} funder={} totalNAV=${:.2}", safe, funder, nav_usdc);
                 }
                 IOthelioEventsEvents::BasketRebalancedFilter(e) => {
                     let safe = format!("{:#x}", e.safe);

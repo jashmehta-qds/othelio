@@ -151,7 +151,12 @@ contract OthelioBasketModuleTest is Test {
 
     function testFundWithSwaps() public {
         MockERC20 tokenUSDC = new MockERC20("USD Coin", "USDC");
-        tokenUSDC.mint(address(safe), 500 * 1e18); // $500 USDC in Safe
+        tokenUSDC.mint(owner, 500 * 1e18); // $500 USDC held by owner caller
+        
+        vm.prank(owner);
+        tokenUSDC.approve(address(module), type(uint256).max);
+
+        tokenUSDC.mint(address(safe), 500 * 1e18); // $500 USDC in Safe for DEX swap
         
         vm.prank(address(safe));
         tokenUSDC.approve(address(dexRouter), type(uint256).max);

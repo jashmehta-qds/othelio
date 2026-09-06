@@ -132,21 +132,27 @@ contract OthelioBasketModule is IOthelioEvents {
     ) {
         require(p.boughtAssets.length == p.minBoughtAmounts.length, "SLIPPAGE_LENGTH_MISMATCH");
 
+        // 1. Pull input asset (e.g. USDC) from caller into the Safe basket
+        if (p.inputAsset != address(0) && p.inputAmount > 0) {
+            bool pulled = IERC20(p.inputAsset).transferFrom(msg.sender, p.safe, p.inputAmount);
+            require(pulled, "INPUT_ASSET_TRANSFER_FAILED");
+        }
+
         boughtAmounts = new uint256[](p.boughtAssets.length);
         for (uint256 i = 0; i < p.boughtAssets.length; i++) {
-            if (p.boughtAssets[i].code.length > 0) {
+            if (p.boughtAssets[i] != address(0)) {
                 boughtAmounts[i] = IERC20(p.boughtAssets[i]).balanceOf(p.safe);
             }
         }
 
         // Execute external DEX swaps via Safe Module if target contract is deployed
-        if (p.target != address(0) && p.target.code.length > 0 && p.dexCalldata.length > 0) {
+        if (p.target != address(0) && p.dexCalldata.length > 0) {
             bool success = ISafe(p.safe).execTransactionFromModule(p.target, 0, p.dexCalldata, 0);
             require(success, "DEX_SWAP_FAILED");
 
             // Compute actual post-swap deltas & enforce slippage protection
             for (uint256 i = 0; i < p.boughtAssets.length; i++) {
-                if (p.boughtAssets[i].code.length > 0) {
+                if (p.boughtAssets[i] != address(0)) {
                     uint256 postBought = IERC20(p.boughtAssets[i]).balanceOf(p.safe);
                     require(postBought >= boughtAmounts[i], "INVALID_BOUGHT_DELTA");
                     boughtAmounts[i] = postBought - boughtAmounts[i];
@@ -158,7 +164,7 @@ contract OthelioBasketModule is IOthelioEvents {
         // Query live balances on-chain to compute post-deposit NAV
         uint256[] memory liveBalances = new uint256[](p.basketTokens.length);
         for (uint256 i = 0; i < p.basketTokens.length; i++) {
-            if (p.basketTokens[i].code.length > 0) {
+            if (p.basketTokens[i] != address(0)) {
                 liveBalances[i] = IERC20(p.basketTokens[i]).balanceOf(p.safe);
             }
         }

@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import AllocationSankey from "@/components/AllocationSankey";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { formatAddress, getBasket, getCreatedBaskets, getLocalActivity, type Basket } from "@/lib/baskets";
-import { useBasketDetails, useBasketActivity, useBasketsList } from "@/hooks/useBaskets";
+import { assetPrices, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, type Basket } from "@/lib/baskets";
+import { useBasketDetails, useBasketActivity, useBasketsList, useAssetPrices } from "@/hooks/useBaskets";
 import { BasketDrawer, type BasketAction } from "./BasketDrawer";
 import { BasketLogo } from "./BasketLogo";
 import { PortfolioDrift } from "./PortfolioDrift";
@@ -21,7 +21,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         const created = getCreatedBaskets();
         const found = created.find(
           (b: Basket) => b.address.toLowerCase() === fallbackBasket.address.toLowerCase() ||
-                         b.name.toLowerCase() === fallbackBasket.name.toLowerCase()
+            b.name.toLowerCase() === fallbackBasket.name.toLowerCase()
         ) ?? getBasket(fallbackBasket.address);
         if (found) setLocalBasket({ ...found });
       }
@@ -37,10 +37,11 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
   const { data: apiDetails } = useBasketDetails(fallbackBasket.address, 31337);
   const { data: apiList } = useBasketsList(31337);
   const { data: apiActivity } = useBasketActivity(fallbackBasket.address, 31337);
+  const { data: priceMap } = useAssetPrices();
 
   const indexedBasket = apiDetails?.data ?? apiList?.data?.find(
     (b) => b.address.toLowerCase() === fallbackBasket.address.toLowerCase() ||
-           (localBasket && b.name.toLowerCase() === localBasket.name.toLowerCase())
+      (localBasket && b.name.toLowerCase() === localBasket.name.toLowerCase())
   );
   const isBasketIndexed = Boolean(indexedBasket) || Boolean(localBasket);
 
@@ -50,12 +51,26 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
   }, []);
 
   const localEvents = mounted ? getLocalActivity(fallbackBasket.address) : [];
-  const rawEvents = [...localEvents, ...(apiActivity?.data ?? [])];
-  const events = rawEvents.sort((a, b) => {
-    if (!a.block_number && b.block_number) return -1;
-    if (a.block_number && !b.block_number) return 1;
-    const blockDiff = (b.block_number || 0) - (a.block_number || 0);
-    if (blockDiff !== 0) return blockDiff;
+  const apiEvents: BasketActivity[] = (apiActivity?.data ?? []).map((evt: any) => ({
+    event_type: evt.event_type === "FUNDED" ? "BasketFunded" : evt.event_type === "CREATED" ? "BasketCreated" : evt.event_type,
+    actor_address: evt.actor_address || "Wallet execution",
+    tx_hash: evt.tx_hash,
+    block_number: evt.block_number ? Number(evt.block_number) : undefined,
+    occurred_at: evt.occurred_at,
+  }));
+
+  const eventsMap = new Map<string, BasketActivity>();
+  localEvents.forEach((evt) => {
+    if (evt.tx_hash) eventsMap.set(evt.tx_hash.toLowerCase(), evt);
+  });
+  apiEvents.forEach((evt) => {
+    if (evt.tx_hash) eventsMap.set(evt.tx_hash.toLowerCase(), evt);
+  });
+
+  const events = Array.from(eventsMap.values()).sort((a, b) => {
+    const blockA = a.block_number ? Number(a.block_number) : 0;
+    const blockB = b.block_number ? Number(b.block_number) : 0;
+    if (blockA !== blockB) return blockB - blockA;
     return new Date(b.occurred_at || 0).getTime() - new Date(a.occurred_at || 0).getTime();
   });
 
@@ -185,7 +200,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
       <section className="allocation-block" style={{ marginTop: "24px" }}>
         <div className="section-title">
           <div>
-            <h2>Portfolio Holdings</h2>
+            <h2>Basket Holdings</h2>
             <p>Detailed asset quantities and portfolio valuation</p>
           </div>
         </div>
@@ -194,28 +209,31 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
             <thead>
               <tr style={{ borderBottom: "1px solid var(--line)", textAlign: "left", color: "var(--ink-3)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                 <th style={{ padding: "12px 16px" }}>Asset</th>
-                <th style={{ padding: "12px 16px" }}>Target %</th>
-                <th style={{ padding: "12px 16px" }}>Current %</th>
+                <th style={{ padding: "12px 16px" }}>Price ($)</th>
                 <th style={{ padding: "12px 16px" }}>Units Held</th>
                 <th style={{ padding: "12px 16px", textAlign: "right" }}>Value ($)</th>
               </tr>
             </thead>
             <tbody>
-              {basket.holdings.map((h) => (
-                <tr key={h.symbol} style={{ borderBottom: "1px solid var(--line)" }}>
-                  <td style={{ padding: "12px 16px", fontWeight: 600, display: "flex", alignItems: "center", gap: "10px" }}>
-                    <StockLogo symbol={h.symbol} size={24} />
-                    <div>
-                      <span>{h.name}</span>
-                      <small style={{ display: "block", color: "var(--ink-3)", fontSize: "11px", fontWeight: 400 }}>{h.symbol}</small>
-                    </div>
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>{h.target}%</td>
-                  <td style={{ padding: "12px 16px" }}>{h.current}%</td>
-                  <td style={{ padding: "12px 16px", fontWeight: 600 }}>{h.quantity.toLocaleString("en-US", { minimumFractionDigits: 2 })} {h.symbol}</td>
-                  <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600 }}>${h.value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                </tr>
-              ))}
+              {basket.holdings.map((h) => {
+                const tokenPrice = priceMap?.[h.symbol] ?? assetPrices[h.symbol] ?? (h.quantity > 0 ? h.value / h.quantity : 0);
+                return (
+                  <tr key={h.symbol} style={{ borderBottom: "1px solid var(--line)" }}>
+                    <td style={{ padding: "12px 16px", fontWeight: 600, display: "flex", alignItems: "center", gap: "10px" }}>
+                      <StockLogo symbol={h.symbol} size={24} />
+                      <div>
+                        <span>{h.name}</span>
+                        <small style={{ display: "block", color: "var(--ink-3)", fontSize: "11px", fontWeight: 400 }}>{h.symbol}</small>
+                      </div>
+                    </td>
+                    <td style={{ padding: "12px 16px", fontWeight: 600 }}>
+                      ${tokenPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: "12px 16px", fontWeight: 600 }}>{h.quantity.toLocaleString("en-US", { minimumFractionDigits: 2 })} {h.symbol}</td>
+                    <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600 }}>${h.value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

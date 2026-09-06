@@ -83,7 +83,7 @@ To ensure users never deposit scam/airdropped tokens and that spam tokens never 
    - Stores Chainlink price feed mapping for each registered constituent.
 
 2. **Frontend & Indexer Anti-Spam Filtering:**
-   - Unregistered tokens are completely ignored, filtered from the portfolio holdings UI, and excluded from Net Asset Value (NAV) computations.
+   - Unregistered tokens are completely ignored, filtered from the Basket Holdings UI, and excluded from Net Asset Value (NAV) computations.
 
 ---
 
