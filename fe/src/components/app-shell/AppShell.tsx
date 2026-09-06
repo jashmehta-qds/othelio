@@ -91,6 +91,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     },
   });
 
+  useEffect(() => {
+    const handleUpdate = () => {
+      refetchUsdc();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("usdc_balance_updated", handleUpdate);
+      return () => window.removeEventListener("usdc_balance_updated", handleUpdate);
+    }
+  }, [refetchUsdc]);
+
   const formattedUsdcBalance = useMemo(() => {
     if (usdcBalanceRaw !== undefined && usdcBalanceRaw !== null) {
       return Number(formatUnits(usdcBalanceRaw as bigint, 6));

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import AllocationSankey from "@/components/AllocationSankey";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { assetPrices, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, type Basket } from "@/lib/baskets";
+import { assetPrices, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, type Basket, type BasketActivity } from "@/lib/baskets";
 import { useBasketDetails, useBasketActivity, useBasketsList, useAssetPrices } from "@/hooks/useBaskets";
 import { BasketDrawer, type BasketAction } from "./BasketDrawer";
 import { BasketLogo } from "./BasketLogo";

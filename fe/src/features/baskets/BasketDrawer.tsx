@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useAccount, useBalance, useChainId, useReadContract, useWriteContract, useSendTransaction, useWaitForTransactionReceipt } from "wagmi";
+import { useAccount, useBalance, useChainId, useReadContract, useWriteContract, useSendTransaction, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { formatUnits } from "viem";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
@@ -431,7 +431,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
   const usdcAddress = (chainConfig.usdc || CONTRACT_ADDRESSES[8453].usdc) as `0x${string}`;
   const moduleAddr = (chainConfig.module || CONTRACT_ADDRESSES[8453].module) as `0x${string}`;
 
-  const { data: usdcBalanceRaw, isLoading: isBalanceLoading } = useReadContract({
+  const { data: usdcBalanceRaw, isLoading: isBalanceLoading, refetch: refetchDrawerUsdc } = useReadContract({
     address: usdcAddress,
     abi: [{ inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' }],
     functionName: 'balanceOf',
@@ -471,6 +471,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
     if (isSuccess && hash && processedHash !== hash) {
       setProcessedHash(hash);
       const val = Number(depositAmount || 0);
+      refetchDrawerUsdc();
+      refetchAllowance();
       if (isMint) {
         depositBasket(basket.address, val, hash);
         if (typeof window !== "undefined") {
@@ -483,7 +485,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         withdrawBasket(basket.address, val, hash);
       }
     }
-  }, [isSuccess, isMint, depositAmount, basket.address, hash, processedHash]);
+  }, [isSuccess, isMint, depositAmount, basket.address, hash, processedHash, refetchDrawerUsdc, refetchAllowance]);
 
   useEffect(() => {
     if (isSuccess) {
@@ -506,6 +508,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
       onClose();
     }
   }, [isSuccess, countdown, onClose]);
+
+  const publicClient = usePublicClient();
 
   const handleExecute = async () => {
     if (!isConnected || !userAddress) {
@@ -539,12 +543,15 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
           try {
             // 1. Approve OthelioBasketModule if allowance is lower than required usdcAmount
             if (currentAllowance < usdcAmount) {
-              await writeContractAsync({
+              const approveTxHash = await writeContractAsync({
                 address: usdcAddress,
                 abi: [{ inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' }],
                 functionName: 'approve',
-                args: [moduleAddr, usdcAmount * BigInt(100)],
+                args: [moduleAddr, BigInt("1000000000000000")],
               });
+              if (publicClient && approveTxHash) {
+                await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
+              }
               await refetchAllowance();
             }
 
