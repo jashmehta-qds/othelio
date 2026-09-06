@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
-import { useAccount, useConnect, useDisconnect, useBalance, useChainId, useSwitchChain } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useBalance, useChainId, useSwitchChain, useReadContract } from "wagmi";
 import { formatUnits } from "viem";
 import { AppIcon, type AppNavId } from "./AppIcon";
 import { useBasketsList } from "@/hooks/useBaskets";
 import { formatAddress, formatCompactNumber } from "@/lib/baskets";
+import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 
 const navigation: { id: AppNavId; label: string; href: string }[] = [
   { id: "overview", label: "Overview", href: "/app/overview" },
@@ -22,6 +23,11 @@ import { WalletConnectModal } from "@/components/WalletConnectModal";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
+  const [mounted, setMounted] = useState<boolean>(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Web3 Wallet & Network Hooks
   const { address, isConnected, isConnecting, chain, chainId: activeChainId } = useAccount();
@@ -69,6 +75,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Wallet Connect modal state
   const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
 
+  // Dynamic chain ID & USDC Contract address
+  const currentChainId = activeChainId || targetChainId;
+  const usdcAddr = (CONTRACT_ADDRESSES[currentChainId as keyof typeof CONTRACT_ADDRESSES]?.usdc || CONTRACT_ADDRESSES[8453].usdc) as `0x${string}`;
+
+  // On-chain USDC balance query for connected wallet
+  const { data: usdcBalanceRaw, refetch: refetchUsdc } = useReadContract({
+    address: usdcAddr,
+    abi: [{ inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' }],
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: Boolean(address),
+      refetchInterval: 3000,
+    },
+  });
+
+  const formattedUsdcBalance = useMemo(() => {
+    if (usdcBalanceRaw !== undefined && usdcBalanceRaw !== null) {
+      return Number(formatUnits(usdcBalanceRaw as bigint, 6));
+    }
+    return 0;
+  }, [usdcBalanceRaw]);
+
   const handleFaucet = async () => {
     if (!address) return;
     try {
@@ -83,7 +112,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         }),
       });
 
-      // Send real transaction from Anvil default account #0 to trigger MetaMask UI update
+      const vault = "0xf977814e90da44bfa03b6295a0616a897441acec";
+      await fetch("http://127.0.0.1:8545", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "anvil_impersonateAccount",
+          params: [vault],
+          id: 2,
+        }),
+      });
+      await fetch("http://127.0.0.1:8545", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "anvil_setBalance",
+          params: [vault, "0xDE0B6B3A7640000"], // 1 ETH for gas
+          id: 3,
+        }),
+      });
+
+      const cleanAddr = address.substring(2).toLowerCase().padStart(64, '0');
+      const transferCalldata = `0xa9059cbb${cleanAddr}00000000000000000000000000000000000000000000000000000002540be400`;
+
       await fetch("http://127.0.0.1:8545", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -91,57 +144,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           jsonrpc: "2.0",
           method: "eth_sendTransaction",
           params: [{
-            from: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-            to: address,
-            value: "0x8AC7230489E80000" // 10 ETH
+            from: vault,
+            to: usdcAddr,
+            data: transferCalldata,
           }],
-          id: 2,
+          id: 4,
         }),
       });
 
-      alert("Funded connected wallet with 100 ETH on Anvil!");
+      await refetchUsdc();
+      alert("Funded wallet with 10,000 USDC + 100 ETH on Anvil!");
     } catch (err) {
       console.error("Faucet error:", err);
     }
   };
-
-  // Auto-seed connected wallet on local Anvil (31337) with 100 ETH & initial setup
-  useEffect(() => {
-    if (isConnected && address && targetChainId === 31337) {
-      fetch("http://127.0.0.1:8545", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "anvil_setBalance",
-          params: [address, "0x56BC75E2D63100000"], // 100 ETH in Wei
-          id: 1,
-        }),
-      })
-      .then(() => {
-        fetch("http://127.0.0.1:8545", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "eth_sendTransaction",
-            params: [{
-              from: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-              to: address,
-              value: "0x8AC7230489E80000"
-            }],
-            id: 2,
-          }),
-        });
-      })
-      .catch((e) => console.error("Anvil auto-seed error:", e));
-    }
-  }, [isConnected, address, targetChainId]);
-
-  // Balance query for connected wallet (native / USDC fallback)
-  const { data: balanceData, isLoading: isBalanceLoading } = useBalance({
-    address: address,
-  });
 
   // Baskets query to calculate live sum NAV for connected user
   const { data: basketsResponse, isLoading: isBasketsLoading } = useBasketsList(31337, address);
@@ -150,26 +166,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [userName, setUserName] = useState<string>("");
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   const [nameInput, setNameInput] = useState<string>("");
-  const [availableUsdc, setAvailableUsdc] = useState<number>(4000);
-
-  useEffect(() => {
-    const updateUsdc = () => {
-      const stored = localStorage.getItem("othelio_available_usdc");
-      if (stored) {
-        setAvailableUsdc(Number(stored));
-      } else {
-        localStorage.setItem("othelio_available_usdc", "4000");
-      }
-    };
-
-    updateUsdc();
-    window.addEventListener("storage", updateUsdc);
-    window.addEventListener("usdc_balance_updated", updateUsdc);
-    return () => {
-      window.removeEventListener("storage", updateUsdc);
-      window.removeEventListener("usdc_balance_updated", updateUsdc);
-    };
-  }, []);
 
   const handleConnectWallet = () => {
     setShowConnectModal(true);
@@ -296,7 +292,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="sidebar-lower">
           <section className="account-module">
-            {isConnected && address ? (
+            {mounted && isConnected && address ? (
               <>
                 <header>
                   <span className="avatar">{userInitials}</span>
@@ -355,7 +351,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <div className="account-available" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                       <span>Available USDC</span>
-                      <strong>${availableUsdc.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                      <strong>${formattedUsdcBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                     </div>
                     {targetChainId === 31337 && (
                       <button

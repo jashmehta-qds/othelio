@@ -17,3 +17,26 @@ export async function fetchApi<T>(path: string, options?: RequestInit): Promise<
 
   return res.json();
 }
+
+export async function fetchSwapQuote(basketAddress: string, body: any) {
+  return fetchApi<{
+    success: boolean;
+    data: {
+      basketAddress: string;
+      action: string;
+      inputAsset: string;
+      inputAmount: string;
+      slippageBps: number;
+      target: string;
+      dexCalldata: `0x${string}`;
+      soldAssets: string[];
+      boughtAssets: string[];
+      minBoughtAmounts: string[];
+      basketTokens: string[];
+      trades: any[];
+    };
+  }>(`/v1/baskets/${basketAddress}/quote-swaps`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {IOthelioEvents} from "../interfaces/IOthelioEvents.sol";
+import {OthelioBasketAccount} from "../safe/OthelioBasketAccount.sol";
 
 contract OthelioSafeFactory is IOthelioEvents {
     address public immutable module;
@@ -14,6 +15,16 @@ contract OthelioSafeFactory is IOthelioEvents {
         require(module_ != address(0) && registry_ != address(0), "ZERO_ADDRESS");
         module = module_;
         registry = registry_;
+    }
+
+    function createBasket(string calldata name) external returns (address basket) {
+        OthelioBasketAccount account = new OthelioBasketAccount(msg.sender, module, registry);
+        basket = address(account);
+
+        isOthelioBasket[basket] = true;
+        _userBaskets[msg.sender].push(basket);
+
+        emit BasketCreated(basket, msg.sender, name, block.timestamp);
     }
 
     function registerBasket(address safe, address owner, string calldata name) external {

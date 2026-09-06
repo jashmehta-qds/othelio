@@ -8,7 +8,9 @@ import { parseEther } from "viem";
 import { CONTRACT_ADDRESSES, OTHELIO_FACTORY_ABI } from "@/lib/contracts";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
+import { fetchApi } from "@/lib/api";
 import { supportedAssets, saveCreatedBasket, type Holding, type Basket } from "@/lib/baskets";
+import { useSupportedAssets } from "@/hooks/useBaskets";
 
 export default function CreateBasketPage() {
   const router = useRouter();
@@ -27,22 +29,39 @@ export default function CreateBasketPage() {
   const [targets, setTargets] = useState<Record<string, number>>({});
   const [createdSafeAddress, setCreatedSafeAddress] = useState<string | null>(null);
 
+  const { data: remoteAssets } = useSupportedAssets();
+
+  const allSupportedAssets = useMemo(() => {
+    if (remoteAssets?.data && remoteAssets.data.length > 0) {
+      return remoteAssets.data.map((item) => ({
+        symbol: item.symbol,
+        name: item.name,
+        target: 0,
+        current: 0,
+        quantity: 0,
+        value: 0,
+        color: item.color,
+      }));
+    }
+    return supportedAssets;
+  }, [remoteAssets]);
+
   const selectedSymbols = Object.keys(targets);
   const total = useMemo(() => Object.values(targets).reduce((sum, value) => sum + value, 0), [targets]);
 
   const selectedAssets = selectedSymbols
-    .map((s) => supportedAssets.find((asset) => asset.symbol === s))
-    .filter((asset): asset is (typeof supportedAssets)[number] => Boolean(asset));
+    .map((s) => allSupportedAssets.find((asset) => asset.symbol === s))
+    .filter((asset): asset is (typeof allSupportedAssets)[number] => Boolean(asset));
 
   const availableAssets = useMemo(() => {
-    return supportedAssets.filter((asset) => {
+    return allSupportedAssets.filter((asset) => {
       const isNotSelected = !(asset.symbol in targets);
       const matchesSearch =
         asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         asset.name.toLowerCase().includes(searchQuery.toLowerCase());
       return isNotSelected && matchesSearch;
     });
-  }, [searchQuery, targets]);
+  }, [searchQuery, targets, allSupportedAssets]);
 
   const { data: hash, isPending, writeContract, error: writeError } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
@@ -130,10 +149,27 @@ export default function CreateBasketPage() {
       updated: "Just now",
       address: mockSafeAddress,
       holdings,
+      isIndexed: false,
     };
 
     saveCreatedBasket(newBasket);
     setCreatedSafeAddress(mockSafeAddress);
+
+    // Sync directly into backend PostgreSQL database
+    fetchApi('/v1/baskets', {
+      method: 'POST',
+      body: JSON.stringify({
+        chainId: 31337,
+        address: mockSafeAddress,
+        controller: address,
+        name: name || "Custom Basket",
+        symbol: symbol ? `OTH-${symbol}` : "OTH-CUSTOM",
+        assets: selectedAssets.map((asset) => ({
+          address: asset.symbol,
+          targetWeightBps: (targets[asset.symbol] ?? 0) * 100,
+        })),
+      }),
+    }).catch((err) => console.warn('Backend sync warning:', err));
 
     // Deduct seed capital from Available USDC
     if (typeof window !== "undefined") {
@@ -146,8 +182,8 @@ export default function CreateBasketPage() {
     writeContract({
       address: CONTRACT_ADDRESSES[31337].factory,
       abi: OTHELIO_FACTORY_ABI,
-      functionName: "registerBasket",
-      args: [mockSafeAddress, address, name],
+      functionName: "createBasket",
+      args: [name || "Custom Basket"],
     });
   };
 
@@ -176,7 +212,7 @@ export default function CreateBasketPage() {
           Create New Basket
         </h1>
         <p style={{ color: "var(--muted-ink)", fontSize: "14px", marginTop: "6px" }}>
-          Define basket identity, ENS subdomain, seed capital, and target constituent weights on-chain.
+          Define basket identity, ENS subdomain, seed capital, and target asset weights on-chain.
         </p>
       </header>
 
@@ -428,7 +464,7 @@ export default function CreateBasketPage() {
                 }}
               >
                 <p style={{ margin: 0, fontSize: "13px", color: "var(--muted-ink)" }}>
-                  No stock tokens added yet. Use the search field above to pick your basket constituents.
+                  No stock tokens added yet. Use the search field above to pick your basket assets.
                 </p>
               </div>
             ) : (

@@ -19,6 +19,7 @@ abigen!(
     IOthelioEvents,
     r#"[
         event BasketCreated(address indexed safe, address indexed owner, string name, uint256 createdAt)
+        event BasketFunded(address indexed safe, address indexed owner, address inputAsset, uint256 inputAmount, address[] boughtAssets, uint256[] boughtAmounts, uint256 totalNAV)
         event BasketRebalanced(address indexed safe, address indexed controller, address[] soldAssets, uint256[] soldAmounts, address[] boughtAssets, uint256[] boughtAmounts, uint256 totalNAV)
         event BasketWithdrawn(address indexed safe, address indexed owner, address outputAsset, uint256 navRedeemed, address[] withdrawnAssets, uint256[] withdrawnAmounts, uint256 remainingNAV)
     ]"#
@@ -52,12 +53,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let provider = Provider::<Http>::try_from(rpc_url)?;
     let provider = Arc::new(provider);
 
-    let mut current_block = get_next_block(&pool, chain_id, 0).await?;
+    let latest_block = provider.get_block_number().await.map(|b| b.as_u64()).unwrap_or(0);
+    let default_start = if latest_block > 5000 { latest_block - 1000 } else { 0 };
+
+    let mut current_block = get_next_block(&pool, chain_id, default_start).await?;
 
     loop {
         match provider.get_block_number().await {
             Ok(latest_block) => {
                 let latest_block = latest_block.as_u64();
+
+                if latest_block > current_block + 50000 {
+                    let target_block = latest_block.saturating_sub(100);
+                    info!("[Rust Indexer] Fast-forwarding indexer from block {} to latest block {}...", current_block, target_block);
+                    current_block = target_block;
+                    let _ = update_next_block(&pool, chain_id, current_block).await;
+                }
+
                 if current_block <= latest_block {
                     let to_block = (current_block + batch_size).min(latest_block);
                     info!("[Rust Indexer] Scanning blocks {} -> {}", current_block, to_block);
@@ -66,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     update_next_block(&pool, chain_id, to_block + 1).await?;
                     current_block = to_block + 1;
                 } else {
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    tokio::time::sleep(Duration::from_secs(3)).await;
                 }
             }
             Err(e) => {
@@ -149,7 +161,74 @@ async fn process_block_range(
                     .execute(pool)
                     .await?;
 
+                    let payload = json!({
+                        "safe": safe,
+                        "owner": owner,
+                        "name": name,
+                    });
+
+                    sqlx::query(
+                        "INSERT INTO basket_events (chain_id, tx_hash, log_index, block_number, block_hash, basket_address, event_type, actor_address, payload, occurred_at)
+                         VALUES ($1, $2, $3, $4, $5, LOWER($6), 'CREATED', LOWER($7), $8, NOW())
+                         ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING"
+                    )
+                    .bind(chain_id)
+                    .bind(&tx_hash)
+                    .bind(log_index)
+                    .bind(block_number as i64)
+                    .bind(&block_hash)
+                    .bind(&safe)
+                    .bind(&owner)
+                    .bind(&payload)
+                    .execute(pool)
+                    .await?;
+
                     info!("[Rust Indexer] Indexed BasketCreated: safe={} owner={}", safe, owner);
+                }
+                IOthelioEventsEvents::BasketFundedFilter(e) => {
+                    let safe = format!("{:#x}", e.safe);
+                    let owner = format!("{:#x}", e.owner);
+                    let nav_usdc = (e.total_nav.as_u128() as f64) / 1_000_000.0;
+
+                    let payload = json!({
+                        "inputAsset": format!("{:#x}", e.input_asset),
+                        "inputAmount": e.input_amount.to_string(),
+                        "boughtAssets": e.bought_assets.iter().map(|a| format!("{:#x}", a)).collect::<Vec<_>>(),
+                        "boughtAmounts": e.bought_amounts.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
+                        "totalNAV": e.total_nav.to_string(),
+                    });
+
+                    sqlx::query(
+                        "INSERT INTO basket_events (chain_id, tx_hash, log_index, block_number, block_hash, basket_address, event_type, actor_address, payload, occurred_at)
+                         VALUES ($1, $2, $3, $4, $5, LOWER($6), 'MINTED', LOWER($7), $8, NOW())
+                         ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING"
+                    )
+                    .bind(chain_id)
+                    .bind(&tx_hash)
+                    .bind(log_index)
+                    .bind(block_number as i64)
+                    .bind(&block_hash)
+                    .bind(&safe)
+                    .bind(&owner)
+                    .bind(&payload)
+                    .execute(pool)
+                    .await?;
+
+                    sqlx::query(
+                        "INSERT INTO basket_snapshots (chain_id, basket_address, block_number, block_hash, total_nav_usdc, shares_outstanding, holdings, prices, priced_at)
+                         VALUES ($1, LOWER($2), $3, $4, $5, 0, $6, '{}', NOW())
+                         ON CONFLICT (chain_id, basket_address, block_number) DO UPDATE SET total_nav_usdc = EXCLUDED.total_nav_usdc"
+                    )
+                    .bind(chain_id)
+                    .bind(&safe)
+                    .bind(block_number as i64)
+                    .bind(&block_hash)
+                    .bind(nav_usdc)
+                    .bind(&payload)
+                    .execute(pool)
+                    .await?;
+
+                    info!("[Rust Indexer] Indexed BasketFunded: safe={} owner={} totalNAV=${:.2}", safe, owner, nav_usdc);
                 }
                 IOthelioEventsEvents::BasketRebalancedFilter(e) => {
                     let safe = format!("{:#x}", e.safe);

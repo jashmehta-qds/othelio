@@ -148,4 +148,49 @@ contract OthelioBasketModuleTest is Test {
         assertEq(tokenNVDA.balanceOf(address(safe)), 8 * 1e18);
         assertEq(remainingNAV, 800 * 1e6); // 8 NVDA * $100 = $800
     }
+
+    function testFundWithSwaps() public {
+        MockERC20 tokenUSDC = new MockERC20("USD Coin", "USDC");
+        tokenUSDC.mint(address(safe), 500 * 1e18); // $500 USDC in Safe
+        
+        vm.prank(address(safe));
+        tokenUSDC.approve(address(dexRouter), type(uint256).max);
+
+        address[] memory boughtAssets = new address[](1);
+        boughtAssets[0] = address(tokenGOOG);
+
+        uint256[] memory minBought = new uint256[](1);
+        minBought[0] = 3.2 * 1e18; // min 3.2 GOOG ($480)
+
+        bytes memory dexCalldata = abi.encodeWithSignature(
+            "swap(address,address,address,uint256,uint256)",
+            address(tokenUSDC),
+            address(tokenGOOG),
+            address(safe),
+            500 * 1e18,
+            3.3 * 1e18 // 3.3 GOOG ($495 value)
+        );
+
+        address[] memory basketTokens = new address[](2);
+        basketTokens[0] = address(tokenNVDA);
+        basketTokens[1] = address(tokenGOOG);
+
+        OthelioBasketModule.MintParams memory params = OthelioBasketModule.MintParams({
+            safe: address(safe),
+            inputAsset: address(tokenUSDC),
+            inputAmount: 500 * 1e18,
+            target: address(dexRouter),
+            dexCalldata: dexCalldata,
+            boughtAssets: boughtAssets,
+            minBoughtAmounts: minBought,
+            basketTokens: basketTokens
+        });
+
+        vm.prank(owner);
+        (uint256[] memory boughtAmounts, uint256 totalNAV) = module.fundWithSwaps(params);
+
+        assertEq(boughtAmounts[0], 3.3 * 1e18);
+        // NAV = 10 NVDA ($1000) + 3.3 GOOG ($495) = $1495 = 1495000000 (6 decimals)
+        assertEq(totalNAV, 1495000000);
+    }
 }

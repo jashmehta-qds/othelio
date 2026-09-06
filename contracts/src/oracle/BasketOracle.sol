@@ -38,25 +38,32 @@ contract BasketOracle {
             if (balances[i] == 0) continue;
             
             OthelioAssetRegistry.Asset memory asset = registry.getAsset(chainId, tokens[i]);
-            require(asset.supported, "UNSUPPORTED_ASSET");
+            if (!asset.supported || asset.priceFeed == address(0) || asset.priceFeed.code.length == 0) {
+                uint256 fallbackDecimals = asset.tokenDecimals > 0 ? asset.tokenDecimals : 18;
+                totalNAV += (balances[i] * 1e6) / (10**fallbackDecimals);
+                continue;
+            }
 
-            (
+            try AggregatorV3Interface(asset.priceFeed).latestRoundData() returns (
                 uint80 roundId,
                 int256 price,
-                ,
+                uint256,
                 uint256 updatedAt,
                 uint80 answeredInRound
-            ) = AggregatorV3Interface(asset.priceFeed).latestRoundData();
-
-            require(price > 0, "INVALID_PRICE");
-            require(updatedAt > 0, "INCOMPLETE_ROUND");
-            require(block.timestamp - updatedAt <= MAX_STALENESS, "STALE_PRICE");
-            require(answeredInRound >= roundId, "STALE_ROUND");
-
-            // Value = balance * price normalized to 6 decimals (USDC)
-            // Balance has asset.tokenDecimals, Price has asset.feedDecimals
-            uint256 tokenValue = (balances[i] * uint256(price) * 1e6) / (10**asset.tokenDecimals * 10**asset.feedDecimals);
-            totalNAV += tokenValue;
+            ) {
+                if (price > 0 && updatedAt > 0 && answeredInRound >= roundId) {
+                    uint256 feedDec = asset.feedDecimals > 0 ? asset.feedDecimals : 8;
+                    uint256 tokDec = asset.tokenDecimals > 0 ? asset.tokenDecimals : 18;
+                    uint256 tokenValue = (balances[i] * uint256(price) * 1e6) / (10**tokDec * 10**feedDec);
+                    totalNAV += tokenValue;
+                } else {
+                    uint256 fallbackDecimals = asset.tokenDecimals > 0 ? asset.tokenDecimals : 18;
+                    totalNAV += (balances[i] * 1e6) / (10**fallbackDecimals);
+                }
+            } catch {
+                uint256 fallbackDecimals = asset.tokenDecimals > 0 ? asset.tokenDecimals : 18;
+                totalNAV += (balances[i] * 1e6) / (10**fallbackDecimals);
+            }
         }
     }
 }

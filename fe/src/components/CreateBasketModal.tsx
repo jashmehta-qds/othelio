@@ -1,17 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { CONTRACT_ADDRESSES, OTHELIO_FACTORY_ABI } from "@/lib/contracts";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { supportedAssets } from "@/lib/baskets";
+import { fetchApi } from "@/lib/api";
+import { supportedAssets, saveCreatedBasket, type Holding, type Basket } from "@/lib/baskets";
+import { useSupportedAssets } from "@/hooks/useBaskets";
 
 export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const router = useRouter();
   const { address, isConnected } = useAccount();
   const [name, setName] = useState("Momentum Tech Core");
   const [symbol, setSymbol] = useState("MCORE");
   const [depositAmount, setDepositAmount] = useState("1000");
+  const [createdSafeAddress, setCreatedSafeAddress] = useState<string | null>(null);
 
   // Search input query for adding new stock tokens
   const [searchQuery, setSearchQuery] = useState("");
@@ -21,26 +26,66 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
   const [targets, setTargets] = useState<Record<string, number>>({});
   const [previewing, setPreviewing] = useState(false);
 
+  const { data: remoteAssets } = useSupportedAssets();
+
+  const allSupportedAssets = useMemo(() => {
+    if (remoteAssets?.data && remoteAssets.data.length > 0) {
+      return remoteAssets.data.map((item) => ({
+        symbol: item.symbol,
+        name: item.name,
+        target: 0,
+        current: 0,
+        quantity: 0,
+        value: 0,
+        color: item.color,
+      }));
+    }
+    return supportedAssets;
+  }, [remoteAssets]);
+
   const selectedSymbols = Object.keys(targets);
   const total = useMemo(() => Object.values(targets).reduce((sum, value) => sum + value, 0), [targets]);
 
   const selectedAssets = selectedSymbols
-    .map((s) => supportedAssets.find((asset) => asset.symbol === s))
-    .filter((asset): asset is (typeof supportedAssets)[number] => Boolean(asset));
+    .map((s) => allSupportedAssets.find((asset) => asset.symbol === s))
+    .filter((asset): asset is (typeof allSupportedAssets)[number] => Boolean(asset));
 
   // Available unselected assets matching search query
   const availableAssets = useMemo(() => {
-    return supportedAssets.filter((asset) => {
+    return allSupportedAssets.filter((asset) => {
       const isNotSelected = !(asset.symbol in targets);
       const matchesSearch =
         asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         asset.name.toLowerCase().includes(searchQuery.toLowerCase());
       return isNotSelected && matchesSearch;
     });
-  }, [searchQuery, targets]);
+  }, [searchQuery, targets, allSupportedAssets]);
 
   const { data: hash, isPending, writeContract, error: writeError } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash });
+
+  useEffect(() => {
+    if (isSuccess && (createdSafeAddress || receipt)) {
+      let realAddress = createdSafeAddress;
+      if (receipt?.logs && receipt.logs.length > 0) {
+        for (const log of receipt.logs) {
+          if (log.topics && log.topics.length >= 2) {
+            const safeTopic = log.topics[1];
+            if (safeTopic && safeTopic.length === 66) {
+              realAddress = `0x${safeTopic.slice(26)}`.toLowerCase() as `0x${string}`;
+              break;
+            }
+          }
+        }
+      }
+
+      const timer = setTimeout(() => {
+        onClose();
+        router.push(`/app/baskets/${realAddress || createdSafeAddress}`);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [isSuccess, receipt, createdSafeAddress, onClose, router]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -102,12 +147,64 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
     }
 
     const mockSafeAddress = `0x${Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("")}` as `0x${string}`;
+    const seedVal = Number(depositAmount || 1000);
+
+    const holdings: Holding[] = selectedAssets.map((asset) => {
+      const weight = targets[asset.symbol] ?? 0;
+      const assetValue = (seedVal * weight) / 100;
+      return {
+        symbol: asset.symbol,
+        name: asset.name,
+        target: weight,
+        current: weight,
+        quantity: Math.max(1, Math.round(assetValue / 100)),
+        value: assetValue,
+        color: asset.color || "#8aa4ff",
+      };
+    });
+
+    const newBasket: Basket = {
+      name: name || "Custom Basket",
+      symbol: symbol ? `OTH-${symbol}` : "OTH-CUSTOM",
+      value: seedVal,
+      change: 0.0,
+      updated: "Just now",
+      address: mockSafeAddress,
+      holdings,
+      isIndexed: false,
+    };
+
+    saveCreatedBasket(newBasket);
+    setCreatedSafeAddress(mockSafeAddress);
+
+    // Sync directly into backend PostgreSQL database
+    fetchApi('/v1/baskets', {
+      method: 'POST',
+      body: JSON.stringify({
+        chainId: 31337,
+        address: mockSafeAddress,
+        controller: address,
+        name: name || "Custom Basket",
+        symbol: symbol ? `OTH-${symbol}` : "OTH-CUSTOM",
+        assets: selectedAssets.map((asset) => ({
+          address: asset.symbol,
+          targetWeightBps: (targets[asset.symbol] ?? 0) * 100,
+        })),
+      }),
+    }).catch((err) => console.warn('Backend sync warning:', err));
+
+    if (typeof window !== "undefined") {
+      const currentUsdc = Number(localStorage.getItem("othelio_available_usdc") || "4000");
+      const nextUsdc = Math.max(0, currentUsdc - seedVal);
+      localStorage.setItem("othelio_available_usdc", nextUsdc.toString());
+      window.dispatchEvent(new Event("usdc_balance_updated"));
+    }
 
     writeContract({
       address: CONTRACT_ADDRESSES[31337].factory,
       abi: OTHELIO_FACTORY_ABI,
-      functionName: "registerBasket",
-      args: [mockSafeAddress, address, name],
+      functionName: "createBasket",
+      args: [name || "Custom Basket"],
     });
   };
 
@@ -363,7 +460,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                   }}
                 >
                   <p style={{ margin: 0, fontSize: "12px", color: "var(--muted-ink)" }}>
-                    No stock tokens added yet. Use the search input above to pick your basket constituents.
+                    No stock tokens added yet. Use the search input above to pick your basket assets.
                   </p>
                 </div>
               ) : (

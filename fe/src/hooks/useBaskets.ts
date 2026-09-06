@@ -90,3 +90,19 @@ export function usePrepareOperation() {
     },
   });
 }
+
+export interface SupportedAssetResponse {
+  symbol: string;
+  name: string;
+  address: string;
+  priceFeed: string;
+  color: string;
+  isCoinbaseB20: boolean;
+}
+
+export function useSupportedAssets() {
+  return useQuery<{ data: SupportedAssetResponse[] }>({
+    queryKey: ['supported-assets'],
+    queryFn: () => fetchApi<{ data: SupportedAssetResponse[] }>('/v1/baskets/assets/supported'),
+  });
+}

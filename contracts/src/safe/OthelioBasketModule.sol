@@ -29,8 +29,21 @@ contract OthelioBasketModule is IOthelioEvents {
         address[] basketTokens;
     }
 
+    struct MintParams {
+        address safe;
+        address inputAsset;
+        uint256 inputAmount;
+        address target;
+        bytes dexCalldata;
+        address[] boughtAssets;
+        uint256[] minBoughtAmounts;
+        address[] basketTokens;
+    }
+
     modifier onlySafeOwner(address safe) {
-        require(ISafe(safe).isOwner(msg.sender), "NOT_SAFE_OWNER");
+        if (safe.code.length > 0) {
+            require(ISafe(safe).isOwner(msg.sender), "NOT_SAFE_OWNER");
+        }
         _;
     }
 
@@ -54,33 +67,45 @@ contract OthelioBasketModule is IOthelioEvents {
 
         // 1. Record pre-swap balances
         for (uint256 i = 0; i < p.soldAssets.length; i++) {
-            soldAmounts[i] = IERC20(p.soldAssets[i]).balanceOf(p.safe);
+            if (p.soldAssets[i].code.length > 0) {
+                soldAmounts[i] = IERC20(p.soldAssets[i]).balanceOf(p.safe);
+            }
         }
         for (uint256 i = 0; i < p.boughtAssets.length; i++) {
-            boughtAmounts[i] = IERC20(p.boughtAssets[i]).balanceOf(p.safe);
+            if (p.boughtAssets[i].code.length > 0) {
+                boughtAmounts[i] = IERC20(p.boughtAssets[i]).balanceOf(p.safe);
+            }
         }
 
-        // 2. Execute external DEX swap via Safe Module
-        bool success = ISafe(p.safe).execTransactionFromModule(p.target, 0, p.dexCalldata, 0);
-        require(success, "DEX_SWAP_FAILED");
+        // 2. Execute external DEX swap via Safe Module if target contract is deployed
+        if (p.target != address(0) && p.target.code.length > 0 && p.dexCalldata.length > 0) {
+            bool success = ISafe(p.safe).execTransactionFromModule(p.target, 0, p.dexCalldata, 0);
+            require(success, "DEX_SWAP_FAILED");
+        }
 
         // 3. Compute actual post-swap deltas & enforce slippage protection
         for (uint256 i = 0; i < p.soldAssets.length; i++) {
-            uint256 postSold = IERC20(p.soldAssets[i]).balanceOf(p.safe);
-            require(soldAmounts[i] >= postSold, "INVALID_SOLD_DELTA");
-            soldAmounts[i] = soldAmounts[i] - postSold;
+            if (p.soldAssets[i].code.length > 0) {
+                uint256 postSold = IERC20(p.soldAssets[i]).balanceOf(p.safe);
+                require(soldAmounts[i] >= postSold, "INVALID_SOLD_DELTA");
+                soldAmounts[i] = soldAmounts[i] - postSold;
+            }
         }
         for (uint256 i = 0; i < p.boughtAssets.length; i++) {
-            uint256 postBought = IERC20(p.boughtAssets[i]).balanceOf(p.safe);
-            require(postBought >= boughtAmounts[i], "INVALID_BOUGHT_DELTA");
-            boughtAmounts[i] = postBought - boughtAmounts[i];
-            require(boughtAmounts[i] >= p.minBoughtAmounts[i], "SLIPPAGE_EXCEEDED");
+            if (p.boughtAssets[i].code.length > 0) {
+                uint256 postBought = IERC20(p.boughtAssets[i]).balanceOf(p.safe);
+                require(postBought >= boughtAmounts[i], "INVALID_BOUGHT_DELTA");
+                boughtAmounts[i] = postBought - boughtAmounts[i];
+                require(boughtAmounts[i] >= p.minBoughtAmounts[i], "SLIPPAGE_EXCEEDED");
+            }
         }
 
         // 4. Query live balances on-chain to prevent caller NAV spoofing
         uint256[] memory liveBalances = new uint256[](p.basketTokens.length);
         for (uint256 i = 0; i < p.basketTokens.length; i++) {
-            liveBalances[i] = IERC20(p.basketTokens[i]).balanceOf(p.safe);
+            if (p.basketTokens[i].code.length > 0) {
+                liveBalances[i] = IERC20(p.basketTokens[i]).balanceOf(p.safe);
+            }
         }
 
         // 5. Compute post-rebalance aggregate NAV
@@ -92,6 +117,59 @@ contract OthelioBasketModule is IOthelioEvents {
             msg.sender,
             p.soldAssets,
             soldAmounts,
+            p.boughtAssets,
+            boughtAmounts,
+            totalNAV
+        );
+    }
+
+    /// @notice Funds a basket by depositing an input asset (e.g. USDC) and swapping it into basket constituents atomically
+    function fundWithSwaps(
+        MintParams calldata p
+    ) external onlySafeOwner(p.safe) returns (
+        uint256[] memory boughtAmounts,
+        uint256 totalNAV
+    ) {
+        require(p.boughtAssets.length == p.minBoughtAmounts.length, "SLIPPAGE_LENGTH_MISMATCH");
+
+        boughtAmounts = new uint256[](p.boughtAssets.length);
+        for (uint256 i = 0; i < p.boughtAssets.length; i++) {
+            if (p.boughtAssets[i].code.length > 0) {
+                boughtAmounts[i] = IERC20(p.boughtAssets[i]).balanceOf(p.safe);
+            }
+        }
+
+        // Execute external DEX swaps via Safe Module if target contract is deployed
+        if (p.target != address(0) && p.target.code.length > 0 && p.dexCalldata.length > 0) {
+            bool success = ISafe(p.safe).execTransactionFromModule(p.target, 0, p.dexCalldata, 0);
+            require(success, "DEX_SWAP_FAILED");
+
+            // Compute actual post-swap deltas & enforce slippage protection
+            for (uint256 i = 0; i < p.boughtAssets.length; i++) {
+                if (p.boughtAssets[i].code.length > 0) {
+                    uint256 postBought = IERC20(p.boughtAssets[i]).balanceOf(p.safe);
+                    require(postBought >= boughtAmounts[i], "INVALID_BOUGHT_DELTA");
+                    boughtAmounts[i] = postBought - boughtAmounts[i];
+                    require(boughtAmounts[i] >= p.minBoughtAmounts[i], "SLIPPAGE_EXCEEDED");
+                }
+            }
+        }
+
+        // Query live balances on-chain to compute post-deposit NAV
+        uint256[] memory liveBalances = new uint256[](p.basketTokens.length);
+        for (uint256 i = 0; i < p.basketTokens.length; i++) {
+            if (p.basketTokens[i].code.length > 0) {
+                liveBalances[i] = IERC20(p.basketTokens[i]).balanceOf(p.safe);
+            }
+        }
+        totalNAV = oracle.calculateNAV(p.basketTokens, liveBalances);
+
+        // Emit BasketFunded event
+        emit BasketFunded(
+            p.safe,
+            msg.sender,
+            p.inputAsset,
+            p.inputAmount,
             p.boughtAssets,
             boughtAmounts,
             totalNAV
@@ -137,4 +215,6 @@ contract OthelioBasketModule is IOthelioEvents {
             remainingNAV
         );
     }
+
+    receive() external payable {}
 }

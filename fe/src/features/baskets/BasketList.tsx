@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAccount, useConnect } from "wagmi";
 import { useBasketsList } from "@/hooks/useBaskets";
-import { formatCompactNumber } from "@/lib/baskets";
+import { formatCompactNumber, getCreatedBaskets, baskets as defaultBaskets, type Basket } from "@/lib/baskets";
 import { BasketLogo } from "./BasketLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { CreateBasketModal } from "@/components/CreateBasketModal";
@@ -13,20 +13,71 @@ export function BasketList() {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
+  const [localBaskets, setLocalBaskets] = useState<Basket[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setLocalBaskets(getCreatedBaskets());
+
+      const handleStorage = () => {
+        setLocalBaskets(getCreatedBaskets());
+      };
+      window.addEventListener("storage", handleStorage);
+      return () => window.removeEventListener("storage", handleStorage);
+    }
+  }, []);
   
   // Filter baskets strictly by the connected wallet controller address
   const { data: apiResponse, isLoading } = useBasketsList(31337, address);
   const indexedBaskets = apiResponse?.data ?? [];
 
-  const displayBaskets = indexedBaskets.map(b => ({
-    name: b.name,
-    symbol: b.symbol || 'OTH',
-    value: (b as any).seed_amount ? Number((b as any).seed_amount) : 1000,
-    change: 0.0,
-    updated: new Date(b.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    address: b.address,
-    holdingsCount: 4,
-  }));
+  const displayBaskets = useMemo(() => {
+    const list: Array<{
+      name: string;
+      symbol: string;
+      value: number;
+      change: number;
+      updated: string;
+      address: string;
+      holdingsCount: number;
+      isIndexed: boolean;
+    }> = [];
+
+    const indexedAddresses = new Set(indexedBaskets.map((b) => b.address.toLowerCase()));
+
+    // 1. User created baskets from localStorage
+    localBaskets.forEach((b) => {
+      const isIndexed = indexedAddresses.has(b.address.toLowerCase()) || indexedBaskets.some((ib) => ib.name.toLowerCase() === b.name.toLowerCase());
+      list.push({
+        name: b.name,
+        symbol: b.symbol || 'OTH',
+        value: b.value || 1000,
+        change: b.change || 0.0,
+        updated: b.updated || 'Just now',
+        address: b.address,
+        holdingsCount: b.holdings?.length || 4,
+        isIndexed,
+      });
+    });
+
+    // 2. Indexed baskets from backend database not in localStorage
+    indexedBaskets.forEach((b) => {
+      if (!list.some((item) => item.address.toLowerCase() === b.address.toLowerCase())) {
+        list.push({
+          name: b.name,
+          symbol: b.symbol || 'OTH',
+          value: (b as any).seed_amount ? Number((b as any).seed_amount) : 1000,
+          change: 0.0,
+          updated: new Date(b.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          address: b.address,
+          holdingsCount: 4,
+          isIndexed: true,
+        });
+      }
+    });
+
+    return list;
+  }, [localBaskets, indexedBaskets]);
 
   const totalPortfolioValue = displayBaskets.reduce((acc, b) => acc + b.value, 0);
 
@@ -60,7 +111,7 @@ export function BasketList() {
       <div className="portfolio-strip">
         <span>Personal Portfolio Value</span>
         <strong>
-          {isConnected ? `$${formatCompactNumber(totalPortfolioValue)}` : "$0.00"}
+          {`$${formatCompactNumber(totalPortfolioValue)}`}
         </strong>
         <p>
           <span>{displayBaskets.length} active basket{displayBaskets.length === 1 ? '' : 's'}</span>
@@ -77,19 +128,7 @@ export function BasketList() {
       </div>
 
       <div className="basket-list">
-        {!isConnected ? (
-          <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--muted-ink)' }}>
-            <p style={{ fontSize: '14px', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--ink)' }}>
-              <span style={{ width: '16px', height: '16px', display: 'inline-block', color: 'var(--muted-ink)' }}>
-                <AppIcon type="lock" />
-              </span>
-              <b>Not Connected</b>
-            </p>
-            <p style={{ fontSize: '12px' }}>
-              Connect your Web3 wallet to view and manage your created baskets.
-            </p>
-          </div>
-        ) : isLoading ? (
+        {isLoading && displayBaskets.length === 0 ? (
           <div style={{ padding: '36px 20px', textAlign: 'center', opacity: 0.6, fontSize: '13px' }}>
             Loading your created baskets...
           </div>
@@ -99,7 +138,7 @@ export function BasketList() {
               No Baskets Created Yet
             </p>
             <p style={{ fontSize: '12px' }}>
-              Your connected wallet (<code>{address ? `${address.slice(0, 6)}...${address.slice(-4)}` : ''}</code>) has not deployed any baskets on this network yet.
+              Your connected wallet has not deployed any baskets on this network yet.
             </p>
           </div>
         ) : (
@@ -115,7 +154,27 @@ export function BasketList() {
               <strong>${formatCompactNumber(basket.value)}</strong>
               <span className="positive">+{basket.change}%</span>
               <span>{basket.holdingsCount}</span>
-              <span>{basket.updated}</span>
+              <span style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px', fontSize: '12px' }}>
+                <span>{basket.updated}</span>
+                {!basket.isIndexed && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      color: '#eab308',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      fontWeight: 600,
+                    }}
+                    title="Submitted on-chain, waiting for network confirmation"
+                  >
+                    <span style={{ width: '10px', height: '10px', display: 'inline-flex' }}>
+                      <AppIcon type="clock" />
+                    </span>
+                    Confirming...
+                  </span>
+                )}
+              </span>
               <span aria-hidden="true">→</span>
             </Link>
           ))
@@ -124,5 +183,3 @@ export function BasketList() {
     </section>
   );
 }
-
-

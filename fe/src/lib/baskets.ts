@@ -6,6 +6,7 @@ export type Holding = {
   quantity: number;
   value: number;
   color: string;
+  address?: string;
 };
 
 export type Basket = {
@@ -16,7 +17,58 @@ export type Basket = {
   updated: string;
   address: string;
   holdings: Holding[];
+  isIndexed?: boolean;
 };
+
+export type BasketActivity = {
+  event_type: string;
+  actor_address: string;
+  tx_hash: string;
+  block_number?: number;
+  occurred_at: string;
+};
+
+export function recordLocalActivity(basketAddress: string, event_type: string, txHash?: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const key = `othelio_activity_${basketAddress.toLowerCase()}`;
+    const existing: BasketActivity[] = JSON.parse(localStorage.getItem(key) || "[]");
+
+    if (txHash && existing.some((item) => item.tx_hash.toLowerCase() === txHash.toLowerCase())) {
+      return;
+    }
+
+    const newEntry: BasketActivity = {
+      event_type,
+      actor_address: "Wallet execution",
+      tx_hash: txHash || `0x${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`,
+      occurred_at: new Date().toISOString(),
+    };
+
+    const combined = [newEntry, ...existing];
+    const unique = combined.filter(
+      (item, idx, self) => idx === self.findIndex((t) => t.tx_hash.toLowerCase() === item.tx_hash.toLowerCase())
+    );
+
+    localStorage.setItem(key, JSON.stringify(unique.slice(0, 10)));
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+export function getLocalActivity(basketAddress: string): BasketActivity[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const key = `othelio_activity_${basketAddress.toLowerCase()}`;
+    const raw: BasketActivity[] = JSON.parse(localStorage.getItem(key) || "[]");
+    const unique = raw.filter(
+      (item, idx, self) => idx === self.findIndex((t) => t.tx_hash.toLowerCase() === item.tx_hash.toLowerCase())
+    );
+    return unique.slice(0, 10);
+  } catch (err) {
+    return [];
+  }
+}
 
 const techHoldings: Holding[] = [
   { symbol: "NVDAc", name: "NVIDIA", target: 38, current: 38.2, quantity: 4800.04, value: 9424.18, color: "#8aa4ff" },
@@ -25,17 +77,22 @@ const techHoldings: Holding[] = [
   { symbol: "USDC", name: "USD Coin", target: 10, current: 9.9, quantity: 2447.9, value: 2447.9, color: "#8daed0" },
 ];
 
-export const baskets: Basket[] = [
-  { name: "Tech Leaders", symbol: "OTHL-TECH", value: 24680.42, change: 3.53, updated: "Just now", address: "0x9bDe4A7C3F2E8D1a6B5C0F9347A2E18D5C6B1A7C", holdings: techHoldings },
-  { name: "AI Infrastructure", symbol: "OTHL-AI", value: 18450, change: 5.92, updated: "4 min ago", address: "0x2eA18B3C7D9F4A6E1C5B8D2F0A7E4C6B9D3183F9", holdings: techHoldings.slice(0, 3) },
-  { name: "Mega Cap Core", symbol: "OTHL-MEGA", value: 32100.5, change: 3.45, updated: "11 min ago", address: "0x6c47A2E8D5B1F9C3A7E4D8B2C6F1A5E9D3B0B210", holdings: techHoldings },
-];
+export const baskets: Basket[] = [];
 
 export const supportedAssets: Holding[] = [
-  ...techHoldings,
-  { symbol: "GOOGLc", name: "Alphabet", target: 0, current: 0, quantity: 0, value: 0, color: "#6f8cff" },
-  { symbol: "TSLAc", name: "Tesla", target: 0, current: 0, quantity: 0, value: 0, color: "#b16f83" },
-  { symbol: "AMZNc", name: "Amazon", target: 0, current: 0, quantity: 0, value: 0, color: "#b88a58" },
+  { symbol: "NVDAc", name: "NVIDIA Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#8aa4ff" },
+  { symbol: "AAPLc", name: "Apple Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#5371d9" },
+  { symbol: "MSFTc", name: "Microsoft Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#858b87" },
+  { symbol: "GOOGLc", name: "Alphabet Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#6f8cff" },
+  { symbol: "AMZNc", name: "Amazon.com Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#b88a58" },
+  { symbol: "METAc", name: "Meta Platforms", target: 0, current: 0, quantity: 0, value: 0, color: "#4e7fff" },
+  { symbol: "TSLAc", name: "Tesla Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#b16f83" },
+  { symbol: "COINc", name: "Coinbase Global", target: 0, current: 0, quantity: 0, value: 0, color: "#0052ff" },
+  { symbol: "MSTRc", name: "MicroStrategy Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#d94141" },
+  { symbol: "CRCLc", name: "Circle Internet Financial", target: 0, current: 0, quantity: 0, value: 0, color: "#2775ca" },
+  { symbol: "INTCc", name: "Intel Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#0071c5" },
+  { symbol: "SNDKc", name: "SanDisk Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#e2231a" },
+  { symbol: "SPCXc", name: "SpaceX (Destiny Tech100)", target: 0, current: 0, quantity: 0, value: 0, color: "#3f4652" },
 ];
 
 export function getCreatedBaskets(): Basket[] {
@@ -59,6 +116,157 @@ export function saveCreatedBasket(basket: Basket) {
   }
 }
 
+export function updateBasketWeights(address: string, newTargets: Record<string, number>) {
+  if (typeof window === "undefined") return;
+  try {
+    const created = getCreatedBaskets();
+    let targetBasket = created.find((b) => b.address.toLowerCase() === address.toLowerCase());
+
+    if (!targetBasket) {
+      const staticMatch = baskets.find((b) => b.address.toLowerCase() === address.toLowerCase());
+      if (staticMatch) {
+        targetBasket = { ...staticMatch };
+      } else {
+        targetBasket = {
+          name: "Custom Basket",
+          symbol: "OTH-CUSTOM",
+          value: 1000,
+          change: 0.0,
+          updated: "Just now",
+          address: address,
+          holdings: [],
+        };
+      }
+    }
+
+    targetBasket.holdings = Object.entries(newTargets).map(([symbol, weight]) => {
+      const existingHolding = targetBasket!.holdings.find((h) => h.symbol === symbol);
+      const meta = supportedAssets.find((a) => a.symbol === symbol);
+      const val = (targetBasket!.value * weight) / 100;
+      return {
+        symbol,
+        name: existingHolding?.name || meta?.name || symbol,
+        target: weight,
+        current: weight,
+        quantity: Math.max(1, Math.round(val / 100)),
+        value: val,
+        color: existingHolding?.color || meta?.color || "#8aa4ff",
+      };
+    });
+    targetBasket.updated = "Just now";
+    saveCreatedBasket(targetBasket);
+    window.dispatchEvent(new Event("basket_updated"));
+  } catch (err) {
+    console.error("Failed to update basket weights:", err);
+  }
+}
+
+export const assetPrices: Record<string, number> = {
+  NVDAc: 125.40,
+  AAPLc: 224.50,
+  MSFTc: 415.20,
+  GOOGLc: 175.80,
+  AMZNc: 186.30,
+  METAc: 512.60,
+  TSLAc: 218.40,
+  COINc: 210.00,
+  MSTRc: 135.00,
+  CRCLc: 28.50,
+  INTCc: 31.20,
+  SNDKc: 65.00,
+  SPCXc: 42.00,
+  USDC: 1.00,
+};
+
+export function depositBasket(address: string, amount: number, txHash?: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const created = getCreatedBaskets();
+    let targetBasket: Basket | undefined = created.find((b) => b.address.toLowerCase() === address.toLowerCase());
+    if (!targetBasket) {
+      const staticMatch = baskets.find((b) => b.address.toLowerCase() === address.toLowerCase());
+      if (staticMatch) {
+        targetBasket = JSON.parse(JSON.stringify(staticMatch));
+      } else {
+        targetBasket = {
+          name: "Basket",
+          symbol: "OTHL",
+          value: 0,
+          change: 0,
+          updated: "Just now",
+          address: address,
+          holdings: JSON.parse(JSON.stringify(techHoldings)),
+        };
+      }
+    }
+    if (!targetBasket) return;
+
+    targetBasket.value = (targetBasket.value || 0) + amount;
+    const basketVal = targetBasket.value;
+    targetBasket.holdings = targetBasket.holdings.map((h) => {
+      const val = (basketVal * h.target) / 100;
+      const price = assetPrices[h.symbol] || 100;
+      const qty = Number((val / price).toFixed(4));
+      return {
+        ...h,
+        value: val,
+        quantity: qty,
+      };
+    });
+    targetBasket.updated = "Just now";
+    saveCreatedBasket(targetBasket);
+    recordLocalActivity(address, "BasketFunded", txHash);
+    window.dispatchEvent(new Event("basket_updated"));
+  } catch (err) {
+    console.error("Failed to deposit to basket:", err);
+  }
+}
+
+export function withdrawBasket(address: string, amountShares: number, txHash?: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const created = getCreatedBaskets();
+    let targetBasket: Basket | undefined = created.find((b) => b.address.toLowerCase() === address.toLowerCase());
+    if (!targetBasket) {
+      const staticMatch = baskets.find((b) => b.address.toLowerCase() === address.toLowerCase());
+      if (staticMatch) {
+        targetBasket = JSON.parse(JSON.stringify(staticMatch));
+      } else {
+        targetBasket = {
+          name: "Basket",
+          symbol: "OTHL",
+          value: 0,
+          change: 0,
+          updated: "Just now",
+          address: address,
+          holdings: JSON.parse(JSON.stringify(techHoldings)),
+        };
+      }
+    }
+    if (!targetBasket) return;
+
+    const withdrawVal = amountShares * 100;
+    targetBasket.value = Math.max(0, (targetBasket.value || 0) - withdrawVal);
+    const basketVal = targetBasket.value;
+    targetBasket.holdings = targetBasket.holdings.map((h) => {
+      const val = (basketVal * h.target) / 100;
+      const price = assetPrices[h.symbol] || 100;
+      const qty = Number((val / price).toFixed(4));
+      return {
+        ...h,
+        value: val,
+        quantity: qty,
+      };
+    });
+    targetBasket.updated = "Just now";
+    saveCreatedBasket(targetBasket);
+    recordLocalActivity(address, "BasketWithdrawn", txHash);
+    window.dispatchEvent(new Event("basket_updated"));
+  } catch (err) {
+    console.error("Failed to withdraw from basket:", err);
+  }
+}
+
 export function getBasket(address: string) {
   const created = getCreatedBaskets();
   const foundCreated = created.find((b) => b.address.toLowerCase() === address.toLowerCase());
@@ -68,6 +276,26 @@ export function getBasket(address: string) {
 
 export function formatAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+export function getSlippageTolerance(): number {
+  if (typeof window === "undefined") return 0.5;
+  try {
+    const stored = localStorage.getItem("othelio_slippage");
+    return stored ? Number(stored) : 0.5;
+  } catch {
+    return 0.5;
+  }
+}
+
+export function setSlippageTolerance(val: number) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem("othelio_slippage", val.toString());
+    window.dispatchEvent(new Event("slippage_updated"));
+  } catch (err) {
+    console.error("Failed to save slippage setting:", err);
+  }
 }
 
 export function formatCompactNumber(num: number): string {
