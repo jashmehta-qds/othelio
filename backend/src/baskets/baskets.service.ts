@@ -145,6 +145,17 @@ export class BasketsService {
     return { data: result.rows };
   }
 
+  async getAllActivity(chainIdInput?: string) {
+    const chainId = chainIdSchema.parse(chainIdInput);
+
+    const result = await this.db.query(
+      'SELECT * FROM basket_events WHERE chain_id=$1 ORDER BY block_number DESC, log_index DESC LIMIT 100',
+      [chainId],
+    );
+
+    return { data: result.rows };
+  }
+
   async getAssets() {
     return {
       data: [

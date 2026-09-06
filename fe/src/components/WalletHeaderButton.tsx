@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { formatAddress } from "@/lib/baskets";
@@ -11,6 +11,11 @@ export function WalletHeaderButton() {
   const { isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
+  const [mounted, setMounted] = useState<boolean>(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleConnect = () => {
     setShowConnectModal(true);
@@ -18,7 +23,7 @@ export function WalletHeaderButton() {
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-      {isConnected && address ? (
+      {mounted && isConnected && address ? (
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontSize: "12px", color: "var(--muted-ink)" }}>
             <code style={{ color: "var(--accent)" }}>{formatAddress(address)}</code>

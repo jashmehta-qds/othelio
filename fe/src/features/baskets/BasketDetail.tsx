@@ -128,75 +128,67 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         </div>
       )}
 
-      <section className="basket-hero">
-        <div className="basket-title-row">
-          <BasketLogo name={basket.name} />
-          <div>
-            <h1 style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              {basket.name}
-              {!isBasketIndexed && (
-                <span
-                  style={{
-                    fontSize: "11px",
-                    background: "rgba(234,179,8,0.15)",
-                    color: "#eab308",
-                    border: "1px solid rgba(234,179,8,0.3)",
-                    padding: "2px 8px",
-                    borderRadius: "6px",
-                    fontWeight: 700,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "5px",
-                  }}
-                >
-                  <span style={{ width: "12px", height: "12px", display: "inline-flex" }}>
-                    <AppIcon type="clock" />
-                  </span>
-                  Confirming...
-                </span>
-              )}
-            </h1>
-            <p>Base Local <i /> {formatAddress(basket.address)}</p>
+      <section className="basket-hero" style={{ paddingBottom: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "32px", flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div className="basket-title-row">
+              <BasketLogo name={basket.name} />
+              <div>
+                <h1 style={{ display: "flex", alignItems: "center", gap: "10px", margin: 0 }}>
+                  {basket.name}
+                  {!isBasketIndexed && (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        background: "rgba(234,179,8,0.15)",
+                        color: "#eab308",
+                        border: "1px solid rgba(234,179,8,0.3)",
+                        padding: "2px 8px",
+                        borderRadius: "6px",
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                      }}
+                    >
+                      <span style={{ width: "12px", height: "12px", display: "inline-flex" }}>
+                        <AppIcon type="clock" />
+                      </span>
+                      Confirming...
+                    </span>
+                  )}
+                </h1>
+                <p>Base Local <i /> {formatAddress(basket.address)}</p>
+              </div>
+            </div>
+
+            <div className="basket-balance" style={{ marginTop: 0 }}>
+              <span>Basket value</span>
+              <div>
+                <strong>${basket.value.toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong>
+                <p>
+                  <b>+{basket.change}%</b>
+                  <span>this month</span>
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="basket-balance">
-          <span>Basket value</span>
-          <div>
-            <strong>${basket.value.toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong>
-            <p>
-              <b>+{basket.change}%</b>
-              <span>this month</span>
-            </p>
+
+          <div style={{ flex: "0 1 380px", minWidth: "300px", display: "flex", flexDirection: "column", gap: "16px", alignItems: "flex-end" }}>
+            <div style={{ width: "100%" }}>
+              <PortfolioDrift holdings={basket.holdings} onRebalance={() => setAction("rebalance")} />
+            </div>
+
+            <div className="basket-actions" style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button className="primary" onClick={() => setAction("mint")}>
+                <AppIcon type="plus" />Mint
+              </button>
+              <button onClick={() => setAction("withdraw")}>Withdraw</button>
+              <button onClick={() => setAction("rebalance")}>Rebalance</button>
+            </div>
           </div>
-        </div>
-        <div className="basket-actions">
-          <button className="primary" onClick={() => setAction("mint")}>
-            <AppIcon type="plus" />Mint
-          </button>
-          <button onClick={() => setAction("withdraw")}>Withdraw</button>
-          <button onClick={() => setAction("rebalance")}>Rebalance</button>
         </div>
       </section>
-
-      <PortfolioDrift holdings={basket.holdings} onRebalance={() => setAction("rebalance")} />
-
-      <section className="allocation-block">
-        <div className="section-title">
-          <div>
-            <h2>Allocation flow</h2>
-            <p>Target weights compared with current onchain balances</p>
-          </div>
-        </div>
-        <div className="allocation-visual">
-          <AllocationSankey allocations={basket.holdings} theme="dark" />
-        </div>
-
-        <footer className="allocation-footer">
-          <span>100% allocated</span>
-          <span>Last priced {basket.updated}</span>
-        </footer>
-      </section>
-
       <section className="allocation-block" style={{ marginTop: "24px" }}>
         <div className="section-title">
           <div>
@@ -238,6 +230,24 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
           </table>
         </div>
       </section>
+      <section className="allocation-block">
+        <div className="section-title">
+          <div>
+            <h2>Allocation flow</h2>
+            <p>Target weights compared with current onchain balances</p>
+          </div>
+        </div>
+        <div className="allocation-visual">
+          <AllocationSankey allocations={basket.holdings} theme="dark" />
+        </div>
+
+        <footer className="allocation-footer">
+          <span>100% allocated</span>
+          <span>Last priced {basket.updated}</span>
+        </footer>
+      </section>
+
+
       <section className="activity-block">
         <div className="section-title">
           <div>
@@ -248,7 +258,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         </div>
         <div className="activity-table">
           {events.length > 0 ? (
-            events.map((evt, idx) => (
+            events.slice(0, 5).map((evt, idx) => (
               <div key={`${evt.tx_hash}-${idx}`} className="activity-row">
                 <span className="activity-time">{evt.block_number ? `Block ${evt.block_number}` : "Pending Index"}</span>
                 <span>

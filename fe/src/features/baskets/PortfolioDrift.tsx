@@ -51,58 +51,34 @@ export function PortfolioDrift({ holdings, onRebalance }: PortfolioDriftProps) {
   return (
     <section
       style={{
-        marginTop: "16px",
-        marginBottom: "20px",
-        padding: "12px 16px 14px",
-        background: "var(--surface-1)",
+        position: "relative",
+        margin: 0,
+        padding: "16px 16px 14px",
+        background: "var(--panel)",
         border: "1px solid var(--line)",
         borderRadius: "12px",
       }}
     >
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <h3 style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "var(--ink-1)" }}>Basket Health</h3>
-          <span style={{ fontSize: "12px", color: "var(--muted-ink)", fontWeight: 400 }}>Real-time asset weight divergence from target</span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span
-            style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              padding: "2px 8px",
-              borderRadius: "6px",
-              background: statusBg,
-              color: statusColor,
-              border: `1px solid ${statusBorder}`,
-            }}
-          >
-            {statusText}
-          </span>
-
-          {onRebalance && totalDrift > 0.5 && (
-            <button
-              onClick={onRebalance}
-              style={{
-                background: "transparent",
-                color: "var(--accent)",
-                border: "1px solid rgba(16, 185, 129, 0.3)",
-                padding: "3px 8px",
-                borderRadius: "5px",
-                fontWeight: 600,
-                fontSize: "11px",
-                cursor: "pointer",
-              }}
-            >
-              Rebalance
-            </button>
-          )}
-        </div>
+      {/* Top Border Notched Label "Drift" */}
+      <div
+        style={{
+          position: "absolute",
+          top: "-9px",
+          left: "14px",
+          background: "var(--panel)",
+          padding: "0 6px",
+          fontSize: "11px",
+          fontWeight: 700,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: "var(--muted-ink)",
+          lineHeight: "1",
+        }}
+      >
+        Allocation Drift
       </div>
-
       {/* Continuous Fluid Gradient Bar & Scale Labels */}
-      <div style={{ position: "relative", paddingTop: "20px", paddingBottom: "2px" }}>
+      <div style={{ position: "relative", paddingTop: "8px", paddingBottom: "2px" }}>
         {/* Continuous Gradient Track */}
         <div
           style={{
@@ -148,7 +124,7 @@ export function PortfolioDrift({ holdings, onRebalance }: PortfolioDriftProps) {
         </div>
 
         {/* Zone Labels Below Track */}
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--ink-3)", fontWeight: 600, marginTop: "8px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--muted-ink)", fontWeight: 600, marginTop: "8px" }}>
           <span style={{ color: "#10b981" }}>Healthy (&lt;5%)</span>
           <span style={{ color: "#f59e0b" }}>Warning (5–20%)</span>
           <span style={{ color: "#ef4444" }}>Critical (&gt;20%)</span>

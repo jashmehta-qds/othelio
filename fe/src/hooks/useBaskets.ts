@@ -44,7 +44,7 @@ export interface BasketEvent {
   block_number: number;
   block_hash: string;
   basket_address: string;
-  event_type: 'WEIGHTS_UPDATED' | 'WITHDRAWN';
+  event_type: 'FUNDED' | 'CREATED' | 'WEIGHTS_UPDATED' | 'WITHDRAWN' | string;
   actor_address: string;
   payload: any;
   occurred_at: string;
@@ -71,6 +71,14 @@ export function useBasketActivity(address: string, chainId = 31337) {
     queryKey: ['basket-activity', address, chainId],
     queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/${address}/activity?chainId=${chainId}`),
     enabled: Boolean(address),
+    refetchInterval: 3000,
+  });
+}
+
+export function useAllActivity(chainId = 31337) {
+  return useQuery<{ data: BasketEvent[] }>({
+    queryKey: ['all-activity', chainId],
+    queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/activity/all?chainId=${chainId}`),
     refetchInterval: 3000,
   });
 }

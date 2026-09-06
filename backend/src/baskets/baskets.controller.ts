@@ -21,6 +21,11 @@ export class BasketsController {
     return this.basketsService.createBasket(body);
   }
 
+  @Get('activity/all')
+  async getAllActivity(@Query('chainId') chainId: string) {
+    return this.basketsService.getAllActivity(chainId);
+  }
+
   @Get(':address')
   async getBasketByAddress(
     @Param('address') address: string,
