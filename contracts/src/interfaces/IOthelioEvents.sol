@@ -51,4 +51,38 @@ interface IOthelioEvents {
         address indexed token,
         uint256 amount
     );
+
+    /// @notice Emitted when basket assets are supplied into a lending market
+    event BasketSuppliedToLending(
+        address indexed safe,
+        address indexed provider,
+        address indexed asset,
+        uint256 amount,
+        uint256 supplyApyBps
+    );
+
+    /// @notice Emitted when USDC or stablecoins are borrowed against basket collateral
+    event BasketBorrowedFromLending(
+        address indexed safe,
+        address indexed provider,
+        address indexed asset,
+        uint256 amount,
+        uint256 borrowApyBps
+    );
+
+    /// @notice Emitted when debt is repaid to a lending market
+    event BasketRepaidToLending(
+        address indexed safe,
+        address indexed provider,
+        address indexed asset,
+        uint256 amount
+    );
+
+    /// @notice Emitted when collateral is withdrawn from a lending market back to Safe
+    event BasketWithdrawnFromLending(
+        address indexed safe,
+        address indexed provider,
+        address indexed asset,
+        uint256 amount
+    );
 }

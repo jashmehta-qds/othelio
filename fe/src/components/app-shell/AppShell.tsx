@@ -7,7 +7,7 @@ import { useAccount, useConnect, useDisconnect, useBalance, useChainId, useSwitc
 import { formatUnits } from "viem";
 import { AppIcon, type AppNavId } from "./AppIcon";
 import { useBasketsList } from "@/hooks/useBaskets";
-import { formatAddress, formatCompactNumber } from "@/lib/baskets";
+import { formatAddress, formatCompactNumber, type Basket } from "@/lib/baskets";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 
 const navigation: { id: AppNavId; label: string; href: string }[] = [
@@ -31,9 +31,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Web3 Wallet & Network Hooks
   const { address, isConnected, isConnecting, chain, chainId: activeChainId } = useAccount();
+  const { connect, connectors, isPending: isConnectPending } = useConnect();
+  const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
   const targetChainId = process.env.NEXT_PUBLIC_CHAIN_ID ? Number(process.env.NEXT_PUBLIC_CHAIN_ID) : 31337;
-  const isWrongNetwork = isConnected && activeChainId !== undefined && activeChainId !== targetChainId;
+  const isWrongNetwork = mounted && isConnected && activeChainId !== undefined && activeChainId !== targetChainId;
+  const isWalletConnecting = mounted && (isConnecting || isConnectPending);
 
   const handleSwitchNetwork = async () => {
     const hexChainId = `0x${targetChainId.toString(16)}`;
@@ -68,9 +71,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       switchChain({ chainId: targetChainId });
     }
   };
-
-  const { connect, connectors, isPending: isConnectPending } = useConnect();
-  const { disconnect } = useDisconnect();
 
   // Wallet Connect modal state
   const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
@@ -205,11 +205,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setShowOnboarding(false);
   };
 
-  // Calculate total Sum NAV across all indexed baskets
+  // Calculate total Sum NAV across all indexed baskets for connected wallet
   const totalSumNAV = useMemo(() => {
-    if (!basketsResponse?.data || basketsResponse.data.length === 0) return 0;
-    return basketsResponse.data.reduce((acc, b) => acc + ((b as any).seed_amount ? Number((b as any).seed_amount) : 1000), 0);
-  }, [basketsResponse]);
+    if (!mounted || !isConnected || !address) return 0;
+
+    let total = 0;
+
+    if (basketsResponse?.data && Array.isArray(basketsResponse.data)) {
+      basketsResponse.data.forEach((ib: any) => {
+        if (ib.controller && ib.controller.toLowerCase() !== address.toLowerCase()) {
+          return;
+        }
+        const val = ib.snapshot?.total_nav_usdc ? Number(ib.snapshot.total_nav_usdc) : Number(ib.seed_amount || 0);
+        total += val;
+      });
+    }
+
+    return total;
+  }, [mounted, isConnected, address, basketsResponse]);
 
   // Derive monthly gain dynamically based on basket holdings/activity
   const monthlyGainText = useMemo(() => {
@@ -301,7 +314,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="sidebar-lower">
-          <section className="account-module">
+          <section
+            className="account-module"
+            style={!(mounted && isConnected && address) ? {
+              background: "linear-gradient(135deg, rgba(219, 255, 117, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)",
+              border: "1px solid rgba(219, 255, 117, 0.25)",
+              borderRadius: "16px",
+              padding: "16px",
+            } : undefined}
+          >
             {mounted && isConnected && address ? (
               <>
                 <header>
@@ -387,27 +408,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ) : (
               <>
                 <header>
-                  <span className="avatar" style={{ background: 'var(--panel-2)', color: 'var(--muted-ink)', display: 'grid', placeItems: 'center' }}>
+                  <span className="avatar" style={{ background: 'rgba(219, 255, 117, 0.15)', color: 'var(--accent)', display: 'grid', placeItems: 'center' }}>
                     <span style={{ width: '16px', height: '16px', display: 'block' }}>
                       <AppIcon type="lock" />
                     </span>
                   </span>
                   <span>
-                    <strong>Not Connected</strong>
+                    <strong style={{ color: 'var(--ink)' }}>Not Connected</strong>
                   </span>
                 </header>
 
-                <div className="account-balance" style={{ textAlign: 'center', padding: '20px 14px' }}>
-                  <p style={{ color: 'var(--muted-ink)', fontSize: '12px', marginBottom: '14px' }}>
+                <div className="account-balance" style={{ textAlign: 'center', padding: '16px 8px 8px' }}>
+                  <p style={{ color: 'var(--ink-3)', fontSize: "12px", marginBottom: '14px', lineHeight: 1.4 }}>
                     Connect Web3 wallet to manage baskets & view portfolio
                   </p>
                   <button
                     onClick={handleConnectWallet}
-                    disabled={isConnecting || isConnectPending}
-                    className="primary"
-                    style={{ width: '100%', fontSize: '13px', justifyContent: 'center' }}
+                    disabled={isWalletConnecting}
+                    className="primary connect-wallet-button"
+                    style={{ width: '100%', fontSize: '13px', justifyContent: 'center', padding: '10px 14px', borderRadius: '10px' }}
                   >
-                    {isConnecting || isConnectPending ? "Connecting..." : "Connect Wallet"}
+                    {isWalletConnecting ? "Connecting..." : "Connect Wallet"}
                   </button>
                 </div>
               </>
@@ -420,7 +441,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <section className="bank-content">
         <header className="mobile-header">
           <Link href="/" className="bank-wordmark">Othelio</Link>
-          {isConnected && address ? (
+          {mounted && isConnected && address ? (
             <button onClick={() => disconnect()} className="theme-toggle" style={{ fontSize: '11px' }}>
               {formatAddress(address)} (Disconnect)
             </button>

@@ -35,14 +35,15 @@ contract BasketOracle {
         uint256 chainId = block.chainid;
 
         for (uint256 i = 0; i < tokens.length; i++) {
-            if (balances[i] == 0) continue;
-            
-            OthelioAssetRegistry.Asset memory asset = registry.getAsset(chainId, tokens[i]);
-            if (!asset.supported || asset.priceFeed == address(0) || asset.priceFeed.code.length == 0) {
-                uint256 fallbackDecimals = asset.tokenDecimals > 0 ? asset.tokenDecimals : 18;
-                totalNAV += (balances[i] * 1e6) / (10**fallbackDecimals);
-                continue;
+            require(tokens[i] != address(0), "ZERO_TOKEN");
+            for (uint256 j = 0; j < i; j++) {
+                require(tokens[j] != tokens[i], "DUPLICATE_TOKEN");
             }
+
+            OthelioAssetRegistry.Asset memory asset = registry.getAsset(chainId, tokens[i]);
+            require(asset.supported, "UNSUPPORTED_ASSET");
+            require(asset.priceFeed != address(0) && asset.priceFeed.code.length > 0, "INVALID_PRICE_FEED");
+            if (balances[i] == 0) continue;
 
             try AggregatorV3Interface(asset.priceFeed).latestRoundData() returns (
                 uint80 roundId,
@@ -51,18 +52,17 @@ contract BasketOracle {
                 uint256 updatedAt,
                 uint80 answeredInRound
             ) {
-                if (price > 0 && updatedAt > 0 && answeredInRound >= roundId) {
-                    uint256 feedDec = asset.feedDecimals > 0 ? asset.feedDecimals : 8;
-                    uint256 tokDec = asset.tokenDecimals > 0 ? asset.tokenDecimals : 18;
-                    uint256 tokenValue = (balances[i] * uint256(price) * 1e6) / (10**tokDec * 10**feedDec);
-                    totalNAV += tokenValue;
-                } else {
-                    uint256 fallbackDecimals = asset.tokenDecimals > 0 ? asset.tokenDecimals : 18;
-                    totalNAV += (balances[i] * 1e6) / (10**fallbackDecimals);
-                }
+                require(roundId > 0 && answeredInRound >= roundId, "INCOMPLETE_PRICE_ROUND");
+                require(price > 0, "INVALID_PRICE");
+                require(updatedAt > 0 && updatedAt <= block.timestamp, "INVALID_PRICE_TIME");
+                require(block.timestamp - updatedAt <= MAX_STALENESS, "STALE_PRICE");
+
+                uint256 tokenScale = 10 ** asset.tokenDecimals;
+                uint256 feedScale = 10 ** asset.feedDecimals;
+                uint256 tokenValue = (balances[i] * uint256(price) * 1e6) / (tokenScale * feedScale);
+                totalNAV += tokenValue;
             } catch {
-                uint256 fallbackDecimals = asset.tokenDecimals > 0 ? asset.tokenDecimals : 18;
-                totalNAV += (balances[i] * 1e6) / (10**fallbackDecimals);
+                revert("PRICE_READ_FAILED");
             }
         }
     }

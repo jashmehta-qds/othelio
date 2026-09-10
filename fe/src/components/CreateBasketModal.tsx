@@ -2,21 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { CONTRACT_ADDRESSES, OTHELIO_FACTORY_ABI } from "@/lib/contracts";
+import { useAccount, useWriteContract, useSendTransaction, usePublicClient } from "wagmi";
+import { parseUnits } from "viem";
+import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { fetchApi } from "@/lib/api";
-import { supportedAssets, saveCreatedBasket, type Holding, type Basket } from "@/lib/baskets";
+import { supportedAssets } from "@/lib/baskets";
+import { fetchCreateSeedQuote, receiptCreatesAndFunds } from "@/lib/createSeed";
 import { useSupportedAssets } from "@/hooks/useBaskets";
 
 export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const router = useRouter();
   const { address, isConnected } = useAccount();
-  const [name, setName] = useState("Momentum Tech Core");
-  const [symbol, setSymbol] = useState("MCORE");
-  const [depositAmount, setDepositAmount] = useState("1000");
-  const [createdSafeAddress, setCreatedSafeAddress] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [symbol, setSymbol] = useState("");
+  const depositAmount = "1000";
 
   // Search input query for adding new stock tokens
   const [searchQuery, setSearchQuery] = useState("");
@@ -38,6 +38,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
         quantity: 0,
         value: 0,
         color: item.color,
+        address: item.address,
       }));
     }
     return supportedAssets;
@@ -61,31 +62,11 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
     });
   }, [searchQuery, targets, allSupportedAssets]);
 
-  const { data: hash, isPending, writeContract, error: writeError } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash });
-
-  useEffect(() => {
-    if (isSuccess && (createdSafeAddress || receipt)) {
-      let realAddress = createdSafeAddress;
-      if (receipt?.logs && receipt.logs.length > 0) {
-        for (const log of receipt.logs) {
-          if (log.topics && log.topics.length >= 2) {
-            const safeTopic = log.topics[1];
-            if (safeTopic && safeTopic.length === 66) {
-              realAddress = `0x${safeTopic.slice(26)}`.toLowerCase() as `0x${string}`;
-              break;
-            }
-          }
-        }
-      }
-
-      const timer = setTimeout(() => {
-        onClose();
-        router.push(`/app/baskets/${realAddress || createdSafeAddress}`);
-      }, 800);
-      return () => clearTimeout(timer);
-    }
-  }, [isSuccess, receipt, createdSafeAddress, onClose, router]);
+  const publicClient = usePublicClient();
+  const { isPending: isApproving, writeContractAsync } = useWriteContract();
+  const { isPending: isSending, sendTransactionAsync } = useSendTransaction();
+  const isPending = isApproving || isSending;
+  const isConfirming = false;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -140,72 +121,27 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
     setTargets(next);
   };
 
-  const handleExecute = () => {
+  const handleExecute = async () => {
     if (!isConnected || !address) {
       alert("Please connect your Web3 wallet first.");
       return;
     }
 
-    const mockSafeAddress = `0x${Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("")}` as `0x${string}`;
-    const seedVal = Number(depositAmount || 1000);
-
-    const holdings: Holding[] = selectedAssets.map((asset) => {
-      const weight = targets[asset.symbol] ?? 0;
-      const assetValue = (seedVal * weight) / 100;
-      return {
-        symbol: asset.symbol,
-        name: asset.name,
-        target: weight,
-        current: weight,
-        quantity: Math.max(1, Math.round(assetValue / 100)),
-        value: assetValue,
-        color: asset.color || "#8aa4ff",
-      };
-    });
-
-    const newBasket: Basket = {
-      name: name || "Custom Basket",
-      symbol: symbol ? `OTH-${symbol}` : "OTH-CUSTOM",
-      value: seedVal,
-      change: 0.0,
-      updated: "Just now",
-      address: mockSafeAddress,
-      holdings,
-      isIndexed: false,
-    };
-
-    saveCreatedBasket(newBasket);
-    setCreatedSafeAddress(mockSafeAddress);
-
-    // Sync directly into backend PostgreSQL database
-    fetchApi('/v1/baskets', {
-      method: 'POST',
-      body: JSON.stringify({
-        chainId: 31337,
-        address: mockSafeAddress,
-        controller: address,
-        name: name || "Custom Basket",
-        symbol: symbol ? `OTH-${symbol}` : "OTH-CUSTOM",
-        assets: selectedAssets.map((asset) => ({
-          address: asset.symbol,
-          targetWeightBps: (targets[asset.symbol] ?? 0) * 100,
-        })),
-      }),
-    }).catch((err) => console.warn('Backend sync warning:', err));
-
-    if (typeof window !== "undefined") {
-      const currentUsdc = Number(localStorage.getItem("othelio_available_usdc") || "4000");
-      const nextUsdc = Math.max(0, currentUsdc - seedVal);
-      localStorage.setItem("othelio_available_usdc", nextUsdc.toString());
-      window.dispatchEvent(new Event("usdc_balance_updated"));
-    }
-
-    writeContract({
-      address: CONTRACT_ADDRESSES[31337].factory,
-      abi: OTHELIO_FACTORY_ABI,
-      functionName: "createBasket",
-      args: [name || "Custom Basket"],
-    });
+    const cleanName = name.trim() || "Custom Basket";
+    const chainId = 31337;
+    const config = CONTRACT_ADDRESSES[chainId];
+    const inputAmount = parseUnits(depositAmount, 6);
+    const quote = await fetchCreateSeedQuote({ chainId, factoryAddress: config.factory, moduleAddress: config.module, ownerAddress: address, name: cleanName, clientSalt: `0x${crypto.getRandomValues(new Uint8Array(32)).reduce((hex, n) => hex + n.toString(16).padStart(2, "0"), "")}`, inputAsset: config.usdc, inputAmount: inputAmount.toString(), targetWeights: selectedAssets.map((asset) => ({ assetAddress: asset.address, targetWeightBps: (targets[asset.symbol] ?? 0) * 100 })) });
+    const { data } = quote;
+    const call = data.plan.calls[0];
+    if (!quote.executionAllowed || data.plan.action !== "FUND" || data.plan.chainId !== chainId || data.plan.accountAddress.toLowerCase() !== data.predictedBasketAddress.toLowerCase() || data.factory.address.toLowerCase() !== config.factory.toLowerCase() || call?.to.toLowerCase() !== config.factory.toLowerCase() || data.module.moduleVersion !== 3 || !data.module.supportsBoundedExecution || new Date(data.plan.expiresAt).getTime() <= Date.now()) throw new Error("The create-and-seed plan is no longer executable.");
+    if (data.plan.approvals.length !== 1 || data.plan.approvals[0].spenderAddress.toLowerCase() !== config.module.toLowerCase() || data.plan.approvals[0].maxAmountBaseUnits !== inputAmount.toString()) throw new Error("The planned approval does not match the exact seed input.");
+    const approval = await writeContractAsync({ address: config.usdc, abi: [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] }], functionName: "approve", args: [config.module, inputAmount] });
+    await publicClient?.waitForTransactionReceipt({ hash: approval });
+    const tx = await sendTransactionAsync({ to: call.to as `0x${string}`, data: call.calldata as `0x${string}`, value: BigInt(call.valueBaseUnits) });
+    const receipt = await publicClient?.waitForTransactionReceipt({ hash: tx });
+    if (!receipt || receipt.status !== "success" || !receiptCreatesAndFunds(receipt, config.factory, config.module, data.predictedBasketAddress)) throw new Error("The receipt did not contain the expected BasketCreated and BasketFunded events.");
+    router.push(`/app/baskets/${data.predictedBasketAddress}`);
   };
 
   return (
@@ -242,7 +178,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                 </div>
                 <div>
                   <span>Initial Seed Deposit</span>
-                  <strong>${Number(depositAmount || 0).toLocaleString()} USDC</strong>
+                  <strong>$1,000 USDC seed (exact factory plan)</strong>
                 </div>
                 <div>
                   <span>Basket Composition</span>
@@ -250,7 +186,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                 </div>
                 <div>
                   <span>Status</span>
-                  <strong>{isSuccess ? "Confirmed ✓" : isConfirming ? "Confirming..." : isPending ? "Waiting wallet..." : "Ready"}</strong>
+                  <strong>{isConfirming ? "Confirming..." : isPending ? "Waiting wallet..." : "Ready"}</strong>
                 </div>
               </div>
             </>
@@ -308,9 +244,8 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                   <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                     <input
                       type="number"
-                      value={depositAmount}
-                      onChange={(e) => setDepositAmount(e.target.value)}
-                      placeholder="1000"
+                      value="0"
+                      disabled
                       style={{
                         width: "100%",
                         padding: "9px 12px",
@@ -318,14 +253,17 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                         background: "var(--panel-2)",
                         border: "1px solid var(--panel-border)",
                         borderRadius: "10px",
-                        color: "var(--ink)",
+                        color: "var(--muted-ink)",
                         fontSize: "13px",
                         outline: "none",
                         fontWeight: 700,
+                        opacity: 0.6,
+                        cursor: "not-allowed",
                       }}
                     />
-                    <span style={{ position: "absolute", right: "12px", fontSize: "11px", fontWeight: 700, color: "var(--accent)", pointerEvents: "none" }}>USDC</span>
+                    <span style={{ position: "absolute", right: "12px", fontSize: "11px", fontWeight: 700, color: "var(--muted-ink)", pointerEvents: "none" }}>USDC</span>
                   </div>
+                  <small style={{ fontSize: "10px", color: "var(--muted-ink)" }}>Basket created with $0 seed. Mint/deposit assets after deployment.</small>
                 </label>
               </div>
 
@@ -502,11 +440,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
             </>
           )}
 
-          {writeError && (
-            <p style={{ color: "#ef4444", fontSize: "12px", marginTop: "12px", textAlign: "center" }}>
-              {writeError.message.slice(0, 80)}...
-            </p>
-          )}
+          
         </div>
 
         <footer style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -562,8 +496,6 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                   ? "Confirming..."
                   : isPending
                   ? "Waiting..."
-                  : isSuccess
-                  ? "Created ✓"
                   : "Submit Transaction"
                 : "Review"}
               <AppIcon type="arrow" />

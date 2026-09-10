@@ -1,0 +1,5 @@
+BEGIN;
+
+ALTER TABLE baskets ADD COLUMN IF NOT EXISTS ens_domain text;
+
+COMMIT;

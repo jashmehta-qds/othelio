@@ -9,6 +9,7 @@ contract MockV3Aggregator is AggregatorV3Interface {
     uint8 public override decimals;
     int256 public price;
     uint256 public updatedAt;
+    bool public shouldRevert;
 
     constructor(uint8 decimals_, int256 price_) {
         decimals = decimals_;
@@ -21,6 +22,14 @@ contract MockV3Aggregator is AggregatorV3Interface {
         updatedAt = block.timestamp;
     }
 
+    function setUpdatedAt(uint256 updatedAt_) external {
+        updatedAt = updatedAt_;
+    }
+
+    function setShouldRevert(bool shouldRevert_) external {
+        shouldRevert = shouldRevert_;
+    }
+
     function latestRoundData() external view override returns (
         uint80 roundId,
         int256 answer,
@@ -28,6 +37,7 @@ contract MockV3Aggregator is AggregatorV3Interface {
         uint256 updatedAt_,
         uint80 answeredInRound
     ) {
+        require(!shouldRevert, "MOCK_REVERT");
         return (1, price, block.timestamp, updatedAt, 1);
     }
 }
@@ -67,5 +77,74 @@ contract BasketOracleTest is Test {
 
         uint256 nav = oracle.calculateNAV(tokens, balances);
         assertEq(nav, 1700 * 1e6);
+    }
+
+    function testRevertUnsupportedAssetInsteadOfDollarFallback() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(0x999);
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = 1e6;
+
+        vm.expectRevert("UNSUPPORTED_ASSET");
+        oracle.calculateNAV(tokens, balances);
+    }
+
+    function testRevertStalePrice() public {
+        vm.warp(30 days);
+        feedUSDC.setUpdatedAt(block.timestamp - oracle.MAX_STALENESS() - 1);
+        address[] memory tokens = new address[](1);
+        tokens[0] = tokenUSDC;
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = 500 * 1e6;
+
+        vm.expectRevert("STALE_PRICE");
+        oracle.calculateNAV(tokens, balances);
+    }
+
+    function testRevertZeroAndNegativePrice() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = tokenUSDC;
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = 500 * 1e6;
+
+        feedUSDC.setPrice(0);
+        vm.expectRevert("INVALID_PRICE");
+        oracle.calculateNAV(tokens, balances);
+
+        feedUSDC.setPrice(-1);
+        vm.expectRevert("INVALID_PRICE");
+        oracle.calculateNAV(tokens, balances);
+    }
+
+    function testRevertFeedFailureInsteadOfDollarFallback() public {
+        feedUSDC.setShouldRevert(true);
+        address[] memory tokens = new address[](1);
+        tokens[0] = tokenUSDC;
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = 500 * 1e6;
+
+        vm.expectRevert("PRICE_READ_FAILED");
+        oracle.calculateNAV(tokens, balances);
+    }
+
+    function testRevertDuplicateTokenInsteadOfDoubleCounting() public {
+        address[] memory tokens = new address[](2);
+        tokens[0] = tokenUSDC;
+        tokens[1] = tokenUSDC;
+        uint256[] memory balances = new uint256[](2);
+        balances[0] = 500 * 1e6;
+        balances[1] = 500 * 1e6;
+
+        vm.expectRevert("DUPLICATE_TOKEN");
+        oracle.calculateNAV(tokens, balances);
+    }
+
+    function testSixDecimalAssetStillValuesAtConfiguredPrecision() public view {
+        address[] memory tokens = new address[](1);
+        tokens[0] = tokenUSDC;
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = 1_234_567;
+
+        assertEq(oracle.calculateNAV(tokens, balances), 1_234_567);
     }
 }

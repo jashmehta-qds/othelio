@@ -13,71 +13,25 @@ export function BasketList() {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
-  const [localBaskets, setLocalBaskets] = useState<Basket[]>([]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setLocalBaskets(getCreatedBaskets());
-
-      const handleStorage = () => {
-        setLocalBaskets(getCreatedBaskets());
-      };
-      window.addEventListener("storage", handleStorage);
-      return () => window.removeEventListener("storage", handleStorage);
-    }
-  }, []);
   
-  // Filter baskets strictly by the connected wallet controller address
+  // Fetch indexed baskets directly from smart contract / indexer service
   const { data: apiResponse, isLoading } = useBasketsList(31337, address);
   const indexedBaskets = apiResponse?.data ?? [];
 
   const displayBaskets = useMemo(() => {
-    const list: Array<{
-      name: string;
-      symbol: string;
-      value: number;
-      change: number;
-      updated: string;
-      address: string;
-      holdingsCount: number;
-      isIndexed: boolean;
-    }> = [];
+    if (!isConnected || !address) return [];
 
-    const indexedAddresses = new Set(indexedBaskets.map((b) => b.address.toLowerCase()));
-
-    // 1. User created baskets from localStorage
-    localBaskets.forEach((b) => {
-      const isIndexed = indexedAddresses.has(b.address.toLowerCase()) || indexedBaskets.some((ib) => ib.name.toLowerCase() === b.name.toLowerCase());
-      list.push({
-        name: b.name,
-        symbol: b.symbol || 'OTH',
-        value: b.value || 1000,
-        change: b.change || 0.0,
-        updated: b.updated || 'Just now',
-        address: b.address,
-        holdingsCount: b.holdings?.length || 4,
-        isIndexed,
-      });
-    });
-
-    // 2. Indexed baskets from backend database not in localStorage
-    indexedBaskets.forEach((b) => {
-      if (!list.some((item) => item.address.toLowerCase() === b.address.toLowerCase())) {
-        list.push({
-          name: b.name,
-          symbol: b.symbol || 'OTH',
-          value: (b as any).seed_amount ? Number((b as any).seed_amount) : 1000,
-          change: 0.0,
-          updated: new Date(b.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          address: b.address,
-          holdingsCount: 4,
-          isIndexed: true,
-        });
-      }
-    });
-
-    return list;
-  }, [localBaskets, indexedBaskets]);
+    return indexedBaskets.map((ib) => ({
+      name: ib.name,
+      symbol: ib.symbol || 'OTH',
+      value: ib.snapshot?.total_nav_usdc ? Number(ib.snapshot.total_nav_usdc) : Number(ib.seed_amount || 0),
+      change: 0,
+      updated: "Just now",
+      address: ib.address,
+      holdingsCount: ib.assets ? ib.assets.length : 0,
+      isIndexed: true,
+    }));
+  }, [isConnected, address, indexedBaskets]);
 
   const totalPortfolioValue = displayBaskets.reduce((acc, b) => acc + b.value, 0);
 

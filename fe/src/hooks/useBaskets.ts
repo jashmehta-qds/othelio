@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
+import type { BasketCapabilities, PositionSnapshot } from '@othelio/shared';
 import { fetchApi } from '@/lib/api';
 
 export interface IndexedBasket {
@@ -10,6 +11,10 @@ export interface IndexedBasket {
   created_block: number;
   created_tx: string;
   created_at: string;
+  seed_amount?: number;
+  value?: number;
+  snapshot?: BasketSnapshot | null;
+  assets?: BasketAsset[];
 }
 
 export interface BasketAsset {
@@ -72,6 +77,22 @@ export function useBasketActivity(address: string, chainId = 31337) {
     queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/${address}/activity?chainId=${chainId}`),
     enabled: Boolean(address),
     refetchInterval: 3000,
+  });
+}
+
+export interface PortfolioPositionsResponse {
+  data: PositionSnapshot;
+  capabilities: BasketCapabilities;
+}
+
+export function usePortfolioPositions(address: string, chainId = 31337) {
+  return useQuery<PortfolioPositionsResponse>({
+    queryKey: ['basket-positions', address.toLowerCase(), chainId],
+    queryFn: () => fetchApi<PortfolioPositionsResponse>(
+      `/v1/baskets/${address}/positions?chainId=${chainId}`,
+    ),
+    enabled: /^0x[a-fA-F0-9]{40}$/.test(address),
+    refetchInterval: 15_000,
   });
 }
 

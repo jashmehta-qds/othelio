@@ -27,7 +27,7 @@ services:
     environment:
       COINBASE_REGISTRY_ADDRESS: "0x3f3E8cf41cdd3b1D118c16471aB0113DfDDd5CaD"
     entrypoint: >
-      sh -c "sleep 2 && forge script script/DeployOthelio.s.sol --rpc-url http://anvil:8545 --broadcast"
+      sh -c "sleep 2 && forge script script/DeployOthelio.s.sol --tc DeployOthelio --rpc-url http://anvil:8545 --broadcast"
     depends_on:
       - anvil
 
@@ -39,8 +39,8 @@ services:
       DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
       RPC_URL: http://anvil:8545
       CHAIN_ID: "31337"
-      FACTORY_ADDRESS: "0x5Cf2bd1d329075aD57a29bFFcaC63E473b65E853"
-      MODULE_ADDRESS: "0x8Af93ED90a6547cBc1Ea08f5130D448685E9D7E2"
+      FACTORY_ADDRESS: "0x78bA9d6938a737640F4305867dC3e435f8507E70"
+      MODULE_ADDRESS: "0x1ce8a4C3D5D34683f9B6063B9689D63b888B7540"
     depends_on:
       postgres: { condition: service_healthy }
       contracts-deployer: { condition: service_completed_successfully }

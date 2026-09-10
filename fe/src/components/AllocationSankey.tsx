@@ -21,12 +21,22 @@ function AllocationLabels({ nodes }: CustomSankeyLayerProps<ChartNode, ChartLink
 }
 
 export default function AllocationSankey({ allocations, theme }: { allocations: Allocation[]; theme: "dark" | "light" }) {
+  const validAllocations = (allocations || []).filter((a) => (a.current || 0) > 0 || (a.target || 0) > 0);
+
+  if (validAllocations.length === 0) {
+    return (
+      <div className="sankey-wrap" style={{ padding: "36px 20px", textAlign: "center", color: "var(--muted-ink)", fontSize: "13px" }}>
+        No allocation flow data available for this basket yet.
+      </div>
+    );
+  }
+
   const data = {
-    nodes: allocations.flatMap((asset) => [
+    nodes: validAllocations.flatMap((asset) => [
       { id: `target-${asset.symbol}`, nodeColor: asset.color, symbol: asset.symbol, side: "target" as const, target: asset.target, current: asset.current, quantity: asset.quantity, dollarValue: asset.value },
       { id: `current-${asset.symbol}`, nodeColor: asset.color, symbol: asset.symbol, side: "current" as const, target: asset.target, current: asset.current, quantity: asset.quantity, dollarValue: asset.value },
     ]),
-    links: allocations.map((asset) => ({ source: `target-${asset.symbol}`, target: `current-${asset.symbol}`, value: asset.current })),
+    links: validAllocations.map((asset) => ({ source: `target-${asset.symbol}`, target: `current-${asset.symbol}`, value: Math.max(0.1, asset.current) })),
   };
   return <div className="sankey-wrap" aria-label="Target to current allocation flow chart">
     <div className="sankey-axis"><span>Target allocation</span><span>Current allocation</span></div>

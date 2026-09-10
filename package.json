@@ -10,6 +10,7 @@
     "dev": "concurrently -k -n \"infra,backend,frontend\" -c \"cyan,magenta,green\" \"docker compose up --build\" \"npm run dev -w @othelio/backend\" \"npm run dev -w @othelio/fe\"",
     "dev:infra": "docker compose up --build",
     "dev:anvil": "anvil --fork-url https://mainnet.base.org",
+    "seed:anvil": "node scripts/seed-anvil-pools.js",
     "dev:backend": "npm run dev -w @othelio/backend",
     "dev:fe": "npm run dev -w @othelio/fe",
     "build": "npm run build -w @othelio/shared && npm run build -w @othelio/fe && npm run build -w @othelio/backend",

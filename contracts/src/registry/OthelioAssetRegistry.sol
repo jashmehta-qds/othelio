@@ -20,6 +20,8 @@ contract OthelioAssetRegistry is Ownable2Step {
 
     mapping(uint256 chainId => mapping(address token => Asset)) public assets;
 
+    mapping(address pool => bool) public approvedLendingPools;
+
     event AssetConfigured(
         uint256 indexed chainId,
         address indexed token,
@@ -31,6 +33,7 @@ contract OthelioAssetRegistry is Ownable2Step {
     );
 
     event CoinbaseRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
+    event LendingPoolConfigured(address indexed pool, bool approved);
 
     constructor(address owner_, address coinbaseRegistry_) Ownable(owner_) {
         coinbaseRegistry = coinbaseRegistry_;
@@ -53,6 +56,7 @@ contract OthelioAssetRegistry is Ownable2Step {
     ) public onlyOwner {
         require(token != address(0), "ZERO_TOKEN");
         require(!supported || priceFeed != address(0), "ZERO_FEED");
+        require(tokenDecimals <= 38 && feedDecimals <= 38, "DECIMALS_TOO_LARGE");
 
         // Hybrid verification: If marked as Coinbase B20 and Coinbase Registry is set, verify on-chain
         if (supported && isCoinbaseB20 && coinbaseRegistry != address(0)) {
@@ -106,5 +110,15 @@ contract OthelioAssetRegistry is Ownable2Step {
 
     function getAsset(uint256 chainId, address token) external view returns (Asset memory) {
         return assets[chainId][token];
+    }
+
+    function setApprovedLendingPool(address pool, bool approved) external onlyOwner {
+        require(pool != address(0), "ZERO_POOL");
+        approvedLendingPools[pool] = approved;
+        emit LendingPoolConfigured(pool, approved);
+    }
+
+    function isApprovedLendingPool(address pool) external view returns (bool) {
+        return approvedLendingPools[pool];
     }
 }

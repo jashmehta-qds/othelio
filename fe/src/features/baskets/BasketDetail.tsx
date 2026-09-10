@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { formatUnits } from "viem";
+import { useChainId } from "wagmi";
 import AllocationSankey from "@/components/AllocationSankey";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { assetPrices, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, type Basket, type BasketActivity } from "@/lib/baskets";
-import { useBasketDetails, useBasketActivity, useBasketsList, useAssetPrices } from "@/hooks/useBaskets";
+import { assetPrices, asset30dChanges, formatAddress, formatEventLabel, formatEventMetadata, getBasket, getCreatedBaskets, getExplorerTxUrl, getLocalActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
+import { useBasketDetails, useBasketActivity, useBasketsList, useAssetPrices, usePortfolioPositions } from "@/hooks/useBaskets";
 import { BasketDrawer, type BasketAction } from "./BasketDrawer";
 import { BasketLogo } from "./BasketLogo";
 import { PortfolioDrift } from "./PortfolioDrift";
 
 export function BasketDetail({ basket: fallbackBasket, initialAction = null }: { basket: Basket; initialAction?: BasketAction }) {
+  const chainId = useChainId() || 31337;
   const [action, setAction] = useState<BasketAction>(initialAction);
   const [localBasket, setLocalBasket] = useState<Basket | null>(null);
 
@@ -38,6 +41,8 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
   const { data: apiList } = useBasketsList(31337);
   const { data: apiActivity } = useBasketActivity(fallbackBasket.address, 31337);
   const { data: priceMap } = useAssetPrices();
+  const { data: portfolioResponse, isLoading: isPortfolioLoading, error: portfolioError } = usePortfolioPositions(fallbackBasket.address, chainId);
+  const portfolioSnapshot = portfolioResponse?.data;
 
   const indexedBasket = apiDetails?.data ?? apiList?.data?.find(
     (b) => b.address.toLowerCase() === fallbackBasket.address.toLowerCase() ||
@@ -59,37 +64,143 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     occurred_at: evt.occurred_at,
   }));
 
-  const eventsMap = new Map<string, BasketActivity>();
-  localEvents.forEach((evt) => {
-    if (evt.tx_hash) eventsMap.set(evt.tx_hash.toLowerCase(), evt);
-  });
-  apiEvents.forEach((evt) => {
-    if (evt.tx_hash) eventsMap.set(evt.tx_hash.toLowerCase(), evt);
-  });
-
-  const events = Array.from(eventsMap.values()).sort((a, b) => {
+  const combinedEvents = [...apiEvents, ...localEvents];
+  const events = combinedEvents.filter((evt, idx, self) => {
+    const normType = evt.event_type.toLowerCase();
+    const normHash = (evt.tx_hash || "").toLowerCase();
+    const zeroHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    return idx === self.findIndex((other) => {
+      const otherHash = (other.tx_hash || "").toLowerCase();
+      const otherType = other.event_type.toLowerCase();
+      if (normHash && normHash !== zeroHash && normHash === otherHash && normType === otherType) {
+        return true;
+      }
+      if (
+        (normType === "basketcreated" || normType === "created") &&
+        (otherType === "basketcreated" || otherType === "created")
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }).sort((a, b) => {
     const blockA = a.block_number ? Number(a.block_number) : 0;
     const blockB = b.block_number ? Number(b.block_number) : 0;
     if (blockA !== blockB) return blockB - blockA;
     return new Date(b.occurred_at || 0).getTime() - new Date(a.occurred_at || 0).getTime();
   });
 
+  const apiPositions: any[] = (indexedBasket as any)?.positions ?? [];
+  const totalIndexedRealizedPnl = apiPositions.reduce((acc: number, pos: any) => acc + Number(pos.realized_pnl_usdc || 0), 0);
+
+  const eventInputAmount = (indexedBasket as any)?.snapshot?.holdings?.inputAmount
+    ? Number((indexedBasket as any).snapshot.holdings.inputAmount) / 1e6
+    : (indexedBasket as any)?.snapshot?.total_nav_usdc
+      ? Number((indexedBasket as any).snapshot.total_nav_usdc)
+      : 0;
+
+  const canonicalEquity = portfolioSnapshot?.equityUsdE8 === null || portfolioSnapshot?.equityUsdE8 === undefined
+    ? null
+    : Number(formatUnits(BigInt(portfolioSnapshot.equityUsdE8), 8));
+  const activeBasketValue = canonicalEquity !== null
+    ? canonicalEquity
+    : (indexedBasket && 'snapshot' in indexedBasket && Number((indexedBasket as any).snapshot?.total_nav_usdc) > 0)
+    ? Number((indexedBasket as any).snapshot.total_nav_usdc)
+    : (localBasket && localBasket.value > 0)
+      ? localBasket.value
+      : (eventInputAmount > 0)
+        ? eventInputAmount
+        : (fallbackBasket.value || 0);
+
+  const indexedAssets = (indexedBasket as any)?.assets;
+  const mappedIndexedHoldings: Holding[] = indexedAssets && Array.isArray(indexedAssets) && indexedAssets.length > 0
+    ? indexedAssets.map((ast: any) => {
+      const rawAddr = ast.asset_address ? String(ast.asset_address).trim() : "";
+      const knownMeta = supportedAssets.find((sa) =>
+        sa.symbol.toLowerCase() === rawAddr.toLowerCase() ||
+        (sa.address && sa.address.toLowerCase() === rawAddr.toLowerCase())
+      );
+      const symbolStr = knownMeta?.symbol || (rawAddr.startsWith("0x") ? `${rawAddr.slice(0, 6)}…` : rawAddr || "USDC");
+      const targetWeight = (ast.target_weight_bps || 0) / 100;
+      const val = (activeBasketValue * targetWeight) / 100;
+      const price = priceMap?.[symbolStr] ?? assetPrices[symbolStr] ?? 100;
+      const qty = price > 0 ? Number((val / price).toFixed(4)) : 0;
+      return {
+        symbol: symbolStr,
+        name: knownMeta?.name || symbolStr,
+        target: targetWeight,
+        current: targetWeight,
+        quantity: qty,
+        value: val,
+        color: knownMeta?.color || "#8aa4ff",
+      };
+    })
+    : [];
+
   // Active basket properties with fallback
   const basket: Basket = {
     name: localBasket?.name ?? indexedBasket?.name ?? fallbackBasket.name,
     symbol: localBasket?.symbol ?? indexedBasket?.symbol ?? fallbackBasket.symbol,
-    value: (localBasket && localBasket.value > 0)
-      ? localBasket.value
-      : (indexedBasket && 'snapshot' in indexedBasket && (indexedBasket as any).snapshot?.total_nav_usdc > 0)
-        ? Number((indexedBasket as any).snapshot.total_nav_usdc)
-        : (fallbackBasket.value || 1000),
+    ensDomain: localBasket?.ensDomain ?? `${(localBasket?.name ?? indexedBasket?.name ?? fallbackBasket.name).toLowerCase().replace(/[^a-z0-9]/g, '')}.othelio.eth`,
+    value: activeBasketValue,
     change: localBasket?.change ?? fallbackBasket.change,
     updated: localBasket?.updated ?? fallbackBasket.updated,
     address: localBasket?.address ?? indexedBasket?.address ?? fallbackBasket.address,
-    holdings: (localBasket && localBasket.holdings && localBasket.holdings.length > 0)
-      ? localBasket.holdings
-      : fallbackBasket.holdings,
+    holdings: (mappedIndexedHoldings.length > 0)
+      ? mappedIndexedHoldings
+      : (localBasket && localBasket.holdings && localBasket.holdings.length > 0)
+        ? localBasket.holdings
+        : (fallbackBasket.holdings || []),
+    realizedGains: localBasket?.realizedGains ?? (totalIndexedRealizedPnl > 0 ? totalIndexedRealizedPnl : fallbackBasket.realizedGains ?? 0),
   };
+
+  // Pre-calculate holdings math for balance card and holdings table
+  let calculatedTotalValue = 0;
+  let calculatedCostBasis = 0;
+
+  const holdingsCalculated = basket.holdings.map((h) => {
+    const tokenPrice = priceMap?.[h.symbol] ?? assetPrices[h.symbol] ?? 100;
+    const matchedPos = apiPositions.find((p: any) => p.symbol?.toLowerCase() === h.symbol?.toLowerCase() || (h.address && p.asset_address?.toLowerCase() === h.address.toLowerCase()));
+
+    // Derive exact units held from asset value / price if quantity is zero or mismatched
+    const realQuantity = (h.quantity > 0 && Math.abs(h.quantity * tokenPrice - h.value) < 1.0)
+      ? h.quantity
+      : (tokenPrice > 0 ? Number((h.value / tokenPrice).toFixed(4)) : 0);
+
+    const avgCost = matchedPos?.avg_cost_usdc && Number(matchedPos.avg_cost_usdc) > 0
+      ? Number(matchedPos.avg_cost_usdc)
+      : (h.avgCost ?? (h.symbol === "USDC" ? 1.0 : tokenPrice));
+    const assetValue = h.value;
+    const costBasis = realQuantity * avgCost;
+    const gainUsd = assetValue - costBasis;
+    const gainPct = costBasis > 0 ? (gainUsd / costBasis) * 100 : 0;
+
+    calculatedTotalValue += assetValue;
+    calculatedCostBasis += costBasis;
+
+    return {
+      ...h,
+      quantity: realQuantity,
+      tokenPrice,
+      avgCost,
+      assetValue,
+      costBasis,
+      gainUsd,
+      gainPct,
+    };
+  });
+
+  const totalGainUsd = calculatedTotalValue - calculatedCostBasis;
+  const totalGainPct = calculatedCostBasis > 0 ? (totalGainUsd / calculatedCostBasis) * 100 : 0;
+
+  // Compute 30-day weighted market index change from target weights
+  const targetWeightSum = basket.holdings.reduce((sum, h) => sum + (h.target || 0), 0);
+  const weighted30dChange = targetWeightSum > 0
+    ? basket.holdings.reduce((sum, h) => sum + ((h.target || 0) / targetWeightSum) * (asset30dChanges[h.symbol] ?? 0), 0)
+    : 0;
+
+  const displayChangePct = calculatedCostBasis > 0 ? totalGainPct : (basket.change !== 0 ? basket.change : weighted30dChange);
+  const isChangePositive = displayChangePct >= 0;
 
   return (
     <>
@@ -158,18 +269,31 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                     </span>
                   )}
                 </h1>
-                <p>Base Local <i /> {formatAddress(basket.address)}</p>
+                <p>
+                  <span style={{ color: "#d7ff46", fontWeight: 700, fontFamily: "monospace" }}>
+                    {basket.ensDomain || `${basket.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.othelio.eth`}
+                  </span>{" "}
+                  <i /> Base Local <i /> {formatAddress(basket.address)}
+                </p>
               </div>
             </div>
 
             <div className="basket-balance" style={{ marginTop: 0 }}>
               <span>Basket value</span>
               <div>
-                <strong>${basket.value.toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong>
+                <strong>${basket.value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                 <p>
-                  <b>+{basket.change}%</b>
+                  <b style={{ color: isChangePositive ? "#10b981" : "#ef4444" }}>
+                    {isChangePositive ? "+" : ""}{displayChangePct.toFixed(2)}%
+                  </b>
                   <span>this month</span>
                 </p>
+              </div>
+              <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
+                <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>Realized Gains:</span>
+                <strong style={{ color: (basket.realizedGains ?? 0) >= 0 ? "#10b981" : "#ef4444", fontWeight: 600, fontSize: "13px" }}>
+                  {(basket.realizedGains ?? 0) >= 0 ? "+" : "-"}${Math.abs(basket.realizedGains ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </strong>
               </div>
             </div>
           </div>
@@ -181,7 +305,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
 
             <div className="basket-actions" style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
               <button className="primary" onClick={() => setAction("mint")}>
-                <AppIcon type="plus" />Mint
+                <AppIcon type="plus" />Add funds
               </button>
               <button onClick={() => setAction("withdraw")}>Withdraw</button>
               <button onClick={() => setAction("rebalance")}>Rebalance</button>
@@ -193,7 +317,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         <div className="section-title">
           <div>
             <h2>Basket Holdings</h2>
-            <p>Detailed asset quantities and portfolio valuation</p>
+            <p>Detailed asset quantities, cost basis, unrealized P&L, and portfolio valuation</p>
           </div>
         </div>
         <div style={{ overflowX: "auto" }}>
@@ -201,14 +325,17 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
             <thead>
               <tr style={{ borderBottom: "1px solid var(--line)", textAlign: "left", color: "var(--ink-3)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                 <th style={{ padding: "12px 16px" }}>Asset</th>
-                <th style={{ padding: "12px 16px" }}>Price ($)</th>
+                <th style={{ padding: "12px 16px" }}>Current Price</th>
+                <th style={{ padding: "12px 16px" }}>Avg Cost</th>
                 <th style={{ padding: "12px 16px" }}>Units Held</th>
                 <th style={{ padding: "12px 16px", textAlign: "right" }}>Value ($)</th>
+                <th style={{ padding: "12px 16px", textAlign: "right" }}>Unrealized P&L</th>
               </tr>
             </thead>
             <tbody>
-              {basket.holdings.map((h) => {
-                const tokenPrice = priceMap?.[h.symbol] ?? assetPrices[h.symbol] ?? (h.quantity > 0 ? h.value / h.quantity : 0);
+              {holdingsCalculated.map((h) => {
+                const isPositive = h.gainUsd >= 0;
+                const hasQuantity = h.quantity > 0;
                 return (
                   <tr key={h.symbol} style={{ borderBottom: "1px solid var(--line)" }}>
                     <td style={{ padding: "12px 16px", fontWeight: 600, display: "flex", alignItems: "center", gap: "10px" }}>
@@ -219,17 +346,64 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                       </div>
                     </td>
                     <td style={{ padding: "12px 16px", fontWeight: 600 }}>
-                      ${tokenPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ${h.tokenPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td style={{ padding: "12px 16px", fontWeight: 600 }}>{h.quantity.toLocaleString("en-US", { minimumFractionDigits: 2 })} {h.symbol}</td>
-                    <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600 }}>${h.value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ padding: "12px 16px", fontWeight: 500, color: hasQuantity ? "var(--ink-2)" : "var(--ink-3)" }}>
+                      {hasQuantity ? `$${h.avgCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+                    </td>
+                    <td style={{ padding: "12px 16px", fontWeight: 600 }}>
+                      {h.quantity.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {h.symbol}
+                    </td>
+                    <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600 }}>
+                      ${h.assetValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                      {hasQuantity ? (
+                        <>
+                          <div style={{ fontWeight: 600, color: isPositive ? "#10b981" : "#ef4444" }}>
+                            {isPositive ? "+" : "-"}${Math.abs(h.gainUsd).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                          <small style={{ display: "block", color: isPositive ? "#10b981" : "#ef4444", fontSize: "11px", fontWeight: 500 }}>
+                            {isPositive ? "+" : ""}{h.gainPct.toFixed(2)}%
+                          </small>
+                        </>
+                      ) : (
+                        <span style={{ color: "var(--ink-3)" }}>—</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr style={{ borderTop: "2px solid var(--line)", background: "rgba(255,255,255,0.02)" }}>
+                <td style={{ padding: "14px 16px", fontWeight: 700, fontSize: "13px" }}>Total Portfolio</td>
+                <td style={{ padding: "14px 16px", color: "var(--ink-3)" }}>—</td>
+                <td style={{ padding: "14px 16px", color: "var(--ink-3)" }}>—</td>
+                <td style={{ padding: "14px 16px", color: "var(--ink-3)" }}>—</td>
+                <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 700, fontSize: "14px", color: "var(--ink)" }}>
+                  ${calculatedTotalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+                <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                  {calculatedCostBasis > 0 ? (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: "13px", color: totalGainUsd >= 0 ? "#10b981" : "#ef4444" }}>
+                        {totalGainUsd >= 0 ? "+" : "-"}${Math.abs(totalGainUsd).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <small style={{ display: "block", color: totalGainUsd >= 0 ? "#10b981" : "#ef4444", fontSize: "11px", fontWeight: 600 }}>
+                        {totalGainUsd >= 0 ? "+" : ""}{totalGainPct.toFixed(2)}%
+                      </small>
+                    </>
+                  ) : (
+                    <span style={{ color: "var(--ink-3)" }}>—</span>
+                  )}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </section>
+
       <section className="allocation-block">
         <div className="section-title">
           <div>
@@ -258,43 +432,62 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         </div>
         <div className="activity-table">
           {events.length > 0 ? (
-            events.slice(0, 5).map((evt, idx) => (
-              <div key={`${evt.tx_hash}-${idx}`} className="activity-row">
-                <span className="activity-time">{evt.block_number ? `Block ${evt.block_number}` : "Pending Index"}</span>
-                <span>
-                  <strong>{evt.event_type}</strong>
-                  <small>{formatAddress(evt.actor_address)}</small>
-                </span>
-                <span className="activity-amount">
-                  <a
-                    href={`https://etherscan.io/tx/${evt.tx_hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: "12px",
-                      color: "var(--muted-ink)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      textDecoration: "none",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted-ink)")}
-                  >
-                    {formatAddress(evt.tx_hash)}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                      <polyline points="15 3 21 3 21 9"></polyline>
-                      <line x1="10" y1="14" x2="21" y2="3"></line>
-                    </svg>
-                  </a>
-                </span>
-                <span className={`status ${evt.block_number ? "completed" : "pending"}`}>
-                  {evt.block_number ? "Completed" : "Pending"}
-                </span>
-              </div>
-            ))
+            events.slice(0, 5).map((evt, idx) => {
+              const meta = formatEventMetadata(evt);
+              return (
+                <div key={`${evt.tx_hash}-${idx}`} className="activity-row">
+                  <span className="activity-time">{evt.block_number ? `Block ${evt.block_number}` : "Pending Index"}</span>
+                  <span>
+                    <strong>{formatEventLabel(evt.event_type)}</strong>
+                    <small>{formatAddress(evt.actor_address)}</small>
+                  </span>
+                  <span className="activity-amount" style={{ textAlign: "right" }}>
+                    {meta.amountText && (
+                      <strong style={{
+                        display: "block",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: meta.isPositive === true ? "#10b981" : meta.isPositive === false ? "#ef4444" : "var(--ink)",
+                      }}>
+                        {meta.amountText}
+                      </strong>
+                    )}
+                    {getExplorerTxUrl(evt.tx_hash, 31337) !== "#" ? (
+                      <a
+                        href={getExplorerTxUrl(evt.tx_hash, 31337)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          fontFamily: "monospace",
+                          fontSize: "11px",
+                          color: "var(--muted-ink)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          textDecoration: "none",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted-ink)")}
+                      >
+                        {formatAddress(evt.tx_hash)}
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                          <polyline points="15 3 21 3 21 9"></polyline>
+                          <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                      </a>
+                    ) : (
+                      <span style={{ fontFamily: "monospace", fontSize: "11px", color: "var(--muted-ink)" }}>
+                        {formatAddress(evt.tx_hash)} (Anvil)
+                      </span>
+                    )}
+                  </span>
+                  <span className={`status ${evt.block_number ? "completed" : "pending"}`}>
+                    {evt.block_number ? "Completed" : "Pending"}
+                  </span>
+                </div>
+              );
+            })
           ) : (
             <>
               <div className="activity-row">
@@ -314,4 +507,3 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     </>
   );
 }
-

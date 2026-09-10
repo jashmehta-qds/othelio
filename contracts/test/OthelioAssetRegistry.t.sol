@@ -60,4 +60,10 @@ contract OthelioAssetRegistryTest is Test {
         assertFalse(registry.isSupported(block.chainid, tokenNVDA));
         vm.stopPrank();
     }
+
+    function testRejectDecimalsThatWouldOverflowOracleScaling() public {
+        vm.prank(owner);
+        vm.expectRevert("DECIMALS_TOO_LARGE");
+        registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 39, 8, true);
+    }
 }

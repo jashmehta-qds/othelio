@@ -1,13 +1,13 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
-import { useAccount, useBalance, useChainId, useReadContract, useWriteContract, useSendTransaction, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAccount, useChainId, useReadContract, useWriteContract, useSendTransaction, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { formatUnits } from "viem";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets, updateBasketWeights, depositBasket, withdrawBasket, getSlippageTolerance, type Basket } from "@/lib/baskets";
-import { CONTRACT_ADDRESSES, OTHELIO_FACTORY_ABI, OTHELIO_BASKET_MODULE_ABI } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { fetchSwapQuote } from "@/lib/api";
+import { toRawAmount, USDC_DECIMALS } from "@othelio/shared";
 
 export type BasketAction = "mint" | "withdraw" | "rebalance" | null;
 
@@ -28,6 +28,7 @@ export function BasketDrawer({ basket, action, onClose }: { basket: Basket; acti
 }
 
 function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => void }) {
+  const chainId = useChainId();
   const { isConnected, address } = useAccount();
   const [targets, setTargets] = useState<Record<string, number>>(() =>
     Object.fromEntries(basket.holdings.map((asset) => [asset.symbol, asset.target]))
@@ -35,29 +36,28 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
   const [searchQuery, setSearchQuery] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [executionError, setExecutionError] = useState<string | null>(null);
   const total = useMemo(() => Object.values(targets).reduce((sum, value) => sum + value, 0), [targets]);
 
-  const { isPending: isWritePending, writeContractAsync } = useWriteContract();
   const { isPending: isSendPending, sendTransactionAsync } = useSendTransaction();
 
   const [activeHash, setActiveHash] = useState<`0x${string}` | null>(null);
   const hash = activeHash;
-  const isPending = isWritePending || isSendPending;
+  const isPending = isSendPending;
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: hash ?? undefined });
 
-  const [processedHash, setProcessedHash] = useState<string | null>(null);
+  const processedHash = useRef<string | null>(null);
   const [countdown, setCountdown] = useState<number>(10);
 
   useEffect(() => {
-    if (isSuccess && hash && processedHash !== hash) {
-      setProcessedHash(hash);
+    if (isSuccess && hash && processedHash.current !== hash) {
+      processedHash.current = hash;
       updateBasketWeights(basket.address, targets);
     }
-  }, [isSuccess, basket.address, targets, hash, processedHash]);
+  }, [isSuccess, basket.address, targets, hash]);
 
   useEffect(() => {
     if (isSuccess) {
-      setCountdown(10);
       const interval = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
@@ -125,52 +125,58 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
     }
 
     try {
-      const holdingsPayload = selected.map((s) => ({
-        address: supportedAssets.find((a) => a.symbol === s.symbol)?.address || s.address || "0x0000000000000000000000000000000000000000",
-        symbol: s.symbol,
+      setExecutionError(null);
+      if (!(chainId in CONTRACT_ADDRESSES)) {
+        throw new Error(`Rebalance is unavailable on unsupported chain ${chainId}.`);
+      }
+      const activeChain = chainId as keyof typeof CONTRACT_ADDRESSES;
+      const targetModule = CONTRACT_ADDRESSES[activeChain]?.module;
+      if (!targetModule || /^0x0{40}$/i.test(targetModule)) {
+        throw new Error("No verified basket module is configured for this network.");
+      }
+
+      const targetWeights = selected.map((s) => ({
+        assetAddress: supportedAssets.find((a) => a.symbol === s.symbol)?.address || s.address || "0x0000000000000000000000000000000000000000",
         targetWeightBps: (targets[s.symbol] || 0) * 100,
       }));
 
       const res = await fetchSwapQuote(basket.address, {
         action: 'rebalance',
+        chainId: activeChain,
+        moduleAddress: targetModule,
+        callerAddress: address,
+        targetWeights,
         slippageBps: getSlippageTolerance() * 100,
-        holdings: holdingsPayload,
-      }).catch(() => null);
+      });
 
       const quote = res?.data;
+      const plan = quote?.plan;
+      const call = plan?.calls[0];
+      const isCurrent = plan
+        && plan.action === "SPOT_REBALANCE"
+        && plan.chainId === activeChain
+        && plan.accountAddress.toLowerCase() === basket.address.toLowerCase()
+        && plan.snapshot.basketAddress.toLowerCase() === basket.address.toLowerCase();
+      const moduleIsBoundedV3 = quote?.module?.moduleVersion === 3
+        && quote.module.supportsBoundedExecution
+        && quote.module.address.toLowerCase() === targetModule.toLowerCase();
+      const callMatchesModule = call?.to.toLowerCase() === targetModule.toLowerCase();
+      const isFreshAndSimulated = plan?.simulation.status === "SUCCEEDED"
+        && new Date(plan.expiresAt).getTime() > Date.now();
 
-      if (quote && CONTRACT_ADDRESSES[31337]?.module && CONTRACT_ADDRESSES[31337].module !== '0x0000000000000000000000000000000000000000') {
-        try {
-          const tx = await writeContractAsync({
-            address: CONTRACT_ADDRESSES[31337].module,
-            abi: OTHELIO_BASKET_MODULE_ABI,
-            functionName: "rebalance",
-            args: [
-              {
-                safe: basket.address as `0x${string}`,
-                target: (quote.target || '0x0000000000000000000000000000000000000000') as `0x${string}`,
-                dexCalldata: (quote.dexCalldata || '0x') as `0x${string}`,
-                soldAssets: quote.soldAssets as `0x${string}`[],
-                boughtAssets: quote.boughtAssets as `0x${string}`[],
-                minBoughtAmounts: quote.minBoughtAmounts.map((a) => BigInt(a)),
-                basketTokens: quote.basketTokens as `0x${string}`[],
-              },
-            ],
-          });
-          setActiveHash(tx);
-          return;
-        } catch (contractErr) {
-          console.warn("Module rebalance reverted, falling back to direct tx:", contractErr);
-        }
+      if (!res.executionAllowed || !isCurrent || !moduleIsBoundedV3 || !callMatchesModule || !isFreshAndSimulated || !call) {
+        throw new Error("This rebalance is not a fresh, simulated bounded-execution plan. Request a new quote.");
       }
 
-      const fallbackTx = await sendTransactionAsync({
-        to: address as `0x${string}`,
-        value: BigInt(0),
+      const tx = await sendTransactionAsync({
+        to: call.to as `0x${string}`,
+        data: call.calldata as `0x${string}`,
+        value: BigInt(call.valueBaseUnits),
       });
-      setActiveHash(fallbackTx);
+      setActiveHash(tx);
     } catch (err) {
       console.error("Rebalance execution error:", err);
+      setExecutionError(err instanceof Error ? err.message : "The bounded rebalance plan could not be prepared.");
     }
   };
 
@@ -258,6 +264,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
                 </strong>
               </div>
             </div>
+            {executionError && <p role="alert" style={{ color: "#ef4444", fontSize: "13px" }}>{executionError}</p>}
           </>
         ) : (
           <>
@@ -424,12 +431,16 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
 }
 
 function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" | "withdraw"; onClose: () => void }) {
+  const queryClient = useQueryClient();
   const isMint = kind === "mint";
   const { address: userAddress, isConnected } = useAccount();
   const chainId = useChainId();
   const chainConfig = CONTRACT_ADDRESSES[chainId as keyof typeof CONTRACT_ADDRESSES] || CONTRACT_ADDRESSES[8453];
   const usdcAddress = (chainConfig.usdc || CONTRACT_ADDRESSES[8453].usdc) as `0x${string}`;
   const moduleAddr = (chainConfig.module || CONTRACT_ADDRESSES[8453].module) as `0x${string}`;
+
+  const [withdrawInUsdc, setWithdrawInUsdc] = useState<boolean>(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { data: usdcBalanceRaw, isLoading: isBalanceLoading, refetch: refetchDrawerUsdc } = useReadContract({
     address: usdcAddress,
@@ -450,7 +461,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
     query: { enabled: Boolean(userAddress && moduleAddr) },
   });
 
-  const [depositAmount, setDepositAmount] = useState<string>(isMint ? "1000" : "5");
+  const [depositAmount, setDepositAmount] = useState<string>(isMint ? "1000" : (basket.value > 0 ? (basket.value * 0.25).toFixed(0) : "1000"));
 
   const { isPending: isWritePending, writeContractAsync } = useWriteContract();
   const { isPending: isSendPending, sendTransactionAsync } = useSendTransaction();
@@ -464,32 +475,27 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
     ? `${Number(formatUnits(usdcBalanceRaw as bigint, 6)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
     : "0.00 USDC";
 
-  const [processedHash, setProcessedHash] = useState<string | null>(null);
+  const processedHash = useRef<string | null>(null);
   const [countdown, setCountdown] = useState<number>(10);
 
   useEffect(() => {
-    if (isSuccess && hash && processedHash !== hash) {
-      setProcessedHash(hash);
+    if (isSuccess && hash && processedHash.current !== hash) {
+      processedHash.current = hash;
       const val = Number(depositAmount || 0);
       refetchDrawerUsdc();
       refetchAllowance();
+      queryClient.invalidateQueries();
+      window.dispatchEvent(new Event("basket_updated"));
       if (isMint) {
         depositBasket(basket.address, val, hash);
-        if (typeof window !== "undefined") {
-          const currentUsdc = Number(localStorage.getItem("othelio_available_usdc") || "4000");
-          const nextUsdc = Math.max(0, currentUsdc - val);
-          localStorage.setItem("othelio_available_usdc", nextUsdc.toString());
-          window.dispatchEvent(new Event("usdc_balance_updated"));
-        }
       } else {
         withdrawBasket(basket.address, val, hash);
       }
     }
-  }, [isSuccess, isMint, depositAmount, basket.address, hash, processedHash, refetchDrawerUsdc, refetchAllowance]);
+  }, [isSuccess, isMint, depositAmount, basket.address, hash, refetchDrawerUsdc, refetchAllowance, withdrawInUsdc, queryClient]);
 
   useEffect(() => {
     if (isSuccess) {
-      setCountdown(10);
       const interval = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
@@ -511,7 +517,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
 
   const publicClient = usePublicClient();
 
-  const handleExecute = async () => {
+  const handleExecuteAmountAction = async () => {
+    setActionError(null);
     if (!isConnected || !userAddress) {
       alert("Please connect your Web3 wallet first.");
       return;
@@ -519,24 +526,42 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
 
     if (isMint) {
       try {
+        if (!(chainId in CONTRACT_ADDRESSES)) {
+          throw new Error(`Add funds is unavailable on unsupported chain ${chainId}.`);
+        }
         const holdingsPayload = basket.holdings.map((h) => ({
-          address: supportedAssets.find((a) => a.symbol === h.symbol)?.address || h.address || '0x0000000000000000000000000000000000000000',
+          address: supportedAssets.find((a) => a.symbol === h.symbol)?.address || "0x0000000000000000000000000000000000000000",
           symbol: h.symbol,
           targetWeightBps: Math.round((h.target || 0) * 100),
         }));
 
-        const amountRaw = (BigInt(Math.round(Number(depositAmount || "0") * 100)) * BigInt(10000)).toString();
+        const usdcAmount = toRawAmount(depositAmount || "0", USDC_DECIMALS);
+        const amountRaw = usdcAmount.toString();
 
         const res = await fetchSwapQuote(basket.address, {
           action: 'mint',
+          chainId,
+          moduleAddress: moduleAddr,
+          callerAddress: userAddress,
           inputAmount: amountRaw,
           slippageBps: getSlippageTolerance() * 100,
           holdings: holdingsPayload,
-        }).catch(() => null);
+        });
 
         const quote = res?.data;
-
-        const usdcAmount = BigInt(Math.round(Number(depositAmount || "0") * 1_000_000));
+        const plan = quote?.plan;
+        const call = plan?.calls[0];
+        const routeExpired = !plan || new Date(plan.expiresAt).getTime() <= Date.now();
+        const callMatchesModule = Boolean(call && plan?.calls.length === 1 && call.to.toLowerCase() === moduleAddr.toLowerCase());
+        const planMatchesBasket = plan?.chainId === chainId
+          && plan.accountAddress.toLowerCase() === basket.address.toLowerCase()
+          && plan.snapshot.basketAddress.toLowerCase() === basket.address.toLowerCase();
+        const moduleIsBoundedV3 = quote?.module?.moduleVersion === 3
+          && quote.module.supportsBoundedExecution
+          && quote.module.address.toLowerCase() === moduleAddr.toLowerCase();
+        if (!res.executionAllowed || plan?.action !== 'FUND' || plan.simulation.status !== 'SUCCEEDED' || routeExpired || !callMatchesModule || !planMatchesBasket || !moduleIsBoundedV3 || !call) {
+          throw new Error(quote?.preparationReason || "The funding route was not verified for execution.");
+        }
         const currentAllowance = (allowanceRaw as bigint) || BigInt(0);
 
         if (moduleAddr && moduleAddr !== '0x0000000000000000000000000000000000000000') {
@@ -547,7 +572,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                 address: usdcAddress,
                 abi: [{ inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' }],
                 functionName: 'approve',
-                args: [moduleAddr, BigInt("1000000000000000")],
+                args: [moduleAddr, usdcAmount],
               });
               if (publicClient && approveTxHash) {
                 await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
@@ -555,82 +580,41 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
               await refetchAllowance();
             }
 
-            const hasValidDexCalldata = Boolean(
-              quote?.dexCalldata &&
-              quote.dexCalldata !== '0x' &&
-              quote.dexCalldata.length > 20 &&
-              quote?.target &&
-              quote.target !== '0x0000000000000000000000000000000000000000'
-            );
-
-            // 2. Call fundWithSwaps on Module and set activeHash ONLY to the mint transaction
-            const mintTx = await writeContractAsync({
-              address: moduleAddr,
-              abi: OTHELIO_BASKET_MODULE_ABI,
-              functionName: "fundWithSwaps",
-              args: [
-                {
-                  safe: basket.address as `0x${string}`,
-                  inputAsset: (quote?.inputAsset || usdcAddress) as `0x${string}`,
-                  inputAmount: BigInt(quote?.inputAmount || usdcAmount.toString()),
-                  target: (hasValidDexCalldata ? quote!.target : '0x0000000000000000000000000000000000000000') as `0x${string}`,
-                  dexCalldata: (hasValidDexCalldata ? quote!.dexCalldata : '0x') as `0x${string}`,
-                  boughtAssets: (hasValidDexCalldata && quote?.boughtAssets ? quote.boughtAssets : []) as `0x${string}`[],
-                  minBoughtAmounts: (hasValidDexCalldata && quote?.minBoughtAmounts ? quote.minBoughtAmounts.map((a) => BigInt(a)) : []),
-                  basketTokens: (quote?.basketTokens || []) as `0x${string}`[],
-                },
-              ],
+            if (quote?.inputAsset?.toLowerCase() !== usdcAddress.toLowerCase() || quote.inputAmount !== amountRaw) {
+              throw new Error("The simulated funding plan no longer matches the requested input amount.");
+            }
+            // Submit the exact v3 calldata which the backend simulated at the canonical snapshot.
+            const mintTx = await sendTransactionAsync({
+              to: call.to as `0x${string}`,
+              data: call.calldata as `0x${string}`,
+              value: BigInt(call.valueBaseUnits),
             });
             setActiveHash(mintTx);
             return;
           } catch (contractErr) {
-            console.warn("Module fundWithSwaps failed, falling back to direct USDC transfer to Safe basket:", contractErr);
+            throw contractErr;
           }
         }
-
-        // Fallback: Direct USDC transfer to the Safe basket address
-        const fallbackTx = await writeContractAsync({
-          address: usdcAddress,
-          abi: [{ inputs: [{ name: 'recipient', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'transfer', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' }],
-          functionName: 'transfer',
-          args: [basket.address as `0x${string}`, usdcAmount],
-        });
-        setActiveHash(fallbackTx);
+        throw new Error("No verified basket module is configured for this network.");
       } catch (err) {
         console.error("Mint execution error:", err);
+        setActionError(err instanceof Error ? err.message : "The funding action could not be prepared.");
       }
     } else {
-      try {
-        const tx = await writeContractAsync({
-          address: CONTRACT_ADDRESSES[31337].module,
-          abi: OTHELIO_BASKET_MODULE_ABI,
-          functionName: "withdrawInKind",
-          args: [
-            basket.address as `0x${string}`,
-            userAddress as `0x${string}`,
-            [],
-            [],
-            [],
-          ],
-        });
-        setActiveHash(tx);
-      } catch (contractErr) {
-        console.warn("Module withdrawInKind reverted, falling back to direct tx:", contractErr);
-        const fallbackTx = await sendTransactionAsync({
-          to: userAddress as `0x${string}`,
-          value: BigInt(0),
-        });
-        setActiveHash(fallbackTx);
-      }
+      setActionError(
+        withdrawInUsdc
+          ? "USDC withdrawal needs a simulated v3 bounded-execution quote. No unsafe legacy transaction was prepared."
+          : "In-kind withdrawal needs a canonical liquid-position preparation response. No empty or fallback transaction was prepared.",
+      );
     }
   };
 
   return (
-    <aside className="rebalance-drawer amount-drawer" aria-label={`${isMint ? "Mint" : "Withdraw"} ${basket.name}`}>
+    <aside className="rebalance-drawer amount-drawer" aria-label={`${isMint ? "Add funds to" : "Withdraw from"} ${basket.name}`}>
       <div className="drawer-scroll">
         <header>
           <div>
-            <h2>{isMint ? "Mint" : "Withdraw"}</h2>
+            <h2>{isMint ? "Add funds" : "Withdraw"}</h2>
             <span>{isSuccess ? "Transaction Confirmed" : "Preview"}</span>
           </div>
           <button onClick={onClose} aria-label={`Close ${kind}`}>×</button>
@@ -655,7 +639,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
             </div>
             <h2 style={{ fontSize: "20px", fontWeight: 700, margin: "0 0 8px" }}>Transaction Confirmed!</h2>
             <p style={{ color: "var(--muted-ink)", fontSize: "14px", margin: "0 0 24px" }}>
-              Successfully {isMint ? `minted & deposited $${depositAmount} USDC into ${basket.name}` : `withdrawn from ${basket.name}`}.
+              Successfully {isMint ? `added $${depositAmount} USDC to ${basket.name}` : `withdrawn $${depositAmount} from ${basket.name}`}.
             </p>
             <div style={{
               background: "var(--surface-2)",
@@ -676,28 +660,180 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         ) : (
           <>
             <p className="drawer-intro">
-              {isMint ? "Deposit USDC to acquire the basket’s current asset mix." : "Burn basket shares and receive the proportional underlying assets."}
+              {isMint
+                ? "Deposit USDC to acquire the basket’s current asset mix."
+                : "Redeem value from your portfolio directly to your wallet."}
             </p>
+
             <label className="amount-field">
-              <span>{isMint ? "You deposit" : "Shares to burn"}</span>
+              <span>{isMint ? "You deposit" : "Withdrawal Amount"}</span>
               <div>
                 <input
                   inputMode="decimal"
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(e.target.value)}
                 />
-                <b>{isMint ? "USDC" : basket.symbol}</b>
+                <b>{isMint ? "USDC" : "USD ($)"}</b>
               </div>
-              <small>Available: {isMint ? (isBalanceLoading ? "Loading..." : formattedBalance) : `0.00 ${basket.symbol}`}</small>
+              <small>
+                {isMint
+                  ? `Available: ${isBalanceLoading ? "Loading..." : formattedBalance}`
+                  : `Basket Value: $${basket.value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              </small>
             </label>
+
+            {/* Quick Percentage Presets for Withdrawal */}
+            {!isMint && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px", margin: "12px 0 16px" }}>
+                {[25, 50, 75, 100].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setDepositAmount(Math.round(basket.value * (pct / 100)).toString())}
+                    style={{
+                      padding: "7px 4px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--line)",
+                      background: "var(--panel-2)",
+                      color: "var(--ink)",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    {pct === 100 ? "Max" : `${pct}%`}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Receive in USDC Switch with Hover Tooltip */}
+            {!isMint && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px 14px",
+                  background: "var(--panel-2)",
+                  borderRadius: "12px",
+                  border: "1px solid var(--line)",
+                  marginBottom: "16px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)" }}>Receive in USDC</span>
+                  <div style={{ position: "relative", display: "inline-block", cursor: "pointer" }} className="has-tooltip">
+                    <span
+                      style={{
+                        width: "16px",
+                        height: "16px",
+                        borderRadius: "50%",
+                        background: "var(--line)",
+                        color: "var(--muted-ink)",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      ?
+                    </span>
+                    <div
+                      className="tooltip-box"
+                      style={{
+                        position: "absolute",
+                        bottom: "125%",
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        width: "220px",
+                        padding: "8px 10px",
+                        background: "#1c1d1a",
+                        border: "1px solid var(--line)",
+                        borderRadius: "8px",
+                        color: "var(--foreground)",
+                        fontSize: "11px",
+                        lineHeight: 1.4,
+                        boxShadow: "0 6px 18px rgba(0,0,0,0.5)",
+                        zIndex: 30,
+                        pointerEvents: "none",
+                        visibility: "hidden",
+                        opacity: 0,
+                        transition: "opacity 0.2s ease, visibility 0.2s ease",
+                      }}
+                    >
+                      Assets will be converted to USDC with your set slippage and delivered directly to your wallet.
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setWithdrawInUsdc(!withdrawInUsdc)}
+                  aria-pressed={withdrawInUsdc}
+                  aria-label="Receive withdrawal in USDC"
+                  style={{
+                    width: "48px",
+                    height: "26px",
+                    borderRadius: "13px",
+                    background: withdrawInUsdc ? "var(--accent)" : "var(--line)",
+                    border: "none",
+                    position: "relative",
+                    cursor: "pointer",
+                    transition: "background 0.2s ease",
+                    padding: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "3px",
+                      left: withdrawInUsdc ? "25px" : "3px",
+                      width: "20px",
+                      height: "20px",
+                      borderRadius: "50%",
+                      background: withdrawInUsdc ? "#0b0c0a" : "var(--muted-ink)",
+                      transition: "left 0.2s ease",
+                    }}
+                  />
+                </button>
+              </div>
+            )}
+
             <div className="quote-summary">
               <div>
-                <span>{isMint ? "Estimated shares" : "Estimated basket value"}</span>
-                <strong>{isMint ? `${(Number(depositAmount || 0) / 100).toFixed(2)} ${basket.symbol}` : `$${(Number(depositAmount || 0) * 100).toFixed(2)}`}</strong>
+                <span>{isMint ? "Funding amount" : "Delivery Method"}</span>
+                <strong>
+                  {isMint
+                    ? `${Number(depositAmount || 0).toLocaleString("en-US")} USDC`
+                    : withdrawInUsdc
+                    ? "Converted to USDC"
+                    : "Direct Stock Tokens"}
+                </strong>
+              </div>
+              {!isMint && (
+                <div>
+                  <span>Remaining Portfolio Value</span>
+                  <strong>
+                    ${Math.max(0, basket.value - Number(depositAmount || 0)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </strong>
+                </div>
+              )}
+              <div>
+                <span>DEX Route Optimization</span>
+                <strong style={{ color: "#10b981", fontSize: "12px" }}>
+                  Best rate via 0x / Aerodrome
+                </strong>
               </div>
               <div>
-                <span>Estimated network fee</span>
-                <strong>$0.01</strong>
+                <span>Est. Network Gas Fee</span>
+                <strong>~$0.04 (Base L2)</strong>
+              </div>
+              <div>
+                <span>Max Slippage Tolerance</span>
+                <strong>0.5%</strong>
               </div>
               <div>
                 <span>Transaction Status</span>
@@ -711,6 +847,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                 <small>No assets move until you approve the transaction in your wallet.</small>
               </p>
             </div>
+            {actionError && <p role="alert" style={{ color: "#ef4444", fontSize: "13px" }}>{actionError}</p>}
           </>
         )}
       </div>
@@ -722,7 +859,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         ) : (
           <>
             <button onClick={onClose}>Cancel</button>
-            <button className="primary" disabled={isPending || isConfirming} onClick={handleExecute}>
+            <button className="primary" disabled={isPending || isConfirming} onClick={handleExecuteAmountAction}>
               {isPending ? "Confirming..." : "Submit"} <AppIcon type="arrow" />
             </button>
           </>
@@ -731,4 +868,3 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
     </aside>
   );
 }
-
