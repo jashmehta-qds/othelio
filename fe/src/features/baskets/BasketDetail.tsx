@@ -211,7 +211,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
   const isChangePositive = displayChangePct >= 0;
 
   return (
-    <>
+    <div className="app-page-frame">
       <div className="dashboard-head">
         <div className="crumbs">
           <Link href="/app/baskets">Baskets</Link>
@@ -253,7 +253,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
             <div className="basket-title-row">
               <BasketLogo name={basket.name} />
               <div>
-                <h1 style={{ display: "flex", alignItems: "center", gap: "10px", margin: 0 }}>
+                <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   {basket.name}
                   {!isBasketIndexed && (
                     <span
@@ -298,7 +298,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                 </p>
               </div>
               <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
-                <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>Realized Gains:</span>
+                <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>Realized P&L:</span>
                 <strong style={{ color: (basket.realizedGains ?? 0) >= 0 ? "#10b981" : "#ef4444", fontWeight: 600, fontSize: "13px" }}>
                   {(basket.realizedGains ?? 0) >= 0 ? "+" : "-"}${Math.abs(basket.realizedGains ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </strong>
@@ -449,6 +449,6 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         </div>
       </section>
       {action && canManageBasket && <BasketDrawer basket={basket} action={action} onClose={() => setAction(null)} />}
-    </>
+    </div>
   );
 }

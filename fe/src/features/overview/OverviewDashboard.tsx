@@ -26,6 +26,11 @@ import { PortfolioPerformanceGraph } from "./PortfolioPerformanceGraph";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 
 type Timeframe = "1D" | "7D" | "30D";
+type IndexedPosition = {
+  symbol?: string;
+  asset_address?: string;
+  avg_cost_usdc?: number | string | null;
+};
 
 const SECTOR_CATEGORIES = [
   "Big Tech & AI",
@@ -92,6 +97,15 @@ export function OverviewDashboard() {
             const val = (basketVal * targetWeight) / 100;
             const price = assetPrices[symbolKey] || 100;
             const quantity = price > 0 ? Number((val / price).toFixed(4)) : 0;
+            const indexedPositions = (ib as unknown as { positions?: unknown }).positions;
+            const positions = Array.isArray(indexedPositions)
+              ? indexedPositions as IndexedPosition[]
+              : [];
+            const position = positions.find((candidate) =>
+              candidate.symbol?.toLowerCase() === symbolKey.toLowerCase()
+              || (rawAddr && candidate.asset_address?.toLowerCase() === rawAddr.toLowerCase()),
+            );
+            const indexedAverageCost = Number(position?.avg_cost_usdc);
             return {
               symbol: symbolKey,
               name: knownMeta?.name || symbolKey,
@@ -101,6 +115,7 @@ export function OverviewDashboard() {
               value: val,
               color: knownMeta?.color || "#8aa4ff",
               address: knownMeta?.address || rawAddr,
+              avgCost: indexedAverageCost > 0 ? indexedAverageCost : undefined,
             };
           })
         : [];
@@ -165,6 +180,7 @@ export function OverviewDashboard() {
         currentPrice: number;
         totalUnits: number;
         totalValue: number;
+        totalCostBasis: number;
         baskets: Set<string>;
       }
     >();
@@ -184,12 +200,17 @@ export function OverviewDashboard() {
         const price = assetPrices[symbolKey] || 100;
         const val = h.value || (h.quantity * price);
         const qty = h.quantity || (price > 0 ? val / price : 0);
+        // Do not manufacture a gain from a market-return window when no
+        // acquisition basis is available. A missing basis is neutral until
+        // the indexer provides the position's average cost.
+        const costBasis = h.avgCost && h.avgCost > 0 ? qty * h.avgCost : val;
 
         const existing = map.get(symbolKey);
         if (existing) {
           existing.totalUnits += qty;
           existing.totalValue += val;
-          existing.baskets.add(basket.name);
+          existing.totalCostBasis += costBasis;
+          existing.baskets.add(basket.symbol);
         } else {
           map.set(symbolKey, {
             symbol: symbolKey,
@@ -198,7 +219,8 @@ export function OverviewDashboard() {
             currentPrice: price,
             totalUnits: qty,
             totalValue: val,
-            baskets: new Set([basket.name]),
+            totalCostBasis: costBasis,
+            baskets: new Set([basket.symbol]),
           });
         }
       });
@@ -216,21 +238,15 @@ export function OverviewDashboard() {
 
   // Aggregate Unrealized P&L Calculation
   const { totalUnrealizedDollar, totalUnrealizedPercent } = useMemo(() => {
-    let totalUnrealizedGainUSD = 0;
-
-    aggregatedHoldings.forEach((h) => {
-      const change30d = getAssetChange(h.symbol, "30D");
-      // Calculate estimated cost basis & gain from percentage change
-      const estimatedCost = h.totalValue / (1 + change30d / 100);
-      totalUnrealizedGainUSD += h.totalValue - estimatedCost;
-    });
-
-    const percent = totalNAV > 0 ? (totalUnrealizedGainUSD / (totalNAV - totalUnrealizedGainUSD)) * 100 : 0;
+    const currentValue = aggregatedHoldings.reduce((sum, holding) => sum + holding.totalValue, 0);
+    const costBasis = aggregatedHoldings.reduce((sum, holding) => sum + holding.totalCostBasis, 0);
+    const totalUnrealizedGainUSD = currentValue - costBasis;
+    const percent = costBasis > 0 ? (totalUnrealizedGainUSD / costBasis) * 100 : 0;
     return {
       totalUnrealizedDollar: totalUnrealizedGainUSD,
       totalUnrealizedPercent: percent,
     };
-  }, [aggregatedHoldings, totalNAV]);
+  }, [aggregatedHoldings]);
 
   // Sector Allocation Breakdown for Hollow Donut Chart
   const sectorAllocations = useMemo<SectorAllocation[]>(() => {
@@ -307,7 +323,7 @@ export function OverviewDashboard() {
   }, [isConnected, address, activeBaskets, indexedEvents]);
 
   return (
-    <div style={{ padding: "32px 40px", maxWidth: "1280px", margin: "0 auto" }}>
+    <div className="app-page-frame">
       {/* Header */}
       <header
         style={{
@@ -318,7 +334,7 @@ export function OverviewDashboard() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: "28px", fontWeight: 700, letterSpacing: "-0.5px", marginBottom: "6px" }}>
+          <h1 className="page-title">
             Portfolio Overview
           </h1>
           <p style={{ color: "var(--ink-3)", fontSize: "14px", margin: 0 }}>
@@ -469,11 +485,11 @@ export function OverviewDashboard() {
               <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)" }}>
                 Unrealized P&L
               </span>
-              <span style={{ fontSize: "11px", color: "var(--ink-3)" }}>30D market return</span>
+              <span style={{ fontSize: "11px", color: "var(--ink-3)" }}>Current value vs. cost basis</span>
             </div>
           </div>
 
-          {/* Row 3: Realized Gains */}
+          {/* Row 3: Realized P&L */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", alignItems: "center", gap: "20px" }}>
             <div
               style={{
@@ -519,7 +535,7 @@ export function OverviewDashboard() {
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
               <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)" }}>
-                Realized Gains
+                Realized P&L
               </span>
               <span style={{ fontSize: "11px", color: "var(--ink-3)" }}>Locked-in profits</span>
             </div>
@@ -564,7 +580,7 @@ export function OverviewDashboard() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "220px 140px 150px 180px 140px 1fr",
+              gridTemplateColumns: "minmax(0, 1.25fr) minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.8fr) minmax(0, 1.1fr)",
               padding: "12px 24px",
               background: "rgba(255, 255, 255, 0.02)",
               borderBottom: "1px solid var(--line)",
@@ -576,10 +592,9 @@ export function OverviewDashboard() {
             }}
           >
             <span>Asset</span>
-            <span style={{ textAlign: "right" }}>Current Price</span>
-            <span style={{ textAlign: "right" }}>Total Units Held</span>
-            <span style={{ paddingLeft: "24px" }}>Portfolio Share</span>
-            <span style={{ textAlign: "right" }}>Total Value ($)</span>
+            <span style={{ paddingLeft: "16px" }}>Share %</span>
+            <span style={{ textAlign: "right" }}>Price / Units</span>
+            <span style={{ textAlign: "right" }}>Total ($)</span>
             <span style={{ textAlign: "right" }}>Baskets</span>
           </div>
 
@@ -597,7 +612,7 @@ export function OverviewDashboard() {
                     key={holding.symbol}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "220px 140px 150px 180px 140px 1fr",
+                      gridTemplateColumns: "minmax(0, 1.25fr) minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.8fr) minmax(0, 1.1fr)",
                       alignItems: "center",
                       padding: "16px 24px",
                       borderBottom: "1px solid var(--line)",
@@ -626,18 +641,8 @@ export function OverviewDashboard() {
                       </div>
                     </div>
 
-                    {/* Current Price */}
-                    <span style={{ textAlign: "right", fontFamily: "monospace", color: "var(--ink)", fontWeight: 600 }}>
-                      ${formatCompactNumber(holding.currentPrice)}
-                    </span>
-
-                    {/* Total Units Held */}
-                    <span style={{ textAlign: "right", fontFamily: "monospace", color: "var(--ink)" }}>
-                      {holding.totalUnits.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                    </span>
-
                     {/* Portfolio Share (%) with Inline Allocation Progress Bar */}
-                    <div style={{ paddingLeft: "24px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <div style={{ paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "4px", minWidth: 0 }}>
                       <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--ink)", fontFamily: "monospace" }}>
                         {holding.portfolioShare.toFixed(1)}%
                       </span>
@@ -653,13 +658,23 @@ export function OverviewDashboard() {
                       </div>
                     </div>
 
+                    {/* Current price and units held */}
+                    <div style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: "2px", fontFamily: "monospace", minWidth: 0 }}>
+                      <span style={{ color: "var(--ink)", fontWeight: 600 }}>
+                        ${formatCompactNumber(holding.currentPrice)}
+                      </span>
+                      <small style={{ color: "var(--ink-3)", fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {holding.totalUnits.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} units
+                      </small>
+                    </div>
+
                     {/* Total Value ($) */}
                     <strong style={{ textAlign: "right", fontFamily: "monospace", color: "var(--ink)", fontSize: "14px" }}>
                       ${formatCompactNumber(holding.totalValue)}
                     </strong>
 
                     {/* Baskets list */}
-                    <div style={{ textAlign: "right", display: "flex", justifyContent: "flex-end", gap: "4px", flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0, textAlign: "right", display: "flex", justifyContent: "flex-end", gap: "4px", flexWrap: "wrap" }}>
                       {holding.basketNames.map((name) => (
                         <span
                           key={name}

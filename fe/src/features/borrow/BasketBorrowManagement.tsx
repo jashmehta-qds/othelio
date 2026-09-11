@@ -85,8 +85,8 @@ export function BasketBorrowManagement({ basketId }: { basketId: string }) {
 
   if (!ownsBasket) {
     return (
-      <section className="basket-index" style={{ maxWidth: "720px", margin: "0 auto", padding: "48px 0" }}>
-        <h1>{isLoadingOwnership ? "Checking basket access…" : "Lending recovery unavailable"}</h1>
+      <section className="app-page-frame">
+        <h1 className="page-title">{isLoadingOwnership ? "Checking basket access…" : "Lending recovery unavailable"}</h1>
         <p style={{ color: "var(--muted-ink)", marginTop: "10px" }}>
           {isLoadingOwnership
             ? "Verifying the connected wallet owns this basket."
@@ -179,7 +179,7 @@ export function BasketBorrowManagement({ basketId }: { basketId: string }) {
   };
 
   return (
-    <section className="basket-index" style={{ maxWidth: "1040px", margin: "0 auto", padding: "16px 0 48px" }}>
+    <section className="app-page-frame">
       <div className="dashboard-head">
         <div className="crumbs"><Link href="/app/baskets">Baskets</Link><i>/</i><strong>Lending recovery</strong></div>
       </div>
@@ -187,7 +187,7 @@ export function BasketBorrowManagement({ basketId }: { basketId: string }) {
       <section className="allocation-block" style={{ marginTop: "16px" }}>
         <div className="section-title">
           <div>
-            <h1 style={{ margin: 0 }}>Existing lending positions</h1>
+            <h1 className="page-title">Existing lending positions</h1>
             <p>New borrowing is not offered in this app. Existing owner accounts remain unrestricted onchain; verified repayment and collateral release stay available here.</p>
           </div>
           <button onClick={() => refetch()} disabled={isFetching} aria-label="Refresh canonical positions">

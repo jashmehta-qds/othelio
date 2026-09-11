@@ -6,6 +6,9 @@ import "./globals.css";
 const atkinson = Atkinson_Hyperlegible_Next({
   variable: "--font-atkinson",
   subsets: ["latin"],
+  // Next has no metric override data for this family, so generating one only
+  // produces a build warning. The CSS stack remains the intentional fallback.
+  adjustFontFallback: false,
 });
 
 const spaceGrotesk = Space_Grotesk({

@@ -36,11 +36,11 @@ export function BasketList() {
   const totalPortfolioValue = displayBaskets.reduce((acc, b) => acc + b.value, 0);
 
   return (
-    <section className="basket-index">
+    <section className="app-page-frame">
       <CreateBasketModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} />
       <header className="index-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1>Your baskets</h1>
+          <h1 className="page-title">Your baskets</h1>
           <p>Baskets created and managed by your wallet.</p>
         </div>
         <Link

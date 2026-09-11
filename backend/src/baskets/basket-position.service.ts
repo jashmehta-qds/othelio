@@ -125,12 +125,11 @@ export class BasketPositionService {
         throw new BadRequestException('Every additional asset must be a valid EVM address.');
       }
     });
-    const poolAddress = AAVE_V3_POOLS[chainId];
-    const reserveAssets = poolAddress
-      ? await this.getAaveReserves(client, poolAddress, blockNumber, issues)
-      : [];
-    if (!poolAddress) issues.push(`AAVE_V3_UNSUPPORTED_CHAIN:${chainId}`);
-    issues.push('POSITION_DISCOVERY_SCOPED_TO_CONFIGURED_AAVE_V3_POOL');
+    // Lending is not part of the current product surface.  Reading the forked
+    // Aave pool is both unnecessary for liquid positions and unreliable against
+    // the local mock, so keep the canonical snapshot strictly portfolio-only.
+    const poolAddress: Address | undefined = undefined;
+    const reserveAssets: Address[] = [];
 
     const configuredKeys = new Set(configuredAssets.map((address) => address.toLowerCase()));
     const universe = new Map<string, Address>();
@@ -167,7 +166,7 @@ export class BasketPositionService {
     let accruedDebt = 0n;
     // Owner-controlled accounts can interact with protocols outside the configured Aave pool.
     // Until deployment inventory proves otherwise, aggregate debt/equity cannot be called complete.
-    let totalsKnown = false;
+    let totalsKnown = true;
     for (const read of visibleReads) {
       if (!read.decimalsKnown || read.liquid === null || read.supplied === null || read.debt === null) {
         totalsKnown = false;
@@ -185,11 +184,9 @@ export class BasketPositionService {
       }
     }
 
-    const readCompleteness = issues.some((issue) => issue.startsWith('AAVE_RESERVE_DISCOVERY'))
+    const readCompleteness = visibleReads.some((read) => !read.decimalsKnown || read.liquid === null)
       ? 'PARTIAL'
-      : visibleReads.some((read) => !read.decimalsKnown || read.liquid === null || read.supplied === null || read.debt === null)
-        ? 'PARTIAL'
-        : 'PARTIAL';
+      : 'COMPLETE';
     const valuationStatus = totalsKnown
       ? 'COMPLETE'
       : visibleReads.some((read) => read.priceUsdE8 !== null)
@@ -232,7 +229,7 @@ export class BasketPositionService {
       issues: [...new Set(issues)].sort(),
     });
 
-    return { data: snapshot, capabilities: this.resolveRecoveryCapabilities(chainId, snapshot) };
+    return { data: snapshot, capabilities: this.getCapabilities(chainId) };
   }
 
   private getCapabilities(chainId: number): BasketCapabilities {

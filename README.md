@@ -22,25 +22,24 @@ Ensure you have the following installed on your machine:
 
 ---
 
-## ⚡ 1-Command Local Development (Recommended)
+## ⚡ Local Development
 
-Start the entire Othelio stack (Anvil local chain, Postgres DB, Contract auto-deployment, Rust indexer, NestJS backend API, and Next.js frontend) in **1 command**:
+The local chain is started separately from application services. This keeps basket addresses, balances, and indexed activity stable while you restart the frontend, backend, or indexer.
 
 ```bash
 # 1. Copy environment configuration (first-time setup only)
 cp .env.example .env
 
-# 2. Run the entire stack
-npm run dev
+# 2. Start the local chain, database, contracts, and fixtures once
+npm run dev:chain
+
+# 3. Start the indexer, backend, and frontend. Safe to stop and restart.
+npm run dev:services
 ```
 
-That's it! `npm run dev` automatically handles everything in parallel:
-- 🛢️ **PostgreSQL 17**: Boots database with auto-migrated schema.
-- ⛓️ **Anvil EVM Chain**: Local blockchain listening on `http://localhost:8545`.
-- 📜 **Contract Deployment**: Automatically executes `DeployOthelio.s.sol`.
-- 🦀 **Rust Event Indexer**: Processes on-chain logs into Postgres.
-- 🦁 **NestJS Backend API**: Available at `http://localhost:3001`.
-- 🎨 **Next.js Frontend App**: Available at `http://localhost:3000`.
+`npm run dev` is an alias for `npm run dev:services` after the chain has been started.
+
+Use `npm run dev:reset` only when you want a fresh local chain. It removes the local Postgres volume and all local chain/indexed history before bootstrapping a new environment.
 
 ---
 
@@ -50,7 +49,10 @@ If you prefer to run specific components independently:
 
 | Component | Command |
 | :--- | :--- |
-| **All Infrastructure (Docker)** | `npm run dev:infra` or `docker compose up --build` |
+| **Chain bootstrap (Anvil, Postgres, contracts, fixtures)** | `npm run dev:chain` |
+| **Application services (indexer, backend, frontend)** | `npm run dev:services` |
+| **Rebuild only the Rust indexer** | `npm run dev:indexer:rebuild` |
+| **Fresh local environment — destructive** | `npm run dev:reset` |
 | **NestJS Backend API** | `npm run dev:backend` |
 | **Next.js Frontend** | `npm run dev:fe` |
 | **Smart Contract Tests** | `cd contracts && forge test` |

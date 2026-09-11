@@ -7,9 +7,14 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n \"infra,backend,frontend\" -c \"cyan,magenta,green\" \"npm run dev:infra\" \"npm run dev -w @othelio/backend\" \"npm run dev -w @othelio/fe\"",
-    "dev:infra": "docker compose up --build",
-    "dev:infra:reset": "docker compose down --volumes --remove-orphans && docker compose up --build --force-recreate",
+    "dev": "npm run dev:services",
+    "dev:db:migrate": "docker compose run --rm --no-deps database-migrations",
+    "dev:chain": "docker compose up -d --wait --no-recreate postgres anvil && npm run dev:db:migrate && docker compose run --rm --no-deps contracts-deployer && docker compose run --rm --no-deps local-fixtures",
+    "dev:services": "concurrently -k -n \"indexer,backend,frontend\" -c \"cyan,magenta,green\" \"docker compose up --no-recreate indexer\" \"npm run dev -w @othelio/backend\" \"npm run dev -w @othelio/fe\"",
+    "dev:indexer:rebuild": "docker compose build indexer && docker compose up -d --no-deps --force-recreate indexer",
+    "dev:reset": "docker compose down --volumes --remove-orphans && npm run dev:chain",
+    "dev:infra": "npm run dev:chain",
+    "dev:infra:reset": "npm run dev:reset",
     "dev:anvil": "anvil --fork-url https://mainnet.base.org --fork-block-number 51166844 --chain-id 31337",
     "seed:anvil": "node scripts/seed-anvil-pools.js",
     "dev:backend": "npm run dev -w @othelio/backend",

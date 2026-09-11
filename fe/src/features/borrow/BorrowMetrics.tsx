@@ -30,7 +30,7 @@ export function BorrowMetrics({
       {/* Header Bar */}
       <header className="index-head" style={{ marginBottom: "20px" }}>
         <div>
-          <h1 style={{ fontSize: "28px", fontWeight: 700, letterSpacing: "-0.5px", margin: 0 }}>
+          <h1 className="page-title">
             Borrow
           </h1>
           <p style={{ color: "var(--muted-ink)", fontSize: "13px", marginTop: "4px" }}>

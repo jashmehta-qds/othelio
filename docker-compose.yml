@@ -25,6 +25,23 @@ services:
       timeout: 2s
       retries: 15
 
+  database-migrations:
+    image: postgres:17-alpine
+    volumes:
+      - ./database/migrations:/migrations:ro
+    environment:
+      DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
+    entrypoint:
+      - sh
+      - -ec
+      - >-
+        for migration in /migrations/*.sql; do
+          echo "Applying $${migration}";
+          psql "$${DATABASE_URL}" -v ON_ERROR_STOP=1 -f "$${migration}";
+        done
+    depends_on:
+      postgres: { condition: service_healthy }
+
   contracts-deployer:
     image: ghcr.io/foundry-rs/foundry:latest
     working_dir: /workspace/contracts
@@ -71,7 +88,7 @@ services:
       MODULE_ADDRESS: "0x835E426B749C7a215CeD0E487981271Cbf399c05"
     depends_on:
       postgres: { condition: service_healthy }
-      local-fixtures: { condition: service_completed_successfully }
+      anvil: { condition: service_healthy }
 
 volumes:
   othelio-postgres:

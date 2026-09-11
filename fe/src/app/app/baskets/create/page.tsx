@@ -181,7 +181,7 @@ export default function CreateBasketPage() {
   };
 
   return (
-    <div style={{ maxWidth: "1080px", margin: "0 auto", padding: "32px 24px 64px" }}>
+    <div className="app-page-frame">
       {/* Top Navigation Breadcrumbs */}
       <div style={{ marginBottom: "24px" }}>
         <Link
@@ -201,7 +201,7 @@ export default function CreateBasketPage() {
       </div>
 
       <header style={{ marginBottom: "32px" }}>
-        <h1 style={{ fontFamily: "var(--font-heading), sans-serif", fontSize: "36px", letterSpacing: "-0.03em" }}>
+        <h1 className="page-title">
           Create New Basket
         </h1>
         <p style={{ color: "var(--muted-ink)", fontSize: "14px", marginTop: "6px" }}>

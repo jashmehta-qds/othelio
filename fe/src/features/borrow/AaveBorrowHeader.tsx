@@ -34,7 +34,7 @@ export function AaveBorrowHeader({
       {/* Top Title Bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
         <div>
-          <h1 style={{ fontSize: "28px", fontWeight: 700, letterSpacing: "-0.5px", margin: 0, color: "var(--ink)" }}>
+          <h1 className="page-title">
             Borrow
           </h1>
           <p style={{ color: "var(--muted-ink)", fontSize: "13px", marginTop: "4px" }}>
@@ -156,11 +156,13 @@ export function AaveBorrowHeader({
           <div style={{ width: "100%", height: "10px", background: "rgba(255, 255, 255, 0.06)", borderRadius: "6px", overflow: "hidden", position: "relative" }}>
             <div
               style={{
-                width: `${borrowPowerUsedPct}%`,
+                width: "100%",
                 height: "100%",
                 background: borrowPowerUsedPct > 80 ? "linear-gradient(90deg, #f59e0b, #ef4444)" : "linear-gradient(90deg, #10b981, #d7ff46)",
                 borderRadius: "6px",
-                transition: "width 0.4s ease",
+                transform: `scaleX(${borrowPowerUsedPct / 100})`,
+                transformOrigin: "left center",
+                transition: "transform 0.4s ease",
               }}
             />
           </div>

@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AAVE_V3_POOLS } from '../lending/adapters/aave-v3.adapter';
 import { BasketPositionService } from './basket-position.service';
 
 const basket = '0x1111111111111111111111111111111111111111';
@@ -54,9 +53,9 @@ function makeService(variableDebtFails = false, symbol = 'USDC') {
 }
 
 describe('BasketPositionService', () => {
-  it('reads liquid, receipt, and accrued debt balances at one block with immutable market identity', async () => {
+  it('reads and values liquid balances without querying the disabled lending integration', async () => {
     const { service, observedBlockNumbers } = makeService();
-    const result = await service.getPositionSnapshot(basket, 8453);
+    const result = await service.getPositionSnapshot(basket, 31337);
 
     expect(result.data.blockNumber).toBe(123);
     expect(result.data.blockHash).toBe(blockHash);
@@ -66,56 +65,15 @@ describe('BasketPositionService', () => {
       liquidAmountBaseUnits: '100000000',
       priceUsdE8: '100000000',
     })]);
-    expect(result.data.markets).toEqual([{
-      identity: {
-        chainId: 8453,
-        basketAddress: basket,
-        protocol: 'AAVE_V3',
-        marketAddress: AAVE_V3_POOLS[8453],
-        assetAddress: usdc.toLowerCase(),
-      },
-      suppliedAmountBaseUnits: '200000000',
-      accruedDebtAmountBaseUnits: '50000000',
-    }]);
+    expect(result.data.markets).toEqual([]);
     expect(observedBlockNumbers.every((number) => number === 123n)).toBe(true);
-    expect(result.data.readCompleteness).toBe('PARTIAL');
-    expect(result.data.equityUsdE8).toBeNull();
-    expect(result.data.issues).toContain('POSITION_DISCOVERY_SCOPED_TO_CONFIGURED_AAVE_V3_POOL');
+    expect(result.data.readCompleteness).toBe('COMPLETE');
+    expect(result.data.equityUsdE8).toBe('10000000000');
+    expect(result.data.issues).not.toContain('POSITION_DISCOVERY_SCOPED_TO_CONFIGURED_AAVE_V3_POOL');
     expect(result.capabilities.actions.BORROW.enforcement).toEqual({ api: true, onchain: false });
     expect(result.capabilities.authorityMode).toBe('UNRESTRICTED_OWNER');
-    expect(result.capabilities.actions.REPAY.availability).toBe('AVAILABLE');
+    expect(result.capabilities.actions.REPAY.availability).toBe('CONDITIONAL');
     expect(result.capabilities.actions.RELEASE_COLLATERAL.availability).toBe('CONDITIONAL');
-  });
-
-  it('only makes collateral release available for a known supplied position with verified zero debt', async () => {
-    const { service } = makeService();
-    const result = await service.getPositionSnapshot(basket, 8453);
-    const client = (service as any).getClient();
-    client.readContract.mockImplementation(async (request: any) => {
-      switch (request.functionName) {
-        case 'getReservesList': return [usdc];
-        case 'ADDRESSES_PROVIDER': return provider;
-        case 'getPriceOracle': return oracle;
-        case 'BASE_CURRENCY_UNIT': return 100_000_000n;
-        case 'getReserveData': return { aTokenAddress: aToken, stableDebtTokenAddress: stableDebt, variableDebtTokenAddress: variableDebt };
-        case 'decimals': return 6;
-        case 'symbol': return 'USDC';
-        case 'getAssetPrice': return 100_000_000n;
-        case 'balanceOf': return request.address.toLowerCase() === variableDebt.toLowerCase() || request.address.toLowerCase() === stableDebt.toLowerCase() ? 0n : 100_000_000n;
-        default: throw new Error(`unexpected ${request.functionName}`);
-      }
-    });
-    const refreshed = await service.getPositionSnapshot(basket, 8453);
-    expect(refreshed.capabilities.actions.RELEASE_COLLATERAL.availability).toBe('AVAILABLE');
-  });
-
-  it('keeps a failed debt read unknown instead of reporting zero debt', async () => {
-    const { service } = makeService(true);
-    const result = await service.getPositionSnapshot(basket, 8453);
-
-    expect(result.data.markets[0].accruedDebtAmountBaseUnits).toBeNull();
-    expect(result.data.accruedDebtUsdE8).toBeNull();
-    expect(result.data.issues.some((issue) => issue.startsWith('AAVE_DEBT_UNAVAILABLE:'))).toBe(true);
   });
 
   it('omits blank token metadata and reports it instead of failing the snapshot schema', async () => {

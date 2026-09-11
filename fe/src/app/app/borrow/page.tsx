@@ -12,11 +12,11 @@ export default function LendingRecoveryPage() {
   const { data, isLoading, error } = useBasketsList(chainId, address);
 
   return (
-    <section className="basket-index" style={{ maxWidth: "1040px", margin: "0 auto", padding: "16px 0 48px" }}>
+    <section className="app-page-frame">
       <div className="dashboard-head">
         <div>
           <p className="eyebrow">Portfolio-only release</p>
-          <h1>Lending recovery</h1>
+          <h1 className="page-title">Lending recovery</h1>
           <p>New borrowing, collateral supply, and reinvestment are not offered in this app.</p>
         </div>
       </div>

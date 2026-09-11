@@ -106,11 +106,11 @@ export default function SettingsPage() {
   };
 
   return (
-    <section className="basket-index" style={{ maxWidth: "880px", margin: "0 auto" }}>
+    <section className="app-page-frame">
       {/* Index Header matching /app/baskets */}
       <header className="index-head">
         <div>
-          <h1>Settings</h1>
+          <h1 className="page-title">Settings</h1>
           <p>Configure rebalancing slippage limits, execution speed, and account security.</p>
         </div>
         {saveToast && (

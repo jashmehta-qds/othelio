@@ -66,11 +66,12 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
   </div>;
 }
 
-export function ActivityEventRow({ event, olderEvents = [], full = false }: { event: BasketActivity; olderEvents?: BasketActivity[]; full?: boolean }) {
+export function ActivityEventRow({ event, basketSymbol, olderEvents = [], full = false }: { event: BasketActivity; basketSymbol?: string; olderEvents?: BasketActivity[]; full?: boolean }) {
   const meta = formatEventMetadata(event);
   return <details className={`activity-event ${full ? "full" : "compact"}`}>
     <summary className="activity-row">
       <span className="activity-time">{event.block_number ? `Block ${full ? "#" : ""}${event.block_number}` : "Pending index"}</span>
+      {full && <span className="activity-basket" title={event.basket_address}>{basketSymbol ?? "Unknown basket"}</span>}
       <span className="activity-operation"><strong>{formatEventLabel(event.event_type)}</strong><small>{full ? `Safe: ${formatAddress(event.basket_address || "")} · Actor: ${formatAddress(event.actor_address)}` : formatAddress(event.actor_address)}</small></span>
       <span className="activity-amount">{meta.amountText && <strong className={meta.isPositive ? "positive" : meta.isPositive === false ? "negative" : ""}>{meta.amountText}</strong>}<small>{formatAddress(event.tx_hash)}{Number(event.chain_id) === 31337 ? " · Anvil" : ""}</small></span>
       <span className="activity-row-state">{event.block_number ? "Confirmed" : "Pending"}<svg aria-hidden="true" viewBox="0 0 20 20"><path d="m6 8 4 4 4-4" /></svg></span>
