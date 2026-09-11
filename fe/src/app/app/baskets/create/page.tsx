@@ -16,10 +16,10 @@ export default function CreateBasketPage() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
 
-  const [name, setName] = useState("Momentum Tech Core");
-  const [symbol, setSymbol] = useState("MCORE");
-  const [subdomain, setSubdomain] = useState("mcore");
-  const [depositAmount, setDepositAmount] = useState("1000");
+  const [name, setName] = useState("");
+  const [symbol, setSymbol] = useState("");
+  const [subdomain, setSubdomain] = useState("");
+  const [depositAmount, setDepositAmount] = useState("");
 
   // Search & add tokens
   const [searchQuery, setSearchQuery] = useState("");
@@ -114,7 +114,7 @@ export default function CreateBasketPage() {
 
   const handleExecute = async () => {
     if (!isConnected || !address) {
-      alert("Please connect your Web3 wallet first.");
+      setTransactionError("Connect your wallet before creating and funding a basket.");
       return;
     }
 
@@ -433,7 +433,6 @@ export default function CreateBasketPage() {
                         width: `${targets[asset.symbol] ?? 0}%`,
                         height: "100%",
                         background: asset.color || "var(--accent)",
-                        transition: "width 0.25s ease",
                       }}
                       title={`${asset.symbol}: ${targets[asset.symbol] ?? 0}%`}
                     />
@@ -549,7 +548,7 @@ export default function CreateBasketPage() {
 
             <button
               className="primary"
-              disabled={total !== 100 || selectedAssets.length === 0 || !hasValidDeposit || isPending}
+              disabled={!isConnected || total !== 100 || selectedAssets.length === 0 || !hasValidDeposit || isPending}
               onClick={handleExecute}
               style={{
                 width: "100%",
@@ -563,7 +562,7 @@ export default function CreateBasketPage() {
                 gap: "8px",
               }}
             >
-              {isPending ? "Waiting Wallet..." : "Create & Fund Basket"}
+              {isPending ? "Waiting Wallet..." : !isConnected ? "Connect wallet first" : "Create & Fund Basket"}
               <AppIcon type="arrow" />
             </button>
 
