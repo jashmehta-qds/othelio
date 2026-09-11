@@ -7,10 +7,8 @@ export default function Home() {
   return (
     <main className="quiet-home">
       <header className="quiet-nav">
-        <Link href="/" className="quiet-wordmark" aria-label="Othelio home">
-          <span>Othelio</span>
-        </Link>
-        <Link href="/app" className="quiet-launch">Launch App</Link>
+        <Link href="/" className="quiet-wordmark" aria-label="Othelio home">Othelio</Link>
+        <span className="quiet-launch" aria-label="Othelio is coming soon">Coming soon</span>
       </header>
 
       <section className="quiet-hero-grid" aria-labelledby="quiet-title">
@@ -33,10 +31,18 @@ export default function Home() {
 
       <footer className="quiet-footer">
         <p>Markets are given.<br />Baskets are chosen.</p>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-          <OthelioLogo size={18} />
-          © Othelio
-        </span>
+        <form className="waitlist-form">
+          <label className="sr-only" htmlFor="waitlist-email">Email address for the Othelio waitlist</label>
+          <input
+            id="waitlist-email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            placeholder="Email for waitlist"
+          />
+        </form>
+
+        <span> © Othelio</span>
       </footer>
     </main>
   );
