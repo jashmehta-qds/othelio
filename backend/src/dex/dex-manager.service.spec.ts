@@ -7,12 +7,14 @@ describe('DexManagerService route availability', () => {
     const unavailable = { name: '0x', supportedChainIds: [8453], getQuote: vi.fn().mockResolvedValue(null) };
     const oneInch = { name: '1inch', supportedChainIds: [8453], getQuote: vi.fn().mockResolvedValue(null) };
     const aerodrome = { name: 'Aerodrome', supportedChainIds: [8453], getQuote: vi.fn().mockResolvedValue(null) };
+    const localAnvil = { name: 'LocalAnvil', supportedChainIds: [31337], getQuote: vi.fn().mockResolvedValue(null) };
     const fallback = { name: 'Fallback', supportedChainIds: [8453], getQuote: vi.fn().mockResolvedValue(null) };
     const manager = new DexManagerService(
       { query: vi.fn() } as never,
       unavailable as never,
       oneInch as never,
       aerodrome as never,
+      localAnvil as never,
       fallback as never,
     );
 

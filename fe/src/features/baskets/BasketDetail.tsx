@@ -7,11 +7,12 @@ import { useChainId } from "wagmi";
 import AllocationSankey from "@/components/AllocationSankey";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { assetPrices, asset30dChanges, formatAddress, formatEventLabel, formatEventMetadata, getBasket, getCreatedBaskets, getExplorerTxUrl, getLocalActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
+import { assetPrices, asset30dChanges, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
 import { useBasketDetails, useBasketActivity, useBasketsList, useAssetPrices, usePortfolioPositions } from "@/hooks/useBaskets";
 import { BasketDrawer, type BasketAction } from "./BasketDrawer";
 import { BasketLogo } from "./BasketLogo";
 import { PortfolioDrift } from "./PortfolioDrift";
+import { ActivityEventRow } from "./ActivityEventRow";
 
 export function BasketDetail({ basket: fallbackBasket, initialAction = null }: { basket: Basket; initialAction?: BasketAction }) {
   const chainId = useChainId() || 31337;
@@ -56,12 +57,11 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
   }, []);
 
   const localEvents = mounted ? getLocalActivity(fallbackBasket.address) : [];
-  const apiEvents: BasketActivity[] = (apiActivity?.data ?? []).map((evt: any) => ({
+  const apiEvents: BasketActivity[] = (apiActivity?.data ?? []).map((evt) => ({
+    ...evt,
     event_type: evt.event_type === "FUNDED" ? "BasketFunded" : evt.event_type === "CREATED" ? "BasketCreated" : evt.event_type,
     actor_address: evt.actor_address || "Wallet execution",
-    tx_hash: evt.tx_hash,
     block_number: evt.block_number ? Number(evt.block_number) : undefined,
-    occurred_at: evt.occurred_at,
   }));
 
   const combinedEvents = [...apiEvents, ...localEvents];
@@ -432,74 +432,11 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         </div>
         <div className="activity-table">
           {events.length > 0 ? (
-            events.slice(0, 5).map((evt, idx) => {
-              const meta = formatEventMetadata(evt);
-              return (
-                <div key={`${evt.tx_hash}-${idx}`} className="activity-row">
-                  <span className="activity-time">{evt.block_number ? `Block ${evt.block_number}` : "Pending Index"}</span>
-                  <span>
-                    <strong>{formatEventLabel(evt.event_type)}</strong>
-                    <small>{formatAddress(evt.actor_address)}</small>
-                  </span>
-                  <span className="activity-amount" style={{ textAlign: "right" }}>
-                    {meta.amountText && (
-                      <strong style={{
-                        display: "block",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        color: meta.isPositive === true ? "#10b981" : meta.isPositive === false ? "#ef4444" : "var(--ink)",
-                      }}>
-                        {meta.amountText}
-                      </strong>
-                    )}
-                    {getExplorerTxUrl(evt.tx_hash, 31337) !== "#" ? (
-                      <a
-                        href={getExplorerTxUrl(evt.tx_hash, 31337)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          fontFamily: "monospace",
-                          fontSize: "11px",
-                          color: "var(--muted-ink)",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          textDecoration: "none",
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted-ink)")}
-                      >
-                        {formatAddress(evt.tx_hash)}
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                          <polyline points="15 3 21 3 21 9"></polyline>
-                          <line x1="10" y1="14" x2="21" y2="3"></line>
-                        </svg>
-                      </a>
-                    ) : (
-                      <span style={{ fontFamily: "monospace", fontSize: "11px", color: "var(--muted-ink)" }}>
-                        {formatAddress(evt.tx_hash)} (Anvil)
-                      </span>
-                    )}
-                  </span>
-                  <span className={`status ${evt.block_number ? "completed" : "pending"}`}>
-                    {evt.block_number ? "Completed" : "Pending"}
-                  </span>
-                </div>
-              );
-            })
+            events.slice(0, 5).map((evt, idx) => (
+              <ActivityEventRow key={`${evt.tx_hash}-${idx}`} event={evt} olderEvents={events.slice(idx + 1)} />
+            ))
           ) : (
-            <>
-              <div className="activity-row">
-                <span className="activity-time">Block 2</span>
-                <span>
-                  <strong>BasketCreated</strong>
-                  <small>Registered on-chain via Factory</small>
-                </span>
-                <span className="activity-amount">+1 basket</span>
-                <span className="status completed">Completed</span>
-              </div>
-            </>
+            <p className="activity-empty">No confirmed basket operations yet.</p>
           )}
         </div>
       </section>

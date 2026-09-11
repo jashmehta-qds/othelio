@@ -79,6 +79,14 @@ export class BasketsController {
     return this.basketsService.quoteSwaps(address, body);
   }
 
+  @Post(':address/rebalance-confirmation')
+  async confirmRebalance(
+    @Param('address') address: string,
+    @Body() body: any,
+  ) {
+    return this.basketsService.confirmRebalance(address, body);
+  }
+
   @Post('create-seed-quote')
   async quoteCreateSeed(@Body() body: import('./basket-quote-planner.service').CreateSeedQuoteRequest) {
     return this.basketsService.quoteCreateSeed(body);

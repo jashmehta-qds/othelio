@@ -18,6 +18,20 @@ export async function fetchCreateSeedQuote(body: unknown) {
   return fetchApi<CreateSeedQuote>('/v1/baskets/create-seed-quote', { method: 'POST', body: JSON.stringify(body) });
 }
 
+export async function registerConfirmedBasket(body: {
+  chainId: number;
+  address: `0x${string}`;
+  controller: `0x${string}`;
+  name: string;
+  symbol: string;
+  createdBlock: number;
+  createdBlockHash: `0x${string}`;
+  createdTx: `0x${string}`;
+  assets: Array<{ address: string; targetWeightBps: number }>;
+}) {
+  return fetchApi('/v1/baskets', { method: 'POST', body: JSON.stringify(body) });
+}
+
 const createdTopic = parseAbiItem('event BasketCreated(address indexed basket,address indexed owner,string name,uint256 timestamp)').name;
 // Event names are intentionally checked with ABI topic decoding below through stable topic hashes exposed by viem.
 export function receiptCreatesAndFunds(receipt: { logs: readonly { address: string; topics: readonly `0x${string}`[] }[] }, factory: string, module: string, safe: string) {

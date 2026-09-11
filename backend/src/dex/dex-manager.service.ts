@@ -4,6 +4,7 @@ import { ZeroXAdapter } from './adapters/zero-x.adapter';
 import { OneInchAdapter } from './adapters/one-inch.adapter';
 import { AerodromeAdapter } from './adapters/aerodrome.adapter';
 import { FallbackAdapter } from './adapters/fallback.adapter';
+import { LocalAnvilAdapter } from './adapters/local-anvil.adapter';
 import { IDexAdapter, SwapQuoteParams, SwapQuoteResult } from './interfaces/dex-adapter.interface';
 
 @Injectable()
@@ -16,9 +17,10 @@ export class DexManagerService {
     @Inject(ZeroXAdapter) zeroXAdapter: ZeroXAdapter,
     @Inject(OneInchAdapter) oneInchAdapter: OneInchAdapter,
     @Inject(AerodromeAdapter) aerodromeAdapter: AerodromeAdapter,
+    @Inject(LocalAnvilAdapter) localAnvilAdapter: LocalAnvilAdapter,
     @Inject(FallbackAdapter) fallbackAdapter: FallbackAdapter,
   ) {
-    this.adapters = [zeroXAdapter, oneInchAdapter, aerodromeAdapter, fallbackAdapter];
+    this.adapters = [zeroXAdapter, oneInchAdapter, aerodromeAdapter, localAnvilAdapter, fallbackAdapter];
   }
 
   async getBestQuote(params: SwapQuoteParams): Promise<{

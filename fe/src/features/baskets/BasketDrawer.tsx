@@ -6,7 +6,7 @@ import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets, updateBasketWeights, depositBasket, withdrawBasket, getSlippageTolerance, type Basket } from "@/lib/baskets";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
-import { fetchSwapQuote } from "@/lib/api";
+import { confirmBasketRebalance, fetchSwapQuote } from "@/lib/api";
 import { toRawAmount, USDC_DECIMALS } from "@othelio/shared";
 
 export type BasketAction = "mint" | "withdraw" | "rebalance" | null;
@@ -28,6 +28,7 @@ export function BasketDrawer({ basket, action, onClose }: { basket: Basket; acti
 }
 
 function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => void }) {
+  const queryClient = useQueryClient();
   const chainId = useChainId();
   const { isConnected, address } = useAccount();
   const [targets, setTargets] = useState<Record<string, number>>(() =>
@@ -42,6 +43,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
   const { isPending: isSendPending, sendTransactionAsync } = useSendTransaction();
 
   const [activeHash, setActiveHash] = useState<`0x${string}` | null>(null);
+  const [submittedTargets, setSubmittedTargets] = useState<Array<{ assetAddress: string; targetWeightBps: number }>>([]);
   const hash = activeHash;
   const isPending = isSendPending;
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: hash ?? undefined });
@@ -53,8 +55,24 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
     if (isSuccess && hash && processedHash.current !== hash) {
       processedHash.current = hash;
       updateBasketWeights(basket.address, targets);
+      const activeChain = chainId as keyof typeof CONTRACT_ADDRESSES;
+      const moduleAddress = CONTRACT_ADDRESSES[activeChain]?.module;
+      if (moduleAddress && submittedTargets.length > 0) {
+        void confirmBasketRebalance(basket.address, {
+          chainId: activeChain,
+          moduleAddress,
+          txHash: hash,
+          targetWeights: submittedTargets,
+        }).then(() => Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["basket", basket.address] }),
+          queryClient.invalidateQueries({ queryKey: ["basket-positions", basket.address] }),
+          queryClient.invalidateQueries({ queryKey: ["baskets"] }),
+        ])).catch((error) => {
+          setExecutionError(error instanceof Error ? error.message : "Rebalance confirmed, but its allocation could not be refreshed.");
+        });
+      }
     }
-  }, [isSuccess, basket.address, targets, hash]);
+  }, [isSuccess, basket.address, targets, hash, chainId, submittedTargets, queryClient]);
 
   useEffect(() => {
     if (isSuccess) {
@@ -173,6 +191,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
         data: call.calldata as `0x${string}`,
         value: BigInt(call.valueBaseUnits),
       });
+      setSubmittedTargets(targetWeights);
       setActiveHash(tx);
     } catch (err) {
       console.error("Rebalance execution error:", err);
@@ -537,6 +556,18 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
 
         const usdcAmount = toRawAmount(depositAmount || "0", USDC_DECIMALS);
         const amountRaw = usdcAmount.toString();
+        const currentAllowance = (allowanceRaw as bigint) || BigInt(0);
+        if (currentAllowance < usdcAmount) {
+          const approveTxHash = await writeContractAsync({
+            address: usdcAddress,
+            abi: [{ inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' }],
+            functionName: 'approve',
+            args: [moduleAddr, usdcAmount],
+          });
+          if (!publicClient) throw new Error("Wallet client is unavailable on this network.");
+          await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
+          await refetchAllowance();
+        }
 
         const res = await fetchSwapQuote(basket.address, {
           action: 'mint',
@@ -562,24 +593,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         if (!res.executionAllowed || plan?.action !== 'FUND' || plan.simulation.status !== 'SUCCEEDED' || routeExpired || !callMatchesModule || !planMatchesBasket || !moduleIsBoundedV3 || !call) {
           throw new Error(quote?.preparationReason || "The funding route was not verified for execution.");
         }
-        const currentAllowance = (allowanceRaw as bigint) || BigInt(0);
-
         if (moduleAddr && moduleAddr !== '0x0000000000000000000000000000000000000000') {
           try {
-            // 1. Approve OthelioBasketModule if allowance is lower than required usdcAmount
-            if (currentAllowance < usdcAmount) {
-              const approveTxHash = await writeContractAsync({
-                address: usdcAddress,
-                abi: [{ inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' }],
-                functionName: 'approve',
-                args: [moduleAddr, usdcAmount],
-              });
-              if (publicClient && approveTxHash) {
-                await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
-              }
-              await refetchAllowance();
-            }
-
             if (quote?.inputAsset?.toLowerCase() !== usdcAddress.toLowerCase() || quote.inputAmount !== amountRaw) {
               throw new Error("The simulated funding plan no longer matches the requested input amount.");
             }
@@ -601,11 +616,51 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         setActionError(err instanceof Error ? err.message : "The funding action could not be prepared.");
       }
     } else {
-      setActionError(
-        withdrawInUsdc
-          ? "USDC withdrawal needs a simulated v3 bounded-execution quote. No unsafe legacy transaction was prepared."
-          : "In-kind withdrawal needs a canonical liquid-position preparation response. No empty or fallback transaction was prepared.",
-      );
+      if (withdrawInUsdc) {
+        setActionError("USDC withdrawal needs a simulated multi-route bounded-execution quote.");
+        return;
+      }
+      try {
+        if (!(chainId in CONTRACT_ADDRESSES)) {
+          throw new Error(`Withdrawal is unavailable on unsupported chain ${chainId}.`);
+        }
+        const withdrawValueUsdE8 = toRawAmount(depositAmount || "0", 8).toString();
+        const res = await fetchSwapQuote(basket.address, {
+          action: 'withdraw',
+          chainId,
+          moduleAddress: moduleAddr,
+          callerAddress: userAddress,
+          recipientAddress: userAddress,
+          withdrawValueUsdE8,
+        });
+        const quote = res.data;
+        const plan = quote.plan;
+        const call = plan?.calls[0];
+        const valid = res.executionAllowed
+          && plan?.action === 'WITHDRAW_LIQUID'
+          && plan.simulation.status === 'SUCCEEDED'
+          && plan.calls.length === 1
+          && new Date(plan.expiresAt).getTime() > Date.now()
+          && plan.chainId === chainId
+          && plan.accountAddress.toLowerCase() === basket.address.toLowerCase()
+          && plan.snapshot.basketAddress.toLowerCase() === basket.address.toLowerCase()
+          && quote.module?.moduleVersion === 3
+          && quote.module.supportsBoundedExecution
+          && quote.module.address.toLowerCase() === moduleAddr.toLowerCase()
+          && quote.recipientAddress?.toLowerCase() === userAddress.toLowerCase()
+          && quote.withdrawValueUsdE8 === withdrawValueUsdE8
+          && call?.to.toLowerCase() === moduleAddr.toLowerCase();
+        if (!valid || !call) throw new Error("The in-kind withdrawal plan was not verified for execution.");
+        const withdrawTx = await sendTransactionAsync({
+          to: call.to as `0x${string}`,
+          data: call.calldata as `0x${string}`,
+          value: BigInt(call.valueBaseUnits),
+        });
+        setActiveHash(withdrawTx);
+      } catch (err) {
+        console.error("Withdrawal execution error:", err);
+        setActionError(err instanceof Error ? err.message : "The in-kind withdrawal could not be prepared.");
+      }
     }
   };
 

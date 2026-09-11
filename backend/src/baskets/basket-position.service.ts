@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import {
   addressSchema,
   BasketCapabilities,
@@ -10,6 +10,7 @@ import {
 import { createPublicClient, http, parseAbi } from 'viem';
 import { DatabaseService } from '../database/database.service';
 import { AAVE_RPC_URLS, AAVE_V3_POOLS } from '../lending/adapters/aave-v3.adapter';
+import { getLocalAssetMarket } from '../dex/local-anvil-market';
 
 const ERC20_ABI = parseAbi([
   'function balanceOf(address account) view returns (uint256)',
@@ -70,6 +71,7 @@ export class BasketPositionService {
   async getPositionSnapshot(
     basketAddressInput: string,
     chainIdInput: string | number,
+    additionalAssetInputs: string[] = [],
   ): Promise<BasketPositionResponse> {
     let basketAddress: Address;
     let chainId: number;
@@ -107,8 +109,22 @@ export class BasketPositionService {
       };
     }
 
+    const basketCode = await client.getBytecode({ address: basketAddress, blockNumber }).catch(() => undefined);
+    if (!basketCode || basketCode === '0x') {
+      throw new ConflictException(
+        'BASKET_NOT_DEPLOYED_ON_CHAIN: the indexed basket does not exist on the current RPC chain. Recreate it after resetting or redeploying Anvil.',
+      );
+    }
+
     const issues: string[] = [];
     const configuredAssets = await this.getConfiguredAssets(chainId, basketAddress, blockNumber, issues);
+    const additionalAssets = additionalAssetInputs.map((asset) => {
+      try {
+        return addressSchema.parse(asset).toLowerCase() as Address;
+      } catch {
+        throw new BadRequestException('Every additional asset must be a valid EVM address.');
+      }
+    });
     const poolAddress = AAVE_V3_POOLS[chainId];
     const reserveAssets = poolAddress
       ? await this.getAaveReserves(client, poolAddress, blockNumber, issues)
@@ -118,7 +134,7 @@ export class BasketPositionService {
 
     const configuredKeys = new Set(configuredAssets.map((address) => address.toLowerCase()));
     const universe = new Map<string, Address>();
-    for (const address of [...configuredAssets, ...reserveAssets]) {
+    for (const address of [...configuredAssets, ...additionalAssets, ...reserveAssets]) {
       universe.set(address.toLowerCase(), address.toLowerCase() as Address);
     }
 
@@ -129,6 +145,7 @@ export class BasketPositionService {
     const reads = await Promise.all(
       [...universe.values()].map((assetAddress) => this.readAsset(
         client,
+        chainId,
         basketAddress,
         assetAddress,
         configuredKeys.has(assetAddress.toLowerCase()),
@@ -140,9 +157,10 @@ export class BasketPositionService {
       )),
     );
 
+    const additionalKeys = new Set(additionalAssets.map((address) => address.toLowerCase()));
     const visibleReads = reads.filter((read) =>
       read.configured || read.liquid === null || read.supplied === null || read.debt === null ||
-      read.liquid > 0n || read.supplied > 0n || read.debt > 0n,
+      read.liquid > 0n || read.supplied > 0n || read.debt > 0n || additionalKeys.has(read.address.toLowerCase()),
     );
 
     let grossAssets = 0n;
@@ -379,6 +397,7 @@ export class BasketPositionService {
 
   private async readAsset(
     client: PositionClient,
+    chainId: number,
     basketAddress: Address,
     assetAddress: Address,
     configured: boolean,
@@ -436,6 +455,9 @@ export class BasketPositionService {
     }
 
     let priceUsdE8: bigint | null = null;
+    if (chainId === 31337) {
+      priceUsdE8 = getLocalAssetMarket(assetAddress)?.priceUsdE8 ?? null;
+    }
     if (isAaveReserve && oracle) {
       try {
         const rawPrice = await client.readContract({

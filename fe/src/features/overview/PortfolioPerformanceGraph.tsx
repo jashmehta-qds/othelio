@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatCompactNumber, type BasketActivity } from "@/lib/baskets";
+import { formatCompactNumber, getConfirmedCashFlowUsd, type BasketActivity } from "@/lib/baskets";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 
 export type Timeframe = "1D" | "7D" | "30D";
@@ -77,13 +77,9 @@ export function PortfolioPerformanceGraph({
 
           if (isFundIn || isFundOut) {
             const type = isFundIn ? "fund_in" : "fund_out";
-            // Actual payload amount or fallback to standard transaction value
-            const rawAmount = (act as any).payload?.amount || (act as any).payload?.usdc_amount || (act as any).value;
-            const amount = rawAmount && Number(rawAmount) > 0
-              ? Number(rawAmount)
-              : totalNAV > 0
-              ? Math.round(totalNAV * 0.2)
-              : 1000;
+            const confirmedFlow = getConfirmedCashFlowUsd(act);
+            if (confirmedFlow === null) return;
+            const amount = Math.abs(confirmedFlow);
 
             const description = isFundIn ? "Fund In Deposit" : "Fund Out Withdrawal";
 

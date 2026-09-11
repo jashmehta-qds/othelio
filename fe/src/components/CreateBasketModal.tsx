@@ -8,7 +8,7 @@ import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets } from "@/lib/baskets";
-import { fetchCreateSeedQuote, receiptCreatesAndFunds } from "@/lib/createSeed";
+import { fetchCreateSeedQuote, receiptCreatesAndFunds, registerConfirmedBasket } from "@/lib/createSeed";
 import { useSupportedAssets } from "@/hooks/useBaskets";
 
 export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -16,7 +16,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
   const { address, isConnected } = useAccount();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
-  const depositAmount = "1000";
+  const [depositAmount, setDepositAmount] = useState("1000");
 
   // Search input query for adding new stock tokens
   const [searchQuery, setSearchQuery] = useState("");
@@ -46,6 +46,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
 
   const selectedSymbols = Object.keys(targets);
   const total = useMemo(() => Object.values(targets).reduce((sum, value) => sum + value, 0), [targets]);
+  const hasValidDeposit = Number.isFinite(Number(depositAmount)) && Number(depositAmount) > 0;
 
   const selectedAssets = selectedSymbols
     .map((s) => allSupportedAssets.find((asset) => asset.symbol === s))
@@ -131,16 +132,18 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
     const chainId = 31337;
     const config = CONTRACT_ADDRESSES[chainId];
     const inputAmount = parseUnits(depositAmount, 6);
+    if (!publicClient) throw new Error("Wallet client is unavailable on this network.");
+    const approval = await writeContractAsync({ address: config.usdc, abi: [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] }], functionName: "approve", args: [config.module, inputAmount] });
+    await publicClient.waitForTransactionReceipt({ hash: approval });
     const quote = await fetchCreateSeedQuote({ chainId, factoryAddress: config.factory, moduleAddress: config.module, ownerAddress: address, name: cleanName, clientSalt: `0x${crypto.getRandomValues(new Uint8Array(32)).reduce((hex, n) => hex + n.toString(16).padStart(2, "0"), "")}`, inputAsset: config.usdc, inputAmount: inputAmount.toString(), targetWeights: selectedAssets.map((asset) => ({ assetAddress: asset.address, targetWeightBps: (targets[asset.symbol] ?? 0) * 100 })) });
     const { data } = quote;
     const call = data.plan.calls[0];
     if (!quote.executionAllowed || data.plan.action !== "FUND" || data.plan.chainId !== chainId || data.plan.accountAddress.toLowerCase() !== data.predictedBasketAddress.toLowerCase() || data.factory.address.toLowerCase() !== config.factory.toLowerCase() || call?.to.toLowerCase() !== config.factory.toLowerCase() || data.module.moduleVersion !== 3 || !data.module.supportsBoundedExecution || new Date(data.plan.expiresAt).getTime() <= Date.now()) throw new Error("The create-and-seed plan is no longer executable.");
     if (data.plan.approvals.length !== 1 || data.plan.approvals[0].spenderAddress.toLowerCase() !== config.module.toLowerCase() || data.plan.approvals[0].maxAmountBaseUnits !== inputAmount.toString()) throw new Error("The planned approval does not match the exact seed input.");
-    const approval = await writeContractAsync({ address: config.usdc, abi: [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] }], functionName: "approve", args: [config.module, inputAmount] });
-    await publicClient?.waitForTransactionReceipt({ hash: approval });
     const tx = await sendTransactionAsync({ to: call.to as `0x${string}`, data: call.calldata as `0x${string}`, value: BigInt(call.valueBaseUnits) });
     const receipt = await publicClient?.waitForTransactionReceipt({ hash: tx });
     if (!receipt || receipt.status !== "success" || !receiptCreatesAndFunds(receipt, config.factory, config.module, data.predictedBasketAddress)) throw new Error("The receipt did not contain the expected BasketCreated and BasketFunded events.");
+    await registerConfirmedBasket({ chainId, address: data.predictedBasketAddress, controller: address, name: cleanName, symbol: symbol.trim() ? `OTH-${symbol.trim()}` : "OTH", createdBlock: Number(receipt.blockNumber), createdBlockHash: receipt.blockHash, createdTx: receipt.transactionHash, assets: selectedAssets.map((asset) => ({ address: asset.address as string, targetWeightBps: (targets[asset.symbol] ?? 0) * 100 })) });
     router.push(`/app/baskets/${data.predictedBasketAddress}`);
   };
 
@@ -152,7 +155,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
           <header>
             <div>
               <h2>{previewing ? "Staged Basket" : "Create Basket"}</h2>
-              <span>{previewing ? "Preview" : "Configure"}</span>
+              <span>{previewing ? "Review the exact onchain plan before signing" : "Configure identity, funding, and target allocation"}</span>
             </div>
             <button onClick={onClose} aria-label="Close create drawer">×</button>
           </header>
@@ -178,7 +181,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                 </div>
                 <div>
                   <span>Initial Seed Deposit</span>
-                  <strong>$1,000 USDC seed (exact factory plan)</strong>
+                  <strong>${Number(depositAmount || 0).toLocaleString("en-US")} USDC seed (exact factory plan)</strong>
                 </div>
                 <div>
                   <span>Basket Composition</span>
@@ -244,8 +247,10 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                   <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                     <input
                       type="number"
-                      value="0"
-                      disabled
+                      min="0.01"
+                      step="0.01"
+                      value={depositAmount}
+                      onChange={(event) => setDepositAmount(event.target.value)}
                       style={{
                         width: "100%",
                         padding: "9px 12px",
@@ -253,17 +258,15 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                         background: "var(--panel-2)",
                         border: "1px solid var(--panel-border)",
                         borderRadius: "10px",
-                        color: "var(--muted-ink)",
+                        color: "var(--ink)",
                         fontSize: "13px",
                         outline: "none",
                         fontWeight: 700,
-                        opacity: 0.6,
-                        cursor: "not-allowed",
                       }}
                     />
                     <span style={{ position: "absolute", right: "12px", fontSize: "11px", fontWeight: 700, color: "var(--muted-ink)", pointerEvents: "none" }}>USDC</span>
                   </div>
-                  <small style={{ fontSize: "10px", color: "var(--muted-ink)" }}>Basket created with $0 seed. Mint/deposit assets after deployment.</small>
+                  <small style={{ fontSize: "10px", color: "var(--muted-ink)" }}>The factory creates and funds the basket atomically using the reviewed quote.</small>
                 </label>
               </div>
 
@@ -488,7 +491,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
             </button>
             <button
               className="primary"
-              disabled={(!previewing && (total !== 100 || selectedAssets.length === 0)) || isPending || isConfirming}
+              disabled={(!previewing && (total !== 100 || selectedAssets.length === 0 || !hasValidDeposit)) || isPending || isConfirming}
               onClick={previewing ? handleExecute : () => setPreviewing(true)}
             >
               {previewing

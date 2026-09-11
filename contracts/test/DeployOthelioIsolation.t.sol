@@ -18,13 +18,16 @@ contract DeployOthelioIsolationTest is Test {
         assertEq(BASE_AAVE_POOL.code.length, 0);
     }
 
-    function testLocalMockModeRefusesToOverwriteExistingAaveCode() public {
+    function testLocalMockModePreservesExistingAaveCode() public {
         vm.chainId(31337);
         vm.setEnv("COINBASE_REGISTRY_ADDRESS", "0x0000000000000000000000000000000000000000");
         vm.etch(BASE_AAVE_POOL, hex"00");
+        bytes32 existingCodeHash = BASE_AAVE_POOL.codehash;
 
         DeployOthelio deployment = new DeployOthelio();
-        vm.expectRevert("REFUSE_TO_REPLACE_AAVE_CODE");
-        deployment.runWithLocalMocks(true);
+        (,,,,, address dexRouter,) = deployment.runWithLocalMocks(true);
+
+        assertNotEq(dexRouter, address(0));
+        assertEq(BASE_AAVE_POOL.codehash, existingCodeHash);
     }
 }

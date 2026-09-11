@@ -25,12 +25,12 @@ export async function fetchSwapQuote(basketAddress: string, body: unknown) {
     success: boolean;
     executionAllowed?: boolean;
     data: {
-      basketAddress: string;
-      action: string;
-      inputAsset: string;
-      inputAmount: string;
-      slippageBps: number;
-      target: string;
+      basketAddress?: string;
+      action?: string;
+      inputAsset?: string;
+      inputAmount?: string;
+      slippageBps?: number;
+      target?: string;
       allowanceSpender?: string;
       dexCalldata: `0x${string}`;
       soldAssets: string[];
@@ -65,8 +65,30 @@ export async function fetchSwapQuote(basketAddress: string, body: unknown) {
         basketTokens: string[];
         deadline: string;
       };
+      recipientAddress?: string;
+      withdrawValueUsdE8?: string;
+      withdrawal?: {
+        tokens: string[];
+        amounts: string[];
+        remainingTokens: string[];
+      };
     };
   }>(`/v1/baskets/${basketAddress}/quote-swaps`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function confirmBasketRebalance(
+  basketAddress: string,
+  body: {
+    chainId: number;
+    moduleAddress: string;
+    txHash: `0x${string}`;
+    targetWeights: Array<{ assetAddress: string; targetWeightBps: number }>;
+  },
+) {
+  return fetchApi<{ success: true }>(`/v1/baskets/${basketAddress}/rebalance-confirmation`, {
     method: 'POST',
     body: JSON.stringify(body),
   });

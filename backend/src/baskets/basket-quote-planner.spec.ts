@@ -36,6 +36,7 @@ const FUND_ABI = parseAbi([
   'function fundWithSwaps((address safe,address inputAsset,uint256 inputAmount,(address target,address allowanceSpender,uint256 inputAmount,bytes dexCalldata)[] legs,address[] boughtAssets,uint256[] minBoughtAmounts,address[] basketTokens,uint256 deadline) p) external returns (uint256[] boughtAmounts,uint256 totalNAV)',
 ]);
 const FACTORY_ABI = parseAbi(['function createAndSeedBasket(string name,(bytes32 clientSalt,(address safe,address inputAsset,uint256 inputAmount,(address target,address allowanceSpender,uint256 inputAmount,bytes dexCalldata)[] legs,address[] boughtAssets,uint256[] minBoughtAmounts,address[] basketTokens,uint256 deadline) mint) p) external returns (address,uint256[],uint256)']);
+const WITHDRAW_IN_KIND_ABI = parseAbi(['function withdrawInKind(address safe,address recipient,address[] tokens,uint256[] amounts,address[] remainingTokens) external returns (uint256 remainingNAV)']);
 
 function snapshot(amounts: Array<[string, string]>): PositionSnapshot {
   return {
@@ -124,7 +125,7 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     });
     if (!('rebalance' in response.data)) throw new Error('Expected a rebalance execution plan.');
 
-    expect(positions.getPositionSnapshot).toHaveBeenCalledWith(basket, 8453);
+    expect(positions.getPositionSnapshot).toHaveBeenCalledWith(basket, 8453, [overweight, underweight]);
     expect(dex.getBestQuote).toHaveBeenCalledWith(expect.objectContaining({
       chainId: 8453,
       sellToken: overweight,
@@ -154,6 +155,44 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     expect(params.maxSoldAmounts).toEqual([300_000_000n]);
     expect(params.boughtAssets.map((address) => address.toLowerCase())).toEqual([underweight]);
     expect(params.deadline).toBe(BigInt(Math.floor(new Date('2099-01-01T00:00:00.000Z').getTime() / 1000)));
+    expect(mockedClient.call).toHaveBeenCalledWith(expect.objectContaining({
+      account: caller,
+      to: moduleAddress,
+      data: response.data.plan.calls[0].calldata,
+      blockNumber: 123n,
+    }));
+  });
+
+  it('prepares an exact proportional in-kind withdrawal from the canonical liquid snapshot', async () => {
+    const { planner, dex, positions } = makePlanner(snapshot([
+      [overweight, '800000000'],
+      [underweight, '200000000'],
+    ]));
+
+    const response = await planner.quoteSwaps(basket, {
+      action: 'withdraw',
+      chainId: 8453,
+      moduleAddress,
+      callerAddress: caller,
+      recipientAddress: caller,
+      withdrawValueUsdE8: '25000000000',
+    });
+
+    expect(response.executionAllowed).toBe(true);
+    if (!('withdrawal' in response.data)) throw new Error('Expected an in-kind withdrawal plan.');
+    expect(response.data.plan.action).toBe('WITHDRAW_LIQUID');
+    expect(response.data.withdrawal).toEqual({
+      tokens: [overweight, underweight],
+      amounts: ['200000000', '50000000'],
+      remainingTokens: [overweight, underweight],
+    });
+    expect(positions.getPositionSnapshot).toHaveBeenCalledWith(basket, 8453);
+    expect(dex.getBestQuote).not.toHaveBeenCalled();
+    const decoded = decodeFunctionData({ abi: WITHDRAW_IN_KIND_ABI, data: response.data.plan.calls[0].calldata as `0x${string}` });
+    expect(decoded.functionName).toBe('withdrawInKind');
+    expect(decoded.args[0]).toBe(basket);
+    expect(decoded.args[1]).toBe(caller);
+    expect(decoded.args[3]).toEqual([200_000_000n, 50_000_000n]);
     expect(mockedClient.call).toHaveBeenCalledWith(expect.objectContaining({
       account: caller,
       to: moduleAddress,

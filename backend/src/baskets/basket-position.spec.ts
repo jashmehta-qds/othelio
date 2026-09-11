@@ -15,6 +15,7 @@ function makeService(variableDebtFails = false, symbol = 'USDC') {
   const observedBlockNumbers: bigint[] = [];
   const client = {
     getBlock: vi.fn().mockResolvedValue({ number: 123n, hash: blockHash, timestamp: 1_789_000_000n }),
+    getBytecode: vi.fn().mockResolvedValue('0x6000'),
     readContract: vi.fn(async (request: any) => {
       observedBlockNumbers.push(request.blockNumber);
       switch (request.functionName) {
@@ -128,6 +129,16 @@ describe('BasketPositionService', () => {
   it('reports malformed request identity as a typed bad request', async () => {
     const { service } = makeService();
     await expect(service.getPositionSnapshot('not-an-address', 0)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('rejects an indexed basket that no longer exists after a local chain reset', async () => {
+    const { service, client } = makeService();
+    client.getBytecode.mockResolvedValueOnce('0x');
+
+    await expect(service.getPositionSnapshot(basket, 8453)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining('BASKET_NOT_DEPLOYED_ON_CHAIN'),
+    });
   });
 
   it('returns an explicit unavailable snapshot when no RPC is configured', async () => {

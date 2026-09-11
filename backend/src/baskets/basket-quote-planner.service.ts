@@ -26,6 +26,9 @@ const BASKET_MODULE_V3_ABI = parseAbi([
 const BASKET_FUND_MODULE_V3_ABI = parseAbi([
   'function fundWithSwaps((address safe,address inputAsset,uint256 inputAmount,(address target,address allowanceSpender,uint256 inputAmount,bytes dexCalldata)[] legs,address[] boughtAssets,uint256[] minBoughtAmounts,address[] basketTokens,uint256 deadline) p) external returns (uint256[] boughtAmounts,uint256 totalNAV)',
 ]);
+const BASKET_WITHDRAW_IN_KIND_V3_ABI = parseAbi([
+  'function withdrawInKind(address safe,address recipient,address[] tokens,uint256[] amounts,address[] remainingTokens) external returns (uint256 remainingNAV)',
+]);
 const FACTORY_CREATE_SEED_V3_ABI = parseAbi([
   'function predictBasketAddress(address owner,bytes32 clientSalt) external view returns (address)',
   'function module() external view returns (address)',
@@ -56,6 +59,8 @@ export interface BasketQuoteRequest {
   inputAsset?: string;
   inputAmount?: string;
   slippageBps?: number;
+  recipientAddress?: string;
+  withdrawValueUsdE8?: string;
   targetWeights?: BasketTargetWeight[];
   /** Transitional alias used by the existing funding UI. */
   holdings?: BasketTargetWeight[];
@@ -94,9 +99,79 @@ export class BasketQuotePlannerService {
     const action = body.action ?? 'mint';
     if (action === 'rebalance') return this.quoteRebalance(basketAddress, body);
     if (action === 'mint') return this.quoteSingleAssetFunding(basketAddress, body);
-    throw new UnprocessableEntityException(
-      'Swap withdrawal planning is not supported by this endpoint. Use an explicit in-kind withdrawal or a bounded withdrawal planner.',
-    );
+    return this.quoteInKindWithdrawal(basketAddress, body);
+  }
+
+  private async quoteInKindWithdrawal(basketAddress: Address, body: BasketQuoteRequest) {
+    const chainId = this.requireChainId(body.chainId);
+    const moduleAddress = this.parseAddress(body.moduleAddress, 'moduleAddress');
+    const callerAddress = this.parseAddress(body.callerAddress, 'callerAddress');
+    const recipientAddress = this.parseAddress(body.recipientAddress ?? body.callerAddress, 'recipientAddress');
+    const requestedValueUsdE8 = this.parsePositiveAmount(body.withdrawValueUsdE8, 'withdrawValueUsdE8');
+    const { data: snapshot, capabilities } = await this.positions.getPositionSnapshot(basketAddress, chainId);
+    const capability = capabilities.actions.WITHDRAW_LIQUID;
+    if (capability.availability === 'DISABLED') throw new UnprocessableEntityException(capability.reason);
+    this.assertUsableSnapshot(snapshot, basketAddress, chainId);
+
+    let totalLiquidValueUsdE8 = 0n;
+    const positions = snapshot.tokens.map((token) => {
+      if (token.liquidAmountBaseUnits === null || token.priceUsdE8 === null) {
+        throw new UnprocessableEntityException(`Liquid balance or price is unknown for ${token.assetAddress}.`);
+      }
+      const balance = BigInt(token.liquidAmountBaseUnits);
+      const valueUsdE8 = (balance * BigInt(token.priceUsdE8)) / (10n ** BigInt(token.decimals));
+      totalLiquidValueUsdE8 += valueUsdE8;
+      return { assetAddress: token.assetAddress as Address, balance };
+    });
+    if (totalLiquidValueUsdE8 <= 0n) throw new UnprocessableEntityException('The basket has no valued liquid assets to withdraw.');
+    if (requestedValueUsdE8 > totalLiquidValueUsdE8) {
+      throw new UnprocessableEntityException('The requested withdrawal exceeds the canonical liquid basket value.');
+    }
+
+    const withdrawals = positions.map((position) => ({
+      ...position,
+      amount: requestedValueUsdE8 === totalLiquidValueUsdE8
+        ? position.balance
+        : (position.balance * requestedValueUsdE8) / totalLiquidValueUsdE8,
+    })).filter((position) => position.amount > 0n);
+    if (withdrawals.length === 0) throw new UnprocessableEntityException('The requested value is too small to produce a token withdrawal.');
+
+    const tokens = withdrawals.map((position) => position.assetAddress);
+    const amounts = withdrawals.map((position) => position.amount);
+    const remainingTokens = positions.map((position) => position.assetAddress);
+    const moduleCalldata = encodeFunctionData({
+      abi: BASKET_WITHDRAW_IN_KIND_V3_ABI,
+      functionName: 'withdrawInKind',
+      args: [basketAddress, recipientAddress, tokens, amounts, remainingTokens],
+    });
+    const simulation = await this.verifyV3AndSimulate({ chainId, snapshot, moduleAddress, callerAddress, moduleCalldata });
+    const expiresAt = new Date(Date.now() + 300_000).toISOString();
+    const plan = executionPlanSchema.parse({
+      action: 'WITHDRAW_LIQUID',
+      accountAddress: basketAddress,
+      chainId,
+      snapshot: { chainId, basketAddress, blockNumber: snapshot.blockNumber, blockHash: snapshot.blockHash },
+      calls: [{ order: 0, to: moduleAddress, calldata: moduleCalldata, valueBaseUnits: '0' }],
+      approvals: [],
+      limits: withdrawals.map((position) => ({ assetAddress: position.assetAddress, maxInputBaseUnits: position.amount.toString(), minOutputBaseUnits: null })),
+      expiresAt,
+      expectedAfterState: withdrawals.map((position) => ({ assetAddress: position.assetAddress, liquidDeltaBaseUnits: `-${position.amount}` })),
+      simulation,
+    });
+    return {
+      success: true,
+      executionAllowed: true,
+      data: {
+        basketAddress,
+        action: 'withdraw',
+        chainId,
+        recipientAddress,
+        withdrawValueUsdE8: requestedValueUsdE8.toString(),
+        plan,
+        module: { address: moduleAddress, moduleVersion: 3, supportsBoundedExecution: true },
+        withdrawal: { tokens, amounts: amounts.map(String), remainingTokens },
+      },
+    };
   }
 
   async quoteCreateSeed(body: CreateSeedQuoteRequest) {
@@ -156,7 +231,8 @@ export class BasketQuotePlannerService {
     const callerAddress = this.parseAddress(body.callerAddress, 'callerAddress');
     const slippageBps = this.parseSlippage(body.slippageBps);
     const targetWeights = this.parseTargetWeights(body.targetWeights ?? body.holdings);
-    const { data: snapshot, capabilities } = await this.positions.getPositionSnapshot(basketAddress, chainId);
+    const targetAssets = targetWeights.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'));
+    const { data: snapshot, capabilities } = await this.positions.getPositionSnapshot(basketAddress, chainId, targetAssets);
     const spotCapability = capabilities.actions.SPOT_REBALANCE;
     if (spotCapability.availability === 'DISABLED') {
       throw new UnprocessableEntityException(spotCapability.reason);

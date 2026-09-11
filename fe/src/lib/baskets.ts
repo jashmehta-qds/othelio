@@ -30,6 +30,10 @@ export type BasketActivity = {
   event_type: string;
   actor_address: string;
   tx_hash: string;
+  chain_id?: number | string;
+  basket_address?: string;
+  log_index?: number;
+  payload?: unknown;
   block_number?: number;
   occurred_at: string;
 };
@@ -408,15 +412,28 @@ export function formatEventMetadata(evt: any): { amountText: string; isPositive?
       const val = Number(payload.inputAmount) / 1_000_000;
       return { amountText: `+$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, isPositive: true };
     }
-    return { amountText: "+$1,000.00", isPositive: true };
+    return { amountText: "" };
   }
 
   if (type === "BASKETWITHDRAWN" || type === "WITHDRAWN") {
+    const withdrawnAssets = Array.isArray(payload?.withdrawnAssets) ? payload.withdrawnAssets : [];
+    const withdrawnAmounts = Array.isArray(payload?.withdrawnAmounts) ? payload.withdrawnAmounts : [];
+    if (Number(evt.chain_id) === 31337 && withdrawnAssets.length > 0 && withdrawnAssets.length === withdrawnAmounts.length) {
+      const localValue = withdrawnAssets.reduce((sum: number, assetAddress: unknown, index: number) => {
+        const asset = supportedAssets.find((candidate) => candidate.address?.toLowerCase() === String(assetAddress).toLowerCase());
+        const price = asset ? assetPrices[asset.symbol] : undefined;
+        if (!price || !/^\d+$/.test(String(withdrawnAmounts[index]))) return sum;
+        return sum + (Number(BigInt(String(withdrawnAmounts[index]))) / 1e18) * price;
+      }, 0);
+      if (localValue > 0) {
+        return { amountText: `-$${localValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, isPositive: false };
+      }
+    }
     if (payload?.navRedeemed) {
       const val = Number(payload.navRedeemed) / 1_000_000;
       return { amountText: `-$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, isPositive: false };
     }
-    return { amountText: "-$500.00", isPositive: false };
+    return { amountText: "" };
   }
 
   if (type === "BASKETCREATED" || type === "CREATED") {
@@ -428,6 +445,15 @@ export function formatEventMetadata(evt: any): { amountText: string; isPositive?
   }
 
   return { amountText: "" };
+}
+
+export function getConfirmedCashFlowUsd(evt: BasketActivity): number | null {
+  const metadata = formatEventMetadata(evt);
+  const match = metadata.amountText.match(/^([+-])\$([\d,]+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const amount = Number(match[2].replaceAll(',', ''));
+  if (!Number.isFinite(amount)) return null;
+  return match[1] === '-' ? -amount : amount;
 }
 
 export function getSlippageTolerance(): number {

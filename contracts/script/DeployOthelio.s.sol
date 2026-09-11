@@ -12,12 +12,17 @@ import {OthelioBorrowModule} from "../src/safe/OthelioBorrowModule.sol";
 import {OthelioSafeFactory} from "../src/factory/OthelioSafeFactory.sol";
 import {MockDEXRouter} from "../src/dex/MockDEXRouter.sol";
 import {MockAavePool} from "../src/mock/MockAavePool.sol";
+import {MockPriceFeed} from "../src/mock/MockPriceFeed.sol";
 
 contract DeployMockERC20 is ERC20 {
     constructor() ERC20("Mock Stock Asset", "MOCK") {}
 
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
+    }
+
+    function burnFrom(address from, uint256 amount) external {
+        _burn(from, amount);
     }
 }
 
@@ -148,16 +153,20 @@ contract DeployOthelio is Script {
             tokenDecimals[i] = 18;
             feedDecimals[i] = 8;
             isCoinbaseB20s[i] = (coinbaseRegistry != address(0));
+            if (installLocalMocks) priceFeeds[i] = address(new MockPriceFeed(_localPriceUsdE8(i)));
 
-            if (installLocalMocks && tokens[i].code.length == 0) {
+            if (installLocalMocks && tokens[i].code.length <= 1) {
                 vm.etch(tokens[i], type(DeployMockERC20).runtimeCode);
             }
         }
 
         if (installLocalMocks) {
             address aavePoolAddr = 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5;
-            require(aavePoolAddr.code.length == 0, "REFUSE_TO_REPLACE_AAVE_CODE");
-            vm.etch(aavePoolAddr, type(MockAavePool).runtimeCode);
+            // A fork already contains the real Aave pool. Preserve it; only install
+            // the mock on an empty local chain.
+            if (aavePoolAddr.code.length == 0) {
+                vm.etch(aavePoolAddr, type(MockAavePool).runtimeCode);
+            }
         }
 
         registry.configureBatch(
@@ -174,5 +183,14 @@ contract DeployOthelio is Script {
         console.log("OthelioBorrowModule deployed at:", borrowModuleAddr);
 
         vm.stopBroadcast();
+    }
+
+    function _localPriceUsdE8(uint256 index) private pure returns (int256) {
+        int256[13] memory prices = [
+            int256(224_50e6), int256(180e8), int256(200e8), int256(28_50e6), int256(175e8),
+            int256(31_20e6), int256(500e8), int256(415_20e6), int256(135e8), int256(125_40e6),
+            int256(65e8), int256(42e8), int256(250e8)
+        ];
+        return prices[index];
     }
 }

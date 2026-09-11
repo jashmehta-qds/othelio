@@ -303,6 +303,7 @@ async fn process_block_range(
 
                     let payload = json!({
                         "navRedeemed": e.nav_redeemed.to_string(),
+                        "outputAsset": format!("{:#x}", e.output_asset),
                         "withdrawnAssets": e.withdrawn_assets.iter().map(|a| format!("{:#x}", a)).collect::<Vec<_>>(),
                         "withdrawnAmounts": e.withdrawn_amounts.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
                         "remainingNAV": e.remaining_nav.to_string(),

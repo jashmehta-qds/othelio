@@ -8,7 +8,7 @@ export interface SwapQuoteParams {
 }
 
 export interface SwapQuoteResult {
-  providerName: '0x' | '1inch' | 'Aerodrome' | 'UniswapV3' | 'Fallback';
+  providerName: '0x' | '1inch' | 'Aerodrome' | 'UniswapV3' | 'LocalAnvil' | 'Fallback';
   chainId: number;
   sellToken: string;
   buyToken: string;
@@ -27,7 +27,7 @@ export interface SwapQuoteResult {
 }
 
 export interface IDexAdapter {
-  readonly name: '0x' | '1inch' | 'Aerodrome' | 'UniswapV3' | 'Fallback';
+  readonly name: '0x' | '1inch' | 'Aerodrome' | 'UniswapV3' | 'LocalAnvil' | 'Fallback';
   readonly supportedChainIds: number[];
   getQuote(params: SwapQuoteParams): Promise<SwapQuoteResult | null>;
 }
