@@ -323,7 +323,7 @@ body {
 .basket-index.app-page-frame { max-width: 1280px; margin: 0 auto; padding: 32px 40px 64px; }
 .index-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 28px; padding-bottom: 34px; }
 .index-head h1:not(.page-title), .flow-page h1:not(.page-title) { font-family: var(--font-heading), sans-serif; font-size: clamp(40px, 5vw, 72px); line-height: .96; letter-spacing: -.04em; }
-.index-head p, .flow-page > header p { max-width: 560px; margin-top: 12px; color: var(--muted-ink); line-height: 1.5; }
+.index-head p, .flow-page > header p, .activity-page > header p, .page-description { max-width: 560px; margin-top: 6px; margin-bottom: 0; color: var(--muted-ink); font-family: var(--font-atkinson), sans-serif; font-size: 14px; line-height: 1.5; }
 .portfolio-strip { display: grid; grid-template-columns: 1fr auto; align-items: end; min-height: 190px; padding: 30px; border-radius: 16px; background: var(--panel); color: var(--ink); }
 .portfolio-strip > span { align-self: start; font-size: 13px; }.portfolio-strip > strong { grid-column: 1; font-family: var(--font-heading), sans-serif; font-size: clamp(48px, 6vw, 88px); letter-spacing: -.04em; line-height: .92; font-variant-numeric: tabular-nums; }.portfolio-strip p { grid-column: 2; grid-row: 2; display: grid; gap: 4px; padding-bottom: 6px; text-align: right; }.portfolio-strip p b { color: var(--positive); }.portfolio-strip p span { opacity: .64; font-size: 12px; }
 .basket-list-head, .basket-list > a { display: grid; grid-template-columns: minmax(230px, 1.5fr) 130px 80px 70px 100px 18px; gap: 18px; align-items: center; }

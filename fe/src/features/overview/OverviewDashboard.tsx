@@ -337,7 +337,7 @@ export function OverviewDashboard() {
           <h1 className="page-title">
             Portfolio Overview
           </h1>
-          <p style={{ color: "var(--ink-3)", fontSize: "14px", margin: 0 }}>
+          <p className="page-description">
             Portfolio overview across active basket safes.
           </p>
         </div>

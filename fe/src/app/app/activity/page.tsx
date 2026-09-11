@@ -25,7 +25,7 @@ export default function ActivityPage() {
   });
 
   return <div className="app-page-frame activity-page">
-    <header><h1 className="page-title">Activity log</h1><p>Confirmed onchain operations across your baskets.</p></header>
+    <header><h1 className="page-title">Activity log</h1><p className="page-description">Confirmed onchain operations across your baskets.</p></header>
     <section className="activity-page-list" aria-label="Confirmed basket activity">
       {isLoading ? <p className="activity-empty">Loading confirmed operations…</p> : events.length > 0 ? events.map((event, index) => (
         <ActivityEventRow

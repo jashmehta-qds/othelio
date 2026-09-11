@@ -111,7 +111,7 @@ export default function SettingsPage() {
       <header className="index-head">
         <div>
           <h1 className="page-title">Settings</h1>
-          <p>Configure rebalancing slippage limits, execution speed, and account security.</p>
+          <p className="page-description">Configure rebalancing slippage limits, execution speed, and account security.</p>
         </div>
         {saveToast && (
           <div

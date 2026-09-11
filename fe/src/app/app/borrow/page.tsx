@@ -17,7 +17,7 @@ export default function LendingRecoveryPage() {
         <div>
           <p className="eyebrow">Portfolio-only release</p>
           <h1 className="page-title">Lending recovery</h1>
-          <p>New borrowing, collateral supply, and reinvestment are not offered in this app.</p>
+          <p className="page-description">New borrowing, collateral supply, and reinvestment are not offered in this app.</p>
         </div>
       </div>
 

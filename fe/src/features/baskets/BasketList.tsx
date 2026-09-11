@@ -41,7 +41,7 @@ export function BasketList() {
       <header className="index-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 className="page-title">Your baskets</h1>
-          <p>Baskets created and managed by your wallet.</p>
+          <p className="page-description">Baskets created and managed by your wallet.</p>
         </div>
         <Link
           href="/app/baskets/create"

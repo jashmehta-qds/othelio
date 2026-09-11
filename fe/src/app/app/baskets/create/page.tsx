@@ -204,7 +204,7 @@ export default function CreateBasketPage() {
         <h1 className="page-title">
           Create New Basket
         </h1>
-        <p style={{ color: "var(--muted-ink)", fontSize: "14px", marginTop: "6px" }}>
+        <p className="page-description">
           Define basket identity, ENS subdomain, seed capital, and target asset weights on-chain.
         </p>
       </header>
