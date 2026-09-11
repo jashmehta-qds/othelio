@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@nivo/sankey": "^0.99.0",
+    "@othelio/shared": "*",
     "@tanstack/react-query": "^5.102.8",
     "@types/three": "^0.185.4",
     "framer-motion": "^13.2.0",

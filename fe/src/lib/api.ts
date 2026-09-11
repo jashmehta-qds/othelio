@@ -1,4 +1,4 @@
-import type { ExecutionPlan } from '@othelio/shared';
+import type { ExecutionPlan } from '@/types/shared';
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';

@@ -1,5 +1,5 @@
 import { parseAbiItem } from 'viem';
-import type { ExecutionPlan } from '@othelio/shared';
+import type { ExecutionPlan } from '@/types/shared';
 import { fetchApi } from './api';
 
 export interface CreateSeedQuote {

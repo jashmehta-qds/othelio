@@ -7,7 +7,7 @@ import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets, updateBasketWeights, depositBasket, withdrawBasket, getSlippageTolerance, type Basket } from "@/lib/baskets";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { confirmBasketRebalance, fetchSwapQuote } from "@/lib/api";
-import { toRawAmount, USDC_DECIMALS } from "@othelio/shared";
+import { toRawAmount, USDC_DECIMALS } from "@/types/shared";
 
 export type BasketAction = "mint" | "withdraw" | "rebalance" | null;
 

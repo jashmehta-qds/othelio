@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { formatUnits, parseUnits } from "viem";
 import { useAccount, useChainId, usePublicClient, useWriteContract } from "wagmi";
-import type { BasketAction, MarketPosition } from "@othelio/shared";
+import type { BasketAction, MarketPosition } from "@/types/shared";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { useBasketsList, usePortfolioPositions } from "@/hooks/useBaskets";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";

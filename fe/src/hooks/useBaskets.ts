@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import type { BasketCapabilities, PositionSnapshot } from '@othelio/shared';
+import type { BasketCapabilities, PositionSnapshot } from '@/types/shared';
 import { fetchApi } from '@/lib/api';
 
 export interface IndexedBasket {

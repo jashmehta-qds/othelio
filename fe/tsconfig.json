@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@othelio/shared": ["./src/types/shared.ts"]
     }
   },
   "include": [
