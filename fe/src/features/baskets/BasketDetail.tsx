@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatUnits } from "viem";
-import { useChainId } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import AllocationSankey from "@/components/AllocationSankey";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
@@ -16,39 +16,47 @@ import { ActivityEventRow } from "./ActivityEventRow";
 
 export function BasketDetail({ basket: fallbackBasket, initialAction = null }: { basket: Basket; initialAction?: BasketAction }) {
   const chainId = useChainId() || 31337;
+  const { address, isConnected } = useAccount();
   const [action, setAction] = useState<BasketAction>(initialAction);
   const [localBasket, setLocalBasket] = useState<Basket | null>(null);
 
+  // Live queries for basket details and activity by contract address
+  const { data: ownedBasketsResponse } = useBasketsList(31337, isConnected ? address : undefined);
+  const ownedBasket = ownedBasketsResponse?.data.find((candidate) =>
+    candidate.address.toLowerCase() === fallbackBasket.address.toLowerCase()
+    && candidate.controller.toLowerCase() === address?.toLowerCase(),
+  );
+  const canManageBasket = Boolean(ownedBasket);
+  // A basket address is the public, shareable read surface. Activity and
+  // browser-local drafts are controller-session data and remain private.
+  const { data: apiDetails } = useBasketDetails(fallbackBasket.address, 31337);
+  const { data: fetchedActivity } = useBasketActivity(fallbackBasket.address, 31337, canManageBasket);
+  const { data: priceMap } = useAssetPrices();
+  const { data: portfolioResponse } = usePortfolioPositions(fallbackBasket.address, chainId);
+  const apiActivity = canManageBasket ? fetchedActivity : undefined;
+  const portfolioSnapshot = portfolioResponse?.data;
+
   useEffect(() => {
     const loadBasket = () => {
-      if (typeof window !== "undefined") {
+      // Browser-stored drafts belong to the connected owner session and are
+      // never part of the public basket view.
+      if (typeof window !== "undefined" && canManageBasket) {
         const created = getCreatedBaskets();
         const found = created.find(
           (b: Basket) => b.address.toLowerCase() === fallbackBasket.address.toLowerCase() ||
             b.name.toLowerCase() === fallbackBasket.name.toLowerCase()
         ) ?? getBasket(fallbackBasket.address);
         if (found) setLocalBasket({ ...found });
+      } else {
+        setLocalBasket(null);
       }
     };
     loadBasket();
     window.addEventListener("basket_updated", loadBasket);
-    return () => {
-      window.removeEventListener("basket_updated", loadBasket);
-    };
-  }, [fallbackBasket.address, fallbackBasket.name]);
+    return () => window.removeEventListener("basket_updated", loadBasket);
+  }, [fallbackBasket.address, fallbackBasket.name, canManageBasket]);
 
-  // Live queries for basket details and activity by contract address
-  const { data: apiDetails } = useBasketDetails(fallbackBasket.address, 31337);
-  const { data: apiList } = useBasketsList(31337);
-  const { data: apiActivity } = useBasketActivity(fallbackBasket.address, 31337);
-  const { data: priceMap } = useAssetPrices();
-  const { data: portfolioResponse, isLoading: isPortfolioLoading, error: portfolioError } = usePortfolioPositions(fallbackBasket.address, chainId);
-  const portfolioSnapshot = portfolioResponse?.data;
-
-  const indexedBasket = apiDetails?.data ?? apiList?.data?.find(
-    (b) => b.address.toLowerCase() === fallbackBasket.address.toLowerCase() ||
-      (localBasket && b.name.toLowerCase() === localBasket.name.toLowerCase())
-  );
+  const indexedBasket = apiDetails?.data ?? ownedBasket;
   const isBasketIndexed = Boolean(indexedBasket) || Boolean(localBasket);
 
   const [mounted, setMounted] = useState(false);
@@ -56,7 +64,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     setMounted(true);
   }, []);
 
-  const localEvents = mounted ? getLocalActivity(fallbackBasket.address) : [];
+  const localEvents = mounted && canManageBasket ? getLocalActivity(fallbackBasket.address) : [];
   const apiEvents: BasketActivity[] = (apiActivity?.data ?? []).map((evt) => ({
     ...evt,
     event_type: evt.event_type === "FUNDED" ? "BasketFunded" : evt.event_type === "CREATED" ? "BasketCreated" : evt.event_type,
@@ -300,15 +308,15 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
 
           <div style={{ flex: "0 1 380px", minWidth: "300px", display: "flex", flexDirection: "column", gap: "16px", alignItems: "flex-end" }}>
             <div style={{ width: "100%" }}>
-              <PortfolioDrift holdings={basket.holdings} onRebalance={() => setAction("rebalance")} />
+              <PortfolioDrift holdings={basket.holdings} />
             </div>
 
             <div className="basket-actions" style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button className="primary" onClick={() => setAction("mint")}>
+              <button className="primary" disabled={!canManageBasket} onClick={() => setAction("mint")}>
                 <AppIcon type="plus" />Add funds
               </button>
-              <button onClick={() => setAction("withdraw")}>Withdraw</button>
-              <button onClick={() => setAction("rebalance")}>Rebalance</button>
+              <button disabled={!canManageBasket} onClick={() => setAction("withdraw")}>Withdraw</button>
+              <button disabled={!canManageBasket} onClick={() => setAction("rebalance")}>Rebalance</button>
             </div>
           </div>
         </div>
@@ -440,7 +448,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
           )}
         </div>
       </section>
-      {action && <BasketDrawer basket={basket} action={action} onClose={() => setAction(null)} />}
+      {action && canManageBasket && <BasketDrawer basket={basket} action={action} onClose={() => setAction(null)} />}
     </>
   );
 }

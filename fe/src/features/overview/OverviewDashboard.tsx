@@ -57,11 +57,11 @@ export function OverviewDashboard() {
   }, []);
 
   // Fetch indexed baskets from backend API
-  const { data: apiResponse } = useBasketsList(31337, address);
+  const { data: apiResponse } = useBasketsList(31337, isConnected ? address : undefined);
   const indexedBaskets = apiResponse?.data || [];
 
   // Fetch recent activity feed
-  const { data: activityRes } = useAllActivity(31337);
+  const { data: activityRes } = useAllActivity(31337, Boolean(isConnected && address));
   const indexedEvents = activityRes?.data || [];
 
   // Combine active baskets (User Created -> Backend Indexed) - Strict 0 when disconnected
@@ -380,10 +380,12 @@ export function OverviewDashboard() {
                   left: 0,
                   top: 0,
                   bottom: 0,
-                  width: totalNAV > 0 ? "100%" : "0%",
+                  width: "100%",
                   background: "linear-gradient(90deg, #10b981 0%, #34d399 100%)",
                   borderRadius: "9px",
-                  transition: "width 0.4s ease",
+                  transform: `scaleX(${totalNAV > 0 ? 1 : 0})`,
+                  transformOrigin: "left center",
+                  transition: "transform 0.4s ease",
                   opacity: 0.85,
                 }}
               />
@@ -432,14 +434,16 @@ export function OverviewDashboard() {
                   bottom: 0,
                   left: totalUnrealizedDollar >= 0 ? 0 : "auto",
                   right: totalUnrealizedDollar < 0 ? 0 : "auto",
-                  width: Math.abs(totalUnrealizedDollar) < 0.001 ? "0%" : `${Math.min(100, Math.max(12, Math.abs(totalUnrealizedPercent) * 5))}%`,
+                  width: "100%",
                   background: Math.abs(totalUnrealizedDollar) < 0.001
                     ? "rgba(255, 255, 255, 0.08)"
                     : totalUnrealizedDollar > 0
                     ? "linear-gradient(90deg, #10b981 0%, #34d399 100%)"
                     : "linear-gradient(270deg, #ef4444 0%, #f87171 100%)",
                   borderRadius: "9px",
-                  transition: "width 0.4s ease",
+                  transform: `scaleX(${Math.abs(totalUnrealizedDollar) < 0.001 ? 0 : Math.min(100, Math.max(12, Math.abs(totalUnrealizedPercent) * 5)) / 100})`,
+                  transformOrigin: totalUnrealizedDollar < 0 ? "right center" : "left center",
+                  transition: "transform 0.4s ease",
                   opacity: 0.85,
                 }}
               />
@@ -489,10 +493,12 @@ export function OverviewDashboard() {
                   left: 0,
                   top: 0,
                   bottom: 0,
-                  width: totalRealizedGains > 0 ? "100%" : "0%",
+                  width: "100%",
                   background: "linear-gradient(90deg, #10b981 0%, #34d399 100%)",
                   borderRadius: "9px",
-                  transition: "width 0.4s ease",
+                  transform: `scaleX(${totalRealizedGains > 0 ? 1 : 0})`,
+                  transformOrigin: "left center",
+                  transition: "transform 0.4s ease",
                   opacity: 0.85,
                 }}
               />

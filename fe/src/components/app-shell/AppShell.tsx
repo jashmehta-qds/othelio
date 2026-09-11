@@ -7,6 +7,7 @@ import { useAccount, useConnect, useDisconnect, useBalance, useChainId, useSwitc
 import { formatUnits } from "viem";
 import { AppIcon, type AppNavId } from "./AppIcon";
 import { useBasketsList } from "@/hooks/useBaskets";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatAddress, formatCompactNumber, type Basket } from "@/lib/baskets";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 
@@ -33,6 +34,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { address, isConnected, isConnecting, chain, chainId: activeChainId } = useAccount();
   const { connect, connectors, isPending: isConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
+  const queryClient = useQueryClient();
   const { switchChain } = useSwitchChain();
   const targetChainId = process.env.NEXT_PUBLIC_CHAIN_ID ? Number(process.env.NEXT_PUBLIC_CHAIN_ID) : 31337;
   const isWrongNetwork = mounted && isConnected && activeChainId !== undefined && activeChainId !== targetChainId;
@@ -170,7 +172,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   // Baskets query to calculate live sum NAV for connected user
-  const { data: basketsResponse, isLoading: isBasketsLoading } = useBasketsList(31337, address);
+  const { data: basketsResponse, isLoading: isBasketsLoading } = useBasketsList(31337, isConnected ? address : undefined);
+
+  const handleDisconnect = () => {
+    // Detail/activity responses are wallet-specific in the app. Remove them
+    // immediately instead of leaving a previous wallet's cache on screen.
+    queryClient.clear();
+    disconnect();
+  };
 
   // User Profile & Onboarding state
   const [userName, setUserName] = useState<string>("");
@@ -333,7 +342,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </strong>
                     <small>{formatAddress(address)}</small>
                   </span>
-                  <button onClick={() => disconnect()} aria-label="Sign out" title="Sign out" style={{ border: 0, color: 'var(--muted-ink)', background: 'transparent', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: '4px' }}>
+                  <button onClick={handleDisconnect} aria-label="Sign out" title="Sign out" style={{ border: 0, color: 'var(--muted-ink)', background: 'transparent', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: '4px' }}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                       <polyline points="16 17 21 12 16 7" />
@@ -442,7 +451,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="mobile-header">
           <Link href="/" className="bank-wordmark">Othelio</Link>
           {mounted && isConnected && address ? (
-            <button onClick={() => disconnect()} className="theme-toggle" style={{ fontSize: '11px' }}>
+            <button onClick={handleDisconnect} className="theme-toggle" style={{ fontSize: '11px' }}>
               {formatAddress(address)} (Disconnect)
             </button>
           ) : (

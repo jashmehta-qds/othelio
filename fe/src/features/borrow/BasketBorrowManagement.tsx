@@ -6,7 +6,7 @@ import { formatUnits, parseUnits } from "viem";
 import { useAccount, useChainId, usePublicClient, useWriteContract } from "wagmi";
 import type { BasketAction, MarketPosition } from "@othelio/shared";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { usePortfolioPositions } from "@/hooks/useBaskets";
+import { useBasketsList, usePortfolioPositions } from "@/hooks/useBaskets";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { formatAddress } from "@/lib/baskets";
 import { recordLendingSubmission } from "@/lib/api";
@@ -67,7 +67,12 @@ export function BasketBorrowManagement({ basketId }: { basketId: string }) {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync, isPending: isWalletPending } = useWriteContract();
-  const { data, isLoading, isFetching, error, refetch } = usePortfolioPositions(basketId, activeChainId);
+  const { data: ownedBaskets, isLoading: isLoadingOwnership } = useBasketsList(activeChainId, isConnected ? address : undefined);
+  const ownsBasket = Boolean(ownedBaskets?.data.some((basket) =>
+    basket.address.toLowerCase() === basketId.toLowerCase()
+    && basket.controller.toLowerCase() === address?.toLowerCase(),
+  ));
+  const { data, isLoading, isFetching, error, refetch } = usePortfolioPositions(basketId, activeChainId, ownsBasket);
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [txState, setTxState] = useState<TxState>(null);
 
@@ -77,6 +82,19 @@ export function BasketBorrowManagement({ basketId }: { basketId: string }) {
     () => new Map((snapshot?.tokens ?? []).map((token) => [token.assetAddress.toLowerCase(), token])),
     [snapshot?.tokens],
   );
+
+  if (!ownsBasket) {
+    return (
+      <section className="basket-index" style={{ maxWidth: "720px", margin: "0 auto", padding: "48px 0" }}>
+        <h1>{isLoadingOwnership ? "Checking basket access…" : "Lending recovery unavailable"}</h1>
+        <p style={{ color: "var(--muted-ink)", marginTop: "10px" }}>
+          {isLoadingOwnership
+            ? "Verifying the connected wallet owns this basket."
+            : "Connect the owner wallet to view or manage an existing lending position."}
+        </p>
+      </section>
+    );
+  }
 
   const submitRecovery = async (kind: RecoveryKind, position: MarketPosition) => {
     const key = `${identityKey(position)}:${kind}`;

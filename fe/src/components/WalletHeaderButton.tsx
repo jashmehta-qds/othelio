@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatAddress } from "@/lib/baskets";
 import { WalletConnectModal } from "./WalletConnectModal";
 
@@ -10,6 +11,7 @@ export function WalletHeaderButton() {
   const { address, isConnected, isConnecting } = useAccount();
   const { isPending } = useConnect();
   const { disconnect } = useDisconnect();
+  const queryClient = useQueryClient();
   const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
   const [mounted, setMounted] = useState<boolean>(false);
 
@@ -20,6 +22,10 @@ export function WalletHeaderButton() {
   const handleConnect = () => {
     setShowConnectModal(true);
   };
+  const handleDisconnect = () => {
+    queryClient.clear();
+    disconnect();
+  };
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
@@ -29,7 +35,7 @@ export function WalletHeaderButton() {
             <code style={{ color: "var(--accent)" }}>{formatAddress(address)}</code>
           </span>
           <button
-            onClick={() => disconnect()}
+            onClick={handleDisconnect}
             style={{
               background: "transparent",
               border: "1px solid var(--line)",

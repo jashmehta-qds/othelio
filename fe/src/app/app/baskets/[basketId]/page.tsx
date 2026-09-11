@@ -1,5 +1,5 @@
 import { BasketDetail } from "@/features/baskets/BasketDetail";
-import { baskets, getBasket } from "@/lib/baskets";
+import { getBasket } from "@/lib/baskets";
 
 export default async function BasketPage({ params, searchParams }: { params: Promise<{ basketId: string }>; searchParams: Promise<{ action?: string }> }) {
   const [{ basketId }, query] = await Promise.all([params, searchParams]);

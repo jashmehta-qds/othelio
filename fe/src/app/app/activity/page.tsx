@@ -6,7 +6,7 @@ import { ActivityEventRow } from "@/features/baskets/ActivityEventRow";
 
 export default function ActivityPage() {
   const { address, isConnected } = useAccount();
-  const { data: activityRes, isLoading } = useAllActivity(31337);
+  const { data: activityRes, isLoading } = useAllActivity(31337, Boolean(isConnected && address));
   const rawEvents = !isConnected || !address ? [] : activityRes?.data ?? [];
   const events = rawEvents.filter((event, index, all) => {
     const hash = (event.tx_hash || "").toLowerCase();

@@ -60,22 +60,25 @@ export function useBasketsList(chainId = 31337, controller?: string) {
   return useQuery<{ data: IndexedBasket[] }>({
     queryKey: ['baskets', chainId, controller],
     queryFn: () => fetchApi<{ data: IndexedBasket[] }>(`/v1/baskets${query}`),
+    // A controller address is the client-side session boundary. Never load the
+    // unfiltered basket index into the browser while a wallet is disconnected.
+    enabled: Boolean(controller),
   });
 }
 
-export function useBasketDetails(address: string, chainId = 31337) {
+export function useBasketDetails(address: string, chainId = 31337, enabled = true) {
   return useQuery<BasketDetailsResponse>({
     queryKey: ['basket', address, chainId],
     queryFn: () => fetchApi<BasketDetailsResponse>(`/v1/baskets/${address}?chainId=${chainId}`),
-    enabled: Boolean(address),
+    enabled: enabled && Boolean(address),
   });
 }
 
-export function useBasketActivity(address: string, chainId = 31337) {
+export function useBasketActivity(address: string, chainId = 31337, enabled = true) {
   return useQuery<{ data: BasketEvent[] }>({
     queryKey: ['basket-activity', address, chainId],
     queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/${address}/activity?chainId=${chainId}`),
-    enabled: Boolean(address),
+    enabled: enabled && Boolean(address),
     refetchInterval: 3000,
   });
 }
@@ -85,21 +88,22 @@ export interface PortfolioPositionsResponse {
   capabilities: BasketCapabilities;
 }
 
-export function usePortfolioPositions(address: string, chainId = 31337) {
+export function usePortfolioPositions(address: string, chainId = 31337, enabled = true) {
   return useQuery<PortfolioPositionsResponse>({
     queryKey: ['basket-positions', address.toLowerCase(), chainId],
     queryFn: () => fetchApi<PortfolioPositionsResponse>(
       `/v1/baskets/${address}/positions?chainId=${chainId}`,
     ),
-    enabled: /^0x[a-fA-F0-9]{40}$/.test(address),
+    enabled: enabled && /^0x[a-fA-F0-9]{40}$/.test(address),
     refetchInterval: 15_000,
   });
 }
 
-export function useAllActivity(chainId = 31337) {
+export function useAllActivity(chainId = 31337, enabled = true) {
   return useQuery<{ data: BasketEvent[] }>({
     queryKey: ['all-activity', chainId],
     queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/activity/all?chainId=${chainId}`),
+    enabled,
     refetchInterval: 3000,
   });
 }
