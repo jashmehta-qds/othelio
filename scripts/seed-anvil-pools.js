@@ -1,6 +1,22 @@
 const fs = require("fs");
 const path = require("path");
 
+const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
+const LOCAL_ROUTER = "0xBD606f1dAE0285D55113eFC11501677B2221A4dd";
+const LOCAL_DEPLOYER = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+const ROUTER_LIQUIDITY = 1_000_000n * 10n ** 18n;
+
+async function rpc(method, params) {
+  const response = await fetch(RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 }),
+  });
+  const payload = await response.json();
+  if (payload.error) throw new Error(`${method}: ${payload.error.message}`);
+  return payload.result;
+}
+
 const TOKEN_ADDRESSES = [
   "0xb200000000000000000000C2e324d24d7eEcd1fb", // AAPLc
   "0xb200000000000000000000d9192b6B456483C2E8", // AMZNc
@@ -18,7 +34,11 @@ const TOKEN_ADDRESSES = [
 ];
 
 async function seedAnvilPools() {
-  const rpcUrl = "http://127.0.0.1:8545";
+  const rpcUrl = RPC_URL;
+  if ((await rpc("eth_getCode", [LOCAL_ROUTER, "latest"])) !== "0x") {
+    console.log("[seed-anvil-pools] Local fixtures already installed; skipping seed.");
+    return;
+  }
 
   // 1. Etch MockAavePool contract bytecode
   const aaveArtifactPath = path.join(__dirname, "../contracts/out/MockAavePool.sol/MockAavePool.json");
@@ -47,28 +67,29 @@ async function seedAnvilPools() {
 
   // 2. Etch DeployMockERC20 bytecode onto all 13 Coinbase B20 token addresses
   const erc20ArtifactPath = path.join(__dirname, "../contracts/out/DeployOthelio.s.sol/DeployMockERC20.json");
+  const routerArtifactPath = path.join(__dirname, "../contracts/out/MockDEXRouter.sol/MockDEXRouter.json");
+  if (!fs.existsSync(routerArtifactPath)) throw new Error("MockDEXRouter artifact is missing; run forge build first.");
+  const routerJson = JSON.parse(fs.readFileSync(routerArtifactPath, "utf8"));
+  await rpc("anvil_setCode", [LOCAL_ROUTER, routerJson.deployedBytecode.object]);
   if (fs.existsSync(erc20ArtifactPath)) {
     const erc20Json = JSON.parse(fs.readFileSync(erc20ArtifactPath, "utf8"));
     const erc20Bytecode = erc20Json.deployedBytecode.object;
 
     for (const addr of TOKEN_ADDRESSES) {
-      try {
-        await fetch(rpcUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "anvil_setCode",
-            params: [addr, erc20Bytecode],
-            id: 2,
-          }),
-        });
-      } catch (err) {
-        console.warn(`[seed-anvil-pools] Failed to etch ERC20 bytecode on ${addr}:`, err.message);
-      }
+      await rpc("anvil_setCode", [addr, erc20Bytecode]);
+      const recipient = LOCAL_ROUTER.slice(2).toLowerCase().padStart(64, "0");
+      const amount = ROUTER_LIQUIDITY.toString(16).padStart(64, "0");
+      await rpc("eth_sendTransaction", [{
+        from: LOCAL_DEPLOYER,
+        to: addr,
+        data: `0x40c10f19${recipient}${amount}`,
+      }]);
     }
     console.log(`[seed-anvil-pools] Etched DeployMockERC20 bytecode onto all ${TOKEN_ADDRESSES.length} Coinbase stock token contracts on local Anvil RPC.`);
-  }
+  } else throw new Error("DeployMockERC20 artifact is missing; run forge build first.");
 }
 
-seedAnvilPools();
+seedAnvilPools().catch((error) => {
+  console.error("[seed-anvil-pools] Failed:", error);
+  process.exitCode = 1;
+});

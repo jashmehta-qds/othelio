@@ -102,8 +102,10 @@ contract DeployOthelio is Script {
 
         if (installLocalMocks) {
             require(block.chainid == 31337, "LOCAL_MOCKS_REQUIRE_31337");
-            MockDEXRouter dexRouter = new MockDEXRouter();
-            dexRouterAddr = address(dexRouter);
+            // The local quote adapter uses a stable router address. Etching keeps
+            // it stable regardless of the forked deployer account nonce.
+            dexRouterAddr = 0xBD606f1dAE0285D55113eFC11501677B2221A4dd;
+            vm.etch(dexRouterAddr, type(MockDEXRouter).runtimeCode);
         }
 
         // 7. Deploy Othelio Borrow Module
@@ -155,7 +157,7 @@ contract DeployOthelio is Script {
             isCoinbaseB20s[i] = (coinbaseRegistry != address(0));
             if (installLocalMocks) priceFeeds[i] = address(new MockPriceFeed(_localPriceUsdE8(i)));
 
-            if (installLocalMocks && tokens[i].code.length <= 1) {
+            if (installLocalMocks) {
                 vm.etch(tokens[i], type(DeployMockERC20).runtimeCode);
             }
         }
