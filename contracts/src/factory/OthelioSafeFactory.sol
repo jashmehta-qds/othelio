@@ -25,6 +25,7 @@ contract OthelioSafeFactory is IOthelioEvents {
     }
 
     function createBasket(string calldata name) external returns (address basket) {
+        require(bytes(name).length > 0 && bytes(name).length <= 128, "INVALID_NAME");
         OthelioBasketAccount account = new OthelioBasketAccount(msg.sender, module, registry);
         basket = address(account);
 
@@ -76,6 +77,7 @@ contract OthelioSafeFactory is IOthelioEvents {
     }
 
     function registerBasket(address safe, address owner, string calldata name) external {
+        require(bytes(name).length > 0 && bytes(name).length <= 128, "INVALID_NAME");
         require(!isOthelioBasket[safe], "ALREADY_REGISTERED");
         require(safe != address(0) && owner != address(0), "ZERO_ADDRESS");
         require(safe.code.length > 0, "SAFE_NOT_CONTRACT");

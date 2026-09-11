@@ -27,11 +27,13 @@ contract OthelioBasketGuard is ITransactionGuard, IOthelioEvents {
     address public immutable authorizedModule;
     address public immutable multiSend;
 
-    // Standard ERC20 selectors
+    // Standard ERC20 and permit selectors
     bytes4 private constant TRANSFER_SELECTOR = 0xa9059cbb;           // transfer(address,uint256)
     bytes4 private constant TRANSFER_FROM_SELECTOR = 0x23b872dd;      // transferFrom(address,address,uint256)
     bytes4 private constant APPROVE_SELECTOR = 0x095ea7b3;            // approve(address,uint256)
     bytes4 private constant INCREASE_ALLOWANCE_SELECTOR = 0x39509351;  // increaseAllowance(address,uint256)
+    bytes4 private constant DECREASE_ALLOWANCE_SELECTOR = 0xa457c2d7;  // decreaseAllowance(address,uint256)
+    bytes4 private constant PERMIT_SELECTOR = 0xd505accf;              // permit(address,address,uint256,uint256,uint8,bytes32,bytes32)
 
     constructor(address registry_, address authorizedModule_, address multiSend_) {
         require(registry_ != address(0) && authorizedModule_ != address(0), "ZERO_ADDRESS");
@@ -53,9 +55,11 @@ contract OthelioBasketGuard is ITransactionGuard, IOthelioEvents {
         bytes memory, /* signatures */
         address msgSender
     ) external view override {
+        require(to != address(0), "OthelioGuard: Zero destination");
+
         // Operation 1 = DelegateCall. Block DelegateCall unless calling canonical MultiSend router
         if (operation == 1) {
-            require(to == multiSend && multiSend != address(0), "OthelioGuard: Unauthorized DelegateCall");
+            require(multiSend != address(0) && to == multiSend, "OthelioGuard: Unauthorized DelegateCall");
         }
 
         // If data contains an ERC-20 transfer/approve call
@@ -69,7 +73,9 @@ contract OthelioBasketGuard is ITransactionGuard, IOthelioEvents {
                 selector == TRANSFER_SELECTOR ||
                 selector == TRANSFER_FROM_SELECTOR ||
                 selector == APPROVE_SELECTOR ||
-                selector == INCREASE_ALLOWANCE_SELECTOR
+                selector == INCREASE_ALLOWANCE_SELECTOR ||
+                selector == DECREASE_ALLOWANCE_SELECTOR ||
+                selector == PERMIT_SELECTOR
             ) {
                 bool isTracked = registry.isSupported(block.chainid, to);
                 if (isTracked) {

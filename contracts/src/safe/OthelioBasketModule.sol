@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IOthelioEvents} from "../interfaces/IOthelioEvents.sol";
 import {IOthelioAccountCapabilities} from "../interfaces/IOthelioAccountCapabilities.sol";
 import {BasketOracle} from "../oracle/BasketOracle.sol";
@@ -18,7 +19,7 @@ interface ISafe {
     function isOwner(address owner) external view returns (bool);
 }
 
-contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
+contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     BasketOracle public immutable oracle;
@@ -96,9 +97,8 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
     }
 
     modifier onlySafeOwner(address safe) {
-        if (safe.code.length > 0) {
-            require(ISafe(safe).isOwner(msg.sender), "NOT_SAFE_OWNER");
-        }
+        require(safe.code.length > 0, "INVALID_SAFE");
+        require(ISafe(safe).isOwner(msg.sender), "NOT_SAFE_OWNER");
         _;
     }
 
@@ -106,6 +106,17 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
         require(oracle_ != address(0), "ZERO_ORACLE");
         oracle = BasketOracle(oracle_);
         factorySetter = msg.sender;
+    }
+
+    function _validateTarget(address safe, address target) private view {
+        require(target != address(0), "ZERO_TARGET");
+        require(target.code.length > 0, "TARGET_NOT_CONTRACT");
+        require(target != safe, "CANNOT_TARGET_SAFE");
+        require(target != address(this), "CANNOT_TARGET_MODULE");
+        require(target != address(oracle), "CANNOT_TARGET_ORACLE");
+        if (factory != address(0)) {
+            require(target != factory, "CANNOT_TARGET_FACTORY");
+        }
     }
 
     function _executeTokenCall(address safe, address token, bytes memory data, string memory errorMessage) private {
@@ -117,6 +128,9 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
     /// @dev Every DEX route receives a bounded, one-call allowance. Resetting to zero first supports
     /// tokens that require zeroing an existing allowance before setting a new nonzero value.
     function _setDexAllowance(address safe, address token, address spender, uint256 amount) private {
+        require(spender != address(0), "ZERO_SPENDER");
+        require(spender != safe, "CANNOT_SPEND_TO_SAFE");
+        require(spender != address(this), "CANNOT_SPEND_TO_MODULE");
         _executeTokenCall(safe, token, abi.encodeWithSelector(IERC20.approve.selector, spender, 0), "DEX_APPROVE_FAILED");
         if (amount > 0) {
             _executeTokenCall(
@@ -125,7 +139,17 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
         }
     }
 
-    function _validateBasketTokens(address[] calldata basketTokens) private view {
+    function _approveToken(address safe, address token, address spender, uint256 amount) private {
+        require(spender != address(0), "ZERO_SPENDER");
+        require(spender != safe, "CANNOT_SPEND_TO_SAFE");
+        require(spender != address(this), "CANNOT_SPEND_TO_MODULE");
+        _executeTokenCall(safe, token, abi.encodeWithSelector(IERC20.approve.selector, spender, 0), "APPROVE_FAILED");
+        if (amount > 0) {
+            _executeTokenCall(safe, token, abi.encodeWithSelector(IERC20.approve.selector, spender, amount), "APPROVE_FAILED");
+        }
+    }
+
+    function _validateBasketTokens(address[] memory basketTokens) private view {
         for (uint256 i = 0; i < basketTokens.length; i++) {
             require(basketTokens[i].code.length > 0, "INVALID_BASKET_TOKEN");
             for (uint256 j = 0; j < i; j++) {
@@ -138,6 +162,7 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
     function rebalance(RebalanceParams calldata p)
         external
         onlySafeOwner(p.safe)
+        nonReentrant
         returns (uint256[] memory soldAmounts, uint256[] memory boughtAmounts, uint256 totalNAV)
     {
         require(p.boughtAssets.length == p.minBoughtAmounts.length, "SLIPPAGE_LENGTH_MISMATCH");
@@ -170,8 +195,10 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
         uint256[] memory aggregateLegInputs = new uint256[](p.soldAssets.length);
         for (uint256 i = 0; i < p.legs.length; i++) {
             RebalanceLeg calldata leg = p.legs[i];
-            require(leg.target.code.length > 0 && leg.dexCalldata.length > 0, "INVALID_SWAP_ROUTE");
+            _validateTarget(p.safe, leg.target);
+            require(leg.dexCalldata.length > 0, "INVALID_SWAP_ROUTE");
             require(leg.allowanceSpender != address(0) && leg.allowanceSpender.code.length > 0, "INVALID_ALLOWANCE_SPENDER");
+            require(leg.allowanceSpender != p.safe && leg.allowanceSpender != address(this), "INVALID_ALLOWANCE_SPENDER");
             require(leg.soldAsset.code.length > 0, "INVALID_SOLD_ASSET");
             require(leg.maxSoldAmount > 0, "INVALID_LEG_INPUT");
 
@@ -258,6 +285,7 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
         boughtAmounts = new uint256[](p.boughtAssets.length);
         for (uint256 i = 0; i < p.boughtAssets.length; i++) {
             require(p.boughtAssets[i] != address(0), "ZERO_BOUGHT_ASSET");
+            require(p.boughtAssets[i].code.length > 0, "INVALID_BOUGHT_ASSET");
             require(p.minBoughtAmounts[i] > 0, "INVALID_BOUGHT_LIMIT");
             for (uint256 j = 0; j < i; j++) {
                 require(p.boughtAssets[i] != p.boughtAssets[j], "DUPLICATE_BOUGHT_ASSET");
@@ -279,8 +307,10 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
             uint256 totalLegInput = 0;
             for (uint256 i = 0; i < p.legs.length; i++) {
                 SwapLeg calldata leg = p.legs[i];
-                require(leg.target.code.length > 0 && leg.dexCalldata.length > 0, "INVALID_SWAP_ROUTE");
+                _validateTarget(p.safe, leg.target);
+                require(leg.dexCalldata.length > 0, "INVALID_SWAP_ROUTE");
                 require(leg.allowanceSpender != address(0) && leg.allowanceSpender.code.length > 0, "INVALID_ALLOWANCE_SPENDER");
+                require(leg.allowanceSpender != p.safe && leg.allowanceSpender != address(this), "INVALID_ALLOWANCE_SPENDER");
                 require(leg.inputAmount > 0, "INVALID_LEG_INPUT");
                 totalLegInput += leg.inputAmount;
                 _setDexAllowance(p.safe, p.inputAsset, leg.allowanceSpender, leg.inputAmount);
@@ -313,6 +343,7 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
     function fundWithSwaps(MintParams calldata p)
         external
         onlySafeOwner(p.safe)
+        nonReentrant
         returns (uint256[] memory boughtAmounts, uint256 totalNAV)
     {
         return _fundWithSwaps(msg.sender, p);
@@ -321,6 +352,7 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
     /// @notice Funds a newly created basket from Factory using pulled input asset (e.g. USDC)
     function fundWithSwapsFromFactory(address funder, MintParams calldata p)
         external
+        nonReentrant
         returns (uint256[] memory boughtAmounts, uint256 totalNAV)
     {
         require(msg.sender == factory, "ONLY_FACTORY");
@@ -331,19 +363,28 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
     function withdrawWithSwaps(WithdrawWithSwapsParams calldata p)
         external
         onlySafeOwner(p.safe)
+        nonReentrant
         returns (uint256 outAmount, uint256 remainingNAV)
     {
         require(p.recipient != address(0), "ZERO_RECIPIENT");
         require(p.outAsset != address(0), "ZERO_OUT_ASSET");
+        require(p.outAsset.code.length > 0, "INVALID_OUT_ASSET");
         require(p.soldAssets.length == p.maxSoldAmounts.length, "SOLD_LENGTH_MISMATCH");
         require(block.timestamp <= p.deadline, "QUOTE_EXPIRED");
-        require(p.target != address(0) && p.target.code.length > 0 && p.dexCalldata.length > 0, "INVALID_SWAP_ROUTE");
+        _validateTarget(p.safe, p.target);
+        require(p.dexCalldata.length > 0, "INVALID_SWAP_ROUTE");
         require(p.allowanceSpender != address(0) && p.allowanceSpender.code.length > 0, "INVALID_ALLOWANCE_SPENDER");
+        require(p.allowanceSpender != p.safe && p.allowanceSpender != address(this), "INVALID_ALLOWANCE_SPENDER");
+        _validateBasketTokens(p.remainingTokens);
 
         uint256[] memory preSoldBalances = new uint256[](p.soldAssets.length);
         for (uint256 i = 0; i < p.soldAssets.length; i++) {
             require(p.soldAssets[i] != p.outAsset, "OUTPUT_IS_SOLD_ASSET");
             require(p.soldAssets[i].code.length > 0, "INVALID_SOLD_ASSET");
+            require(p.maxSoldAmounts[i] > 0, "INVALID_SOLD_LIMIT");
+            for (uint256 k = 0; k < i; k++) {
+                require(p.soldAssets[i] != p.soldAssets[k], "DUPLICATE_SOLD_ASSET");
+            }
             preSoldBalances[i] = IERC20(p.soldAssets[i]).balanceOf(p.safe);
         }
 
@@ -405,11 +446,18 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
         address[] calldata tokens,
         uint256[] calldata amounts,
         address[] calldata remainingTokens
-    ) external onlySafeOwner(safe) returns (uint256 remainingNAV) {
+    ) external onlySafeOwner(safe) nonReentrant returns (uint256 remainingNAV) {
         require(tokens.length == amounts.length, "LENGTH_MISMATCH");
+        require(tokens.length > 0, "EMPTY_TOKENS");
         require(recipient != address(0), "ZERO_RECIPIENT");
+        _validateBasketTokens(remainingTokens);
 
         for (uint256 i = 0; i < tokens.length; i++) {
+            require(tokens[i].code.length > 0, "INVALID_TOKEN");
+            require(amounts[i] > 0, "ZERO_AMOUNT");
+            for (uint256 k = 0; k < i; k++) {
+                require(tokens[i] != tokens[k], "DUPLICATE_TOKEN");
+            }
             bytes memory transferData = abi.encodeWithSelector(IERC20.transfer.selector, recipient, amounts[i]);
             _executeTokenCall(safe, tokens[i], transferData, "TRANSFER_FAILED");
         }
@@ -429,66 +477,87 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
     function executeTransaction(address safe, address target, uint256 value, bytes calldata data)
         external
         onlySafeOwner(safe)
+        nonReentrant
         returns (bool success)
     {
-        require(target != address(0), "ZERO_TARGET");
+        _validateTarget(safe, target);
         success = ISafe(safe).execTransactionFromModule(target, value, data, 0);
         require(success, "MODULE_EXEC_FAILED");
-    }
-
-    function _approveToken(address safe, address token, address spender, uint256 amount) private {
-        bytes memory approveData = abi.encodeWithSelector(IERC20.approve.selector, spender, amount);
-        _executeTokenCall(safe, token, approveData, "AAVE_APPROVE_FAILED");
     }
 
     event BasketLendingExecuted(
         address indexed safe, address indexed caller, address indexed target, address asset, uint256 amount
     );
 
-    /// @notice Executes a protocol-agnostic lending operation against a whitelisted lending pool target
-    function executeLending(address safe, address target, bytes memory data, address asset, uint256 amount)
-        public
-        onlySafeOwner(safe)
+    /// @notice Internal helper to execute lending operations with zeroed-out residual allowance
+    function _executeLending(address safe, address target, bytes memory data, address asset, uint256 amount)
+        internal
         returns (bool success)
     {
-        require(target != address(0), "ZERO_TARGET");
+        _validateTarget(safe, target);
         require(oracle.registry().isApprovedLendingPool(target), "UNAPPROVED_LENDING_TARGET");
 
         if (asset != address(0) && amount > 0) {
+            require(asset.code.length > 0, "INVALID_ASSET");
             _approveToken(safe, asset, target, amount);
         }
 
         success = ISafe(safe).execTransactionFromModule(target, 0, data, 0);
         require(success, "LENDING_EXEC_FAILED");
 
+        if (asset != address(0) && amount > 0) {
+            _approveToken(safe, asset, target, 0);
+        }
+
         emit BasketLendingExecuted(safe, msg.sender, target, asset, amount);
     }
 
+    /// @notice Executes a protocol-agnostic lending operation against a whitelisted lending pool target
+    function executeLending(address safe, address target, bytes memory data, address asset, uint256 amount)
+        public
+        onlySafeOwner(safe)
+        nonReentrant
+        returns (bool success)
+    {
+        return _executeLending(safe, target, data, asset, amount);
+    }
+
     /// @notice Supplies collateral asset from Safe into Aave v3 Pool
-    function supplyToAave(address safe, address aavePool, address asset, uint256 amount) external {
+    function supplyToAave(address safe, address aavePool, address asset, uint256 amount)
+        external
+        onlySafeOwner(safe)
+        nonReentrant
+    {
         bytes memory supplyData =
             abi.encodeWithSignature("supply(address,uint256,address,uint16)", asset, amount, safe, uint16(0));
-        executeLending(safe, aavePool, supplyData, asset, amount);
+        _executeLending(safe, aavePool, supplyData, asset, amount);
     }
 
     /// @notice Borrows debt asset from Aave v3 Pool against Safe collateral
-    function borrowFromAave(address safe, address aavePool, address debtAsset, uint256 amount) external {
+    function borrowFromAave(address safe, address aavePool, address debtAsset, uint256 amount)
+        external
+        onlySafeOwner(safe)
+        nonReentrant
+    {
         bytes memory borrowData = abi.encodeWithSignature(
             "borrow(address,uint256,uint256,uint16,address)", debtAsset, amount, uint256(2), uint16(0), safe
         );
-        executeLending(safe, aavePool, borrowData, address(0), 0);
+        _executeLending(safe, aavePool, borrowData, address(0), 0);
     }
 
     /// @notice Borrows debt asset from Aave v3 Pool and sweeps it directly to a recipient (e.g. EOA wallet)
     function borrowAndSweep(address safe, address aavePool, address debtAsset, uint256 amount, address recipient)
         external
         onlySafeOwner(safe)
+        nonReentrant
     {
         require(recipient != address(0), "ZERO_RECIPIENT");
+        require(debtAsset.code.length > 0, "INVALID_DEBT_ASSET");
+        require(amount > 0, "ZERO_AMOUNT");
         bytes memory borrowData = abi.encodeWithSignature(
             "borrow(address,uint256,uint256,uint16,address)", debtAsset, amount, uint256(2), uint16(0), safe
         );
-        executeLending(safe, aavePool, borrowData, address(0), 0);
+        _executeLending(safe, aavePool, borrowData, address(0), 0);
 
         bytes memory transferData = abi.encodeWithSelector(IERC20.transfer.selector, recipient, amount);
         _executeTokenCall(safe, debtAsset, transferData, "SWEEP_TRANSFER_FAILED");
@@ -502,11 +571,17 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
         uint256 amount,
         address target,
         bytes memory dexCalldata
-    ) external onlySafeOwner(safe) {
+    ) external onlySafeOwner(safe) nonReentrant {
+        require(debtAsset.code.length > 0, "INVALID_DEBT_ASSET");
+        require(amount > 0, "ZERO_AMOUNT");
+        if (target != address(0) || dexCalldata.length > 0) {
+            _validateTarget(safe, target);
+        }
+
         bytes memory borrowData = abi.encodeWithSignature(
             "borrow(address,uint256,uint256,uint16,address)", debtAsset, amount, uint256(2), uint16(0), safe
         );
-        executeLending(safe, aavePool, borrowData, address(0), 0);
+        _executeLending(safe, aavePool, borrowData, address(0), 0);
 
         if (target != address(0) && dexCalldata.length > 0) {
             bool success = ISafe(safe).execTransactionFromModule(target, 0, dexCalldata, 0);
@@ -515,16 +590,25 @@ contract OthelioBasketModule is IOthelioEvents, IOthelioAccountCapabilities {
     }
 
     /// @notice Repays borrowed debt asset to Aave v3 Pool
-    function repayAave(address safe, address aavePool, address debtAsset, uint256 amount) external {
+    function repayAave(address safe, address aavePool, address debtAsset, uint256 amount)
+        external
+        onlySafeOwner(safe)
+        nonReentrant
+    {
         bytes memory repayData =
             abi.encodeWithSignature("repay(address,uint256,uint256,address)", debtAsset, amount, uint256(2), safe);
-        executeLending(safe, aavePool, repayData, debtAsset, amount);
+        _executeLending(safe, aavePool, repayData, debtAsset, amount);
     }
 
     /// @notice Withdraws collateral asset from Aave v3 Pool back to Safe or specified recipient
-    function withdrawFromAave(address safe, address aavePool, address asset, uint256 amount, address to) external {
+    function withdrawFromAave(address safe, address aavePool, address asset, uint256 amount, address to)
+        external
+        onlySafeOwner(safe)
+        nonReentrant
+    {
+        require(to != address(0), "ZERO_RECIPIENT");
         bytes memory withdrawData = abi.encodeWithSignature("withdraw(address,uint256,address)", asset, amount, to);
-        executeLending(safe, aavePool, withdrawData, address(0), 0);
+        _executeLending(safe, aavePool, withdrawData, address(0), 0);
     }
 
     receive() external payable {}

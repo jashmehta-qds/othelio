@@ -59,13 +59,15 @@ contract OthelioBasketAccount is ISafeAccount {
         address to,
         uint256 value,
         bytes memory data,
-        uint8 /* operation */
+        uint8 operation
     )
         external
         override
         onlyModule
         returns (bool success)
     {
+        require(operation == 0, "UNSUPPORTED_OPERATION");
+        require(to != address(0), "ZERO_TARGET");
         (success,) = to.call{value: value}(data);
         require(success, "EXEC_MODULE_FAILED");
     }
@@ -74,19 +76,22 @@ contract OthelioBasketAccount is ISafeAccount {
         address to,
         uint256 value,
         bytes memory data,
-        uint8 /* operation */
+        uint8 operation
     )
         external
         override
         onlyModule
         returns (bool success, bytes memory returnData)
     {
+        require(operation == 0, "UNSUPPORTED_OPERATION");
+        require(to != address(0), "ZERO_TARGET");
         (success, returnData) = to.call{value: value}(data);
         require(success, "EXEC_MODULE_FAILED");
     }
 
     function setOwner(address newOwner) external onlyOwner {
         require(newOwner != address(0), "ZERO_ADDRESS");
+        require(newOwner != owner, "SAME_OWNER");
         emit OwnerUpdated(owner, newOwner);
         owner = newOwner;
     }
