@@ -746,22 +746,6 @@ export class BasketQuotePlannerService {
     if (snapshot.readCompleteness === 'UNAVAILABLE' || snapshot.valuationStatus === 'UNAVAILABLE' || snapshot.valuationStatus === 'STALE') {
       throw new UnprocessableEntityException('Current liquid balances and prices are required for every planned asset.');
     }
-    if (snapshot.issues.some((issue) => issue.startsWith('AAVE_RESERVE_DISCOVERY_UNAVAILABLE'))) {
-      throw new UnprocessableEntityException(
-        'LENDING_POSITION_DISCOVERY_UNAVAILABLE: spot rebalance cannot proceed while the configured market position read is incomplete.',
-      );
-    }
-    const hasMarketExposure = snapshot.markets.some((market) => (
-      market.suppliedAmountBaseUnits === null
-      || market.accruedDebtAmountBaseUnits === null
-      || BigInt(market.suppliedAmountBaseUnits) > 0n
-      || BigInt(market.accruedDebtAmountBaseUnits) > 0n
-    ));
-    if (hasMarketExposure) {
-      throw new UnprocessableEntityException(
-        'ENCUMBERED_POSITION_UNSUPPORTED: spot rebalance is limited to verified liquid positions; supplied assets or debt require a recovery-aware planner.',
-      );
-    }
   }
 
   private assertBoundRoute(route: SwapQuoteResult, chainId: number, recipient: Address, sell: NetTrade, buy: NetTrade) {

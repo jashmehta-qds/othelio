@@ -304,12 +304,13 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     })).rejects.toThrow('ROUTE_SIMULATION_FAILED: ERC20: insufficient allowance');
   });
 
-  it('rejects encumbered or unknown market exposure before requesting a route', async () => {
-    const encumbered = snapshot([
+  it('uses verified liquid balances even when legacy lending discovery is unavailable', async () => {
+    const position = snapshot([
       [overweight, '800000000'],
       [underweight, '200000000'],
     ]);
-    encumbered.markets.push({
+    position.issues.push('AAVE_RESERVE_DISCOVERY_UNAVAILABLE:0x9999999999999999999999999999999999999999');
+    position.markets.push({
       identity: {
         chainId: 8453,
         basketAddress: basket,
@@ -320,9 +321,9 @@ describe('BasketQuotePlannerService spot rebalance', () => {
       suppliedAmountBaseUnits: '1',
       accruedDebtAmountBaseUnits: '0',
     });
-    const { planner, dex } = makePlanner(encumbered);
+    const { planner, dex } = makePlanner(position);
 
-    await expect(planner.quoteSwaps(basket, {
+    const response = await planner.quoteSwaps(basket, {
       action: 'rebalance',
       chainId: 8453,
       moduleAddress,
@@ -331,8 +332,9 @@ describe('BasketQuotePlannerService spot rebalance', () => {
         { assetAddress: overweight, targetWeightBps: 5000 },
         { assetAddress: underweight, targetWeightBps: 5000 },
       ],
-    })).rejects.toThrow('ENCUMBERED_POSITION_UNSUPPORTED');
-    expect(dex.getBestQuote).not.toHaveBeenCalled();
+    });
+    expect(response.executionAllowed).toBe(true);
+    expect(dex.getBestQuote).toHaveBeenCalledOnce();
   });
 
   it('requires an explicit funding amount and never substitutes a fixed USDC budget', async () => {
