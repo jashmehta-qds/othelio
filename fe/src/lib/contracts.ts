@@ -18,15 +18,15 @@ export const CONTRACT_ADDRESSES = {
     usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as `0x${string}`,
   },
   31337: {
-    factory: '0xE3a3984043dC1400F0944c37a7c9714bcceD1b90' as `0x${string}`,
-    module: '0xDBcb49C2E5EbA94af0Fc984f024C2825E6964274' as `0x${string}`,
-    guard: '0xa10E6C04117B31d816119b0416c521c2e70734eE' as `0x${string}`,
-    oracle: '0x691b25E1347ae3D42fe19619Fc80a4630146661b' as `0x${string}`,
-    registry: '0x385b7fAa3e8F3a7D7265911E58817E39ceC90884' as `0x${string}`,
-    coinbaseRegistry: '0x3f3E8cf41cdd3b1D118c16471aB0113DfDDd5CaD' as `0x${string}`,
+    factory: '0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9' as `0x${string}`,
+    module: '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0' as `0x${string}`,
+    guard: '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9' as `0x${string}`,
+    oracle: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512' as `0x${string}`,
+    registry: '0x5FbDB2315678afecb367f032d93F642f64180aa3' as `0x${string}`,
+    coinbaseRegistry: '0x0000000000000000000000000000000000000000' as `0x${string}`,
     usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
     dexRouter: '0xBD606f1dAE0285D55113eFC11501677B2221A4dd' as `0x${string}`,
-    borrowModule: '0x5F57a0D651c28e0E2387108e3CB02c0E9F6bcaED' as `0x${string}`,
+    borrowModule: '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707' as `0x${string}`,
   },
 };
 

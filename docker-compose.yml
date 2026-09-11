@@ -17,19 +17,36 @@ services:
 
   anvil:
     image: ghcr.io/foundry-rs/foundry:latest
-    entrypoint: anvil --host 0.0.0.0 --port 8545 --fork-url https://mainnet.base.org --chain-id 31337
+    entrypoint: anvil --host 0.0.0.0 --port 8545 --fork-url https://mainnet.base.org --fork-block-number 51166844 --chain-id 31337
     ports: ["8545:8545"]
+    healthcheck:
+      test: ["CMD-SHELL", "cast block-number --rpc-url http://127.0.0.1:8545 >/dev/null"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
 
   contracts-deployer:
     image: ghcr.io/foundry-rs/foundry:latest
     working_dir: /workspace/contracts
-    volumes: [".:/workspace"]
+    volumes:
+      - .:/workspace
+    tmpfs:
+      # Keep Foundry's broadcast output out of the host checkout.
+      - /workspace/contracts/broadcast:rw,mode=0777,uid=1000,gid=1000
     environment:
-      COINBASE_REGISTRY_ADDRESS: "0x3f3E8cf41cdd3b1D118c16471aB0113DfDDd5CaD"
-    entrypoint: >
-      sh -c "sleep 2 && forge script script/DeployOthelio.s.sol --tc DeployOthelio --rpc-url http://anvil:8545 --broadcast"
+      # This registry has no code at the pinned Base fork block.
+      COINBASE_REGISTRY_ADDRESS: "0x0000000000000000000000000000000000000000"
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        if [ "$$(cast code 0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9 --rpc-url http://anvil:8545)" != "0x" ]; then
+          echo "Othelio contracts already deployed; skipping deployment";
+          exit 0;
+        fi;
+        exec forge script script/DeployOthelio.s.sol --tc DeployOthelio --rpc-url http://anvil:8545 --broadcast
     depends_on:
-      - anvil
+      anvil: { condition: service_healthy }
 
   indexer:
     build:
@@ -39,8 +56,8 @@ services:
       DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
       RPC_URL: http://anvil:8545
       CHAIN_ID: "31337"
-      FACTORY_ADDRESS: "0xE3a3984043dC1400F0944c37a7c9714bcceD1b90"
-      MODULE_ADDRESS: "0xDBcb49C2E5EbA94af0Fc984f024C2825E6964274"
+      FACTORY_ADDRESS: "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"
+      MODULE_ADDRESS: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
     depends_on:
       postgres: { condition: service_healthy }
       contracts-deployer: { condition: service_completed_successfully }
