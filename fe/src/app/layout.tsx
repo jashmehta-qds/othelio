@@ -20,6 +20,15 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Othelio — Build the basket you want to own",
   description: "Create and manage tokenized stock baskets with transparent backing and scoped agent permissions.",
+  icons: {
+    icon: [
+      { url: "/brand/logo.svg", type: "image/svg+xml" },
+      { url: "/brand/logo-transparent.png" },
+      { url: "/brand/logo.jpg" },
+    ],
+    shortcut: "/brand/logo.svg",
+    apple: "/brand/logo-transparent.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

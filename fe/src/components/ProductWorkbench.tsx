@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { OthelioLogo } from "@/components/brand/OthelioLogo";
 import { useMemo, useState } from "react";
 
 const market = [
@@ -24,7 +25,10 @@ export default function ProductWorkbench() {
   return (
     <main className="landing-shell">
       <header className="quote-rail" aria-label="Synthetic tokenized stock quotes">
-        <Link href="/" className="wordmark" aria-label="Othelio home">Othelio</Link>
+        <Link href="/" className="wordmark" aria-label="Othelio home">
+          <OthelioLogo size={24} />
+          <span>Othelio</span>
+        </Link>
         <div className="quotes">
           {market.map((asset, index) => (
             <div className="quote" key={asset.symbol}>

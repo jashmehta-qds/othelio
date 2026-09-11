@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { OthelioLogo } from "@/components/brand/OthelioLogo";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
 import { useAccount, useConnect, useDisconnect, useBalance, useChainId, useSwitchChain, useReadContract } from "wagmi";
@@ -259,7 +260,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {showOnboarding && (
         <div className="drawer-backdrop" style={{ display: 'grid', placeItems: 'center', zIndex: 100 }}>
           <div className="glass-panel" style={{ width: '90%', maxWidth: '420px', padding: '28px', borderRadius: '16px' }}>
-            <h2 style={{ fontSize: '22px', fontWeight: '700', marginBottom: '8px' }}>Welcome to Othelio</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              <OthelioLogo size={32} />
+              <h2 style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>Welcome to Othelio</h2>
+            </div>
             <p style={{ color: 'var(--muted-ink)', fontSize: '13px', marginBottom: '20px' }}>
               Connected with <code style={{ color: 'var(--accent)' }}>{address ? formatAddress(address) : ''}</code>. Please enter a display name for your profile.
             </p>
@@ -312,7 +316,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Left Sidebar */}
       <aside className="bank-sidebar">
         <div>
-          <Link href="/" className="bank-wordmark">Othelio</Link>
+          <Link href="/" className="bank-wordmark">
+            <OthelioLogo size={28} />
+            <span>Othelio</span>
+          </Link>
           <nav className="bank-nav" aria-label="Primary navigation">
             {navigation.map((item) => (
               <Link key={item.id} href={item.href} className={isActive(item.href) ? "active" : ""}>
@@ -454,7 +461,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main Content Area */}
       <section className="bank-content">
         <header className="mobile-header">
-          <Link href="/" className="bank-wordmark">Othelio</Link>
+          <Link href="/" className="bank-wordmark">
+            <OthelioLogo size={26} />
+            <span>Othelio</span>
+          </Link>
           {mounted && isConnected && address ? (
             <button onClick={handleDisconnect} className="theme-toggle" style={{ fontSize: '11px' }}>
               {formatAddress(address)} (Disconnect)

@@ -209,19 +209,20 @@ export default function IndexField() {
   const [uniforms, setUniforms] = useState<Record<string, WebGLUniformLocation>>({});
   const [imageData, setImageData] = useState<ImageData | null>(null);
 
-  // Build the Othelio "O" Logo SVG and process using Poisson Distance Solver (from Framer LiquidMetal.js)
-  const parseLogoImage = useCallback((file: File): Promise<ImageData> => {
+  // Build the Othelio segmented "O" Logo texture and process using Poisson Distance Solver
+  const parseLogoImage = useCallback((imgSrc: string): Promise<ImageData> => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     return new Promise((resolve, reject) => {
-      if (!file || !ctx) {
-        reject(new Error("Invalid file or context"));
+      if (!ctx) {
+        reject(new Error("Invalid context"));
         return;
       }
       const img = new Image();
+      img.crossOrigin = "anonymous";
       img.onload = () => {
-        const width = 800;
-        const height = 800;
+        const width = 500;
+        const height = 500;
         canvas.width = width;
         canvas.height = height;
 
@@ -230,7 +231,10 @@ export default function IndexField() {
         shapeCanvas.height = height;
         const shapeCtx = shapeCanvas.getContext("2d");
         if (!shapeCtx) return;
-        shapeCtx.drawImage(img, 0, 0, width, height);
+
+        // Crop the central segmented mark from the 1264x1264 logo
+        // Emblem bounding box is ~ (376, 376, 896, 888). We crop with balanced padding.
+        shapeCtx.drawImage(img, 350, 350, 572, 572, 0, 0, width, height);
 
         const shapeImageData = shapeCtx.getImageData(0, 0, width, height);
         const data = shapeImageData.data;
@@ -242,12 +246,9 @@ export default function IndexField() {
             const r = data[idx4];
             const g = data[idx4 + 1];
             const b = data[idx4 + 2];
-            const a = data[idx4 + 3];
-            if ((r === 255 && g === 255 && b === 255 && a === 255) || a === 0) {
-              shapeMask[y * width + x] = false;
-            } else {
-              shapeMask[y * width + x] = true;
-            }
+            // In logo.jpg, shape segments are white, background is black
+            const brightness = (r + g + b) / 3;
+            shapeMask[y * width + x] = brightness > 120;
           }
         }
 
@@ -272,7 +273,7 @@ export default function IndexField() {
         const u = new Float32Array(width * height).fill(0);
         const newU = new Float32Array(width * height).fill(0);
         const C = 0.01;
-        const ITERATIONS = 200;
+        const ITERATIONS = 120;
 
         const getU = (x: number, y: number, arr: Float32Array) => {
           if (x < 0 || x >= width || y < 0 || y >= height) return 0;
@@ -323,21 +324,17 @@ export default function IndexField() {
         }
         resolve(outImg);
       };
-      img.onerror = () => reject(new Error("Failed to load SVG logo"));
-      img.src = URL.createObjectURL(file);
+      img.onerror = () => reject(new Error("Failed to load /brand/logo.jpg"));
+      img.src = imgSrc;
     });
   }, []);
 
-  // Create crisp Othelio "O" Logo SVG
+  // Load and parse official brand logo
   useEffect(() => {
-    const svgString = `
-      <svg width="600" height="600" viewBox="0 0 600 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="300" cy="300" r="190" stroke="black" stroke-width="85" fill="none"/>
-      </svg>
-    `;
-    const blob = new Blob([svgString], { type: "image/svg+xml" });
-    const file = new File([blob], "othelio-o.svg", { type: "image/svg+xml" });
-    parseLogoImage(file).then(setImageData).catch(console.error);
+    parseLogoImage("/brand/logo.jpg").then(setImageData).catch((err) => {
+      console.warn("Retrying logo parsing or using fallback:", err);
+      parseLogoImage("/brand/logo-mark.png").then(setImageData).catch(console.error);
+    });
   }, [parseLogoImage]);
 
   // Initialize WebGL2 Engine (matching Framer LiquidMetal.js)
