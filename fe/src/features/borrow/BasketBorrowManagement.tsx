@@ -188,7 +188,7 @@ export function BasketBorrowManagement({ basketId }: { basketId: string }) {
         <div className="section-title">
           <div>
             <h1 className="page-title">Existing lending positions</h1>
-            <p>New borrowing is not offered in this app. Existing owner accounts remain unrestricted onchain; verified repayment and collateral release stay available here.</p>
+            <p className="page-description">New borrowing is not offered in this app. Existing owner accounts remain unrestricted onchain; verified repayment and collateral release stay available here.</p>
           </div>
           <button onClick={() => refetch()} disabled={isFetching} aria-label="Refresh canonical positions">
             <AppIcon type="sync" /> {isFetching ? "Refreshing…" : "Refresh"}
