@@ -118,3 +118,57 @@ export async function recordLendingSubmission(
     { method: 'POST', body: JSON.stringify(body) },
   );
 }
+
+export interface AccountSettings {
+  accountAddress: string;
+  slippageTolerance: number;
+  deadlineMinutes: number;
+  mevProtection: boolean;
+  riskTier: string;
+  customRiskBuffer: number | null;
+  updatedAt?: string;
+}
+
+export async function fetchAuthNonce(address: string) {
+  return fetchApi<{
+    success: boolean;
+    data: { nonce: string; message: string; expiresAt: string };
+  }>(`/v1/auth/nonce?address=${address.toLowerCase()}`);
+}
+
+export async function verifyAuthSignature(address: string, message: string, signature: string) {
+  return fetchApi<{
+    success: boolean;
+    data: { token: string; expiresAt: string };
+  }>(`/v1/auth/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ address, message, signature }),
+  });
+}
+
+export async function fetchAccountSettingsApi(address: string) {
+  return fetchApi<{
+    success: boolean;
+    data: AccountSettings;
+  }>(`/v1/settings/${address.toLowerCase()}`);
+}
+
+export async function updateAccountSettingsApi(
+  address: string,
+  settings: Partial<AccountSettings>,
+  token?: string,
+) {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return fetchApi<{
+    success: boolean;
+    data: AccountSettings;
+  }>(`/v1/settings/${address.toLowerCase()}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(settings),
+  });
+}
+

@@ -2,15 +2,16 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { useAccount, useConnect } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatAddress } from "@/lib/baskets";
 import { WalletConnectModal } from "./WalletConnectModal";
+import { useAuth } from "@/context/AuthContext";
 
 export function WalletHeaderButton() {
   const { address, isConnected, isConnecting } = useAccount();
   const { isPending } = useConnect();
-  const { disconnect } = useDisconnect();
+  const { isAuthenticated, isAuthenticating, logout } = useAuth();
   const queryClient = useQueryClient();
   const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
   const [mounted, setMounted] = useState<boolean>(false);
@@ -24,12 +25,12 @@ export function WalletHeaderButton() {
   };
   const handleDisconnect = () => {
     queryClient.clear();
-    disconnect();
+    logout();
   };
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-      {mounted && isConnected && address ? (
+      {mounted && isConnected && address && isAuthenticated ? (
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontSize: "12px", color: "var(--muted-ink)" }}>
             <code style={{ color: "var(--accent)" }}>{formatAddress(address)}</code>
@@ -52,7 +53,7 @@ export function WalletHeaderButton() {
       ) : (
         <button
           onClick={handleConnect}
-          disabled={isConnecting || isPending}
+          disabled={isConnecting || isPending || isAuthenticating}
           style={{
             background: "transparent",
             border: "1px solid var(--border)",
@@ -65,7 +66,7 @@ export function WalletHeaderButton() {
             transition: "opacity 0.2s ease",
           }}
         >
-          {isConnecting || isPending ? "Connecting..." : "Connect Wallet"}
+          {isConnecting || isPending || isAuthenticating ? "Connecting..." : "Connect Wallet"}
         </button>
       )}
 

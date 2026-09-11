@@ -456,9 +456,13 @@ export function getConfirmedCashFlowUsd(evt: BasketActivity): number | null {
   return match[1] === '-' ? -amount : amount;
 }
 
-export function getSlippageTolerance(): number {
+export function getSlippageTolerance(accountAddress?: string): number {
   if (typeof window === "undefined") return 0.5;
   try {
+    if (accountAddress) {
+      const scoped = localStorage.getItem(`othelio_slippage_${accountAddress.toLowerCase()}`);
+      if (scoped) return Number(scoped);
+    }
     const stored = localStorage.getItem("othelio_slippage");
     return stored ? Number(stored) : 0.5;
   } catch {
@@ -466,9 +470,12 @@ export function getSlippageTolerance(): number {
   }
 }
 
-export function setSlippageTolerance(val: number) {
+export function setSlippageTolerance(val: number, accountAddress?: string) {
   if (typeof window === "undefined") return;
   try {
+    if (accountAddress) {
+      localStorage.setItem(`othelio_slippage_${accountAddress.toLowerCase()}`, val.toString());
+    }
     localStorage.setItem("othelio_slippage", val.toString());
     window.dispatchEvent(new Event("slippage_updated"));
   } catch (err) {

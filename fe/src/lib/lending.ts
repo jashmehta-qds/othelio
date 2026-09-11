@@ -12,12 +12,15 @@ export const RISK_PRESETS: Record<Exclude<RiskTier, 'custom'>, number> = {
   risky: 10.0,
 };
 
-export function getRiskTierPreference(): RiskPreference {
+export function getRiskTierPreference(accountAddress?: string): RiskPreference {
   if (typeof window === 'undefined') {
     return { tier: 'safe', bufferPct: 30.0 };
   }
-  const savedTier = (localStorage.getItem('othelio_risk_tier') as RiskTier) || 'safe';
-  const savedBuffer = localStorage.getItem('othelio_risk_buffer_pct');
+  const tierKey = accountAddress ? `othelio_risk_tier_${accountAddress.toLowerCase()}` : 'othelio_risk_tier';
+  const bufferKey = accountAddress ? `othelio_risk_buffer_pct_${accountAddress.toLowerCase()}` : 'othelio_risk_buffer_pct';
+
+  const savedTier = (localStorage.getItem(tierKey) as RiskTier) || (localStorage.getItem('othelio_risk_tier') as RiskTier) || 'safe';
+  const savedBuffer = localStorage.getItem(bufferKey) || localStorage.getItem('othelio_risk_buffer_pct');
 
   if (savedTier === 'custom' && savedBuffer) {
     const num = parseFloat(savedBuffer);
@@ -28,14 +31,20 @@ export function getRiskTierPreference(): RiskPreference {
   return { tier: savedTier, bufferPct };
 }
 
-export function setRiskTierPreference(tier: RiskTier, customBufferPct?: number): void {
+export function setRiskTierPreference(tier: RiskTier, customBufferPct?: number, accountAddress?: string): void {
   if (typeof window === 'undefined') return;
+  const tierKey = accountAddress ? `othelio_risk_tier_${accountAddress.toLowerCase()}` : 'othelio_risk_tier';
+  const bufferKey = accountAddress ? `othelio_risk_buffer_pct_${accountAddress.toLowerCase()}` : 'othelio_risk_buffer_pct';
+
+  localStorage.setItem(tierKey, tier);
   localStorage.setItem('othelio_risk_tier', tier);
 
   if (tier === 'custom' && customBufferPct !== undefined) {
+    localStorage.setItem(bufferKey, customBufferPct.toString());
     localStorage.setItem('othelio_risk_buffer_pct', customBufferPct.toString());
   } else {
     const bufferPct = RISK_PRESETS[tier as keyof typeof RISK_PRESETS] ?? 30.0;
+    localStorage.setItem(bufferKey, bufferPct.toString());
     localStorage.setItem('othelio_risk_buffer_pct', bufferPct.toString());
   }
   window.dispatchEvent(new Event('othelio_risk_settings_updated'));

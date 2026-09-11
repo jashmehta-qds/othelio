@@ -1,23 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccount, useDisconnect } from "wagmi";
+import { useState, useEffect, useCallback } from "react";
+import { useAccount } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatAddress, getSlippageTolerance, setSlippageTolerance, clearCreatedBaskets } from "@/lib/baskets";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { getRiskTierPreference, setRiskTierPreference, type RiskTier, RISK_PRESETS } from "@/lib/lending";
+import { getRiskTierPreference, setRiskTierPreference, type RiskTier } from "@/lib/lending";
+import { WalletConnectModal } from "@/components/WalletConnectModal";
+import { useAuth } from "@/context/AuthContext";
+import {
+  fetchAccountSettingsApi,
+  updateAccountSettingsApi,
+} from "@/lib/api";
 
 export default function SettingsPage() {
-  const { address, isConnected, chain } = useAccount();
-  const { disconnect } = useDisconnect();
+  const { address, chain } = useAccount();
+  const { token, isAuthenticated, isAuthenticating, authError, logout, login } = useAuth();
   const queryClient = useQueryClient();
+
+  const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
+  const [dbLoading, setDbLoading] = useState<boolean>(false);
 
   const [slippage, setSlippageState] = useState<number>(0.5);
   const [customSlippage, setCustomSlippage] = useState<string>("");
   const [isCustom, setIsCustom] = useState<boolean>(false);
   const [deadline, setDeadline] = useState<number>(20);
   const [mevProtection, setMevProtection] = useState<boolean>(true);
-  const [saveToast, setSaveToast] = useState<boolean>(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState<boolean>(false);
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
 
@@ -25,112 +34,347 @@ export default function SettingsPage() {
   const [customRiskBuffer, setCustomRiskBuffer] = useState<string>("");
   const [isCustomRisk, setIsCustomRisk] = useState<boolean>(false);
 
+  const triggerSaveNotification = (msg: string = "Preferences Updated.") => {
+    setSaveToast(msg);
+    setTimeout(() => setSaveToast(null), 2500);
+  };
+
+  // Helper to persist to DB using session JWT token
+  const persistSettings = useCallback(
+    async (settingsToSave: {
+      slippageTolerance?: number;
+      deadlineMinutes?: number;
+      mevProtection?: boolean;
+      riskTier?: string;
+      customRiskBuffer?: number | null;
+    }) => {
+      if (!address || !token) return;
+
+      try {
+        await updateAccountSettingsApi(address, settingsToSave, token);
+        triggerSaveNotification("Preferences Updated.");
+      } catch (err: any) {
+        console.warn("DB settings save error:", err);
+        triggerSaveNotification("Saved locally (DB sync failed)");
+      }
+    },
+    [address, token],
+  );
+
+  // Load account settings from DB once authenticated
   useEffect(() => {
-    const current = getSlippageTolerance();
-    setSlippageState(current);
-    if (![0.1, 0.5, 1.0].includes(current)) {
+    if (!isAuthenticated || !address) return;
+
+    const lowerAddr = address.toLowerCase();
+
+    // 1. Initial fast local load
+    const currentSlippage = getSlippageTolerance(lowerAddr);
+    setSlippageState(currentSlippage);
+    if (![0.1, 0.5, 1.0].includes(currentSlippage)) {
       setIsCustom(true);
-      setCustomSlippage(current.toString());
+      setCustomSlippage(currentSlippage.toString());
+    } else {
+      setIsCustom(false);
+      setCustomSlippage("");
     }
 
-    const pref = getRiskTierPreference();
+    const pref = getRiskTierPreference(lowerAddr);
     setRiskTier(pref.tier);
     if (pref.tier === "custom") {
       setIsCustomRisk(true);
       setCustomRiskBuffer(pref.bufferPct.toString());
+    } else {
+      setIsCustomRisk(false);
+      setCustomRiskBuffer("");
     }
 
     if (typeof window !== "undefined") {
-      const savedDeadline = localStorage.getItem("othelio_deadline_minutes");
+      const savedDeadline = localStorage.getItem(`othelio_deadline_${lowerAddr}`) || localStorage.getItem("othelio_deadline_minutes");
       if (savedDeadline) setDeadline(Number(savedDeadline));
 
-      const savedMev = localStorage.getItem("othelio_mev_protection");
+      const savedMev = localStorage.getItem(`othelio_mev_${lowerAddr}`) || localStorage.getItem("othelio_mev_protection");
       if (savedMev !== null) setMevProtection(savedMev === "true");
     }
-  }, []);
+
+    // 2. Fetch canonical settings from PostgreSQL
+    let isCancelled = false;
+    setDbLoading(true);
+
+    fetchAccountSettingsApi(lowerAddr)
+      .then((res) => {
+        if (isCancelled || !res.data) return;
+        const dbSettings = res.data;
+
+        // Apply DB settings
+        setSlippageState(dbSettings.slippageTolerance);
+        if (![0.1, 0.5, 1.0].includes(dbSettings.slippageTolerance)) {
+          setIsCustom(true);
+          setCustomSlippage(dbSettings.slippageTolerance.toString());
+        } else {
+          setIsCustom(false);
+          setCustomSlippage("");
+        }
+        setSlippageTolerance(dbSettings.slippageTolerance, lowerAddr);
+
+        setDeadline(dbSettings.deadlineMinutes);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(`othelio_deadline_${lowerAddr}`, dbSettings.deadlineMinutes.toString());
+        }
+
+        setMevProtection(dbSettings.mevProtection);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(`othelio_mev_${lowerAddr}`, dbSettings.mevProtection.toString());
+        }
+
+        const tier = (dbSettings.riskTier as RiskTier) || "safe";
+        setRiskTier(tier);
+        if (tier === "custom" && dbSettings.customRiskBuffer !== null) {
+          setIsCustomRisk(true);
+          setCustomRiskBuffer(dbSettings.customRiskBuffer.toString());
+          setRiskTierPreference("custom", dbSettings.customRiskBuffer, lowerAddr);
+        } else {
+          setIsCustomRisk(false);
+          setCustomRiskBuffer("");
+          setRiskTierPreference(tier === "custom" ? "safe" : tier, undefined, lowerAddr);
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not load account settings from DB, falling back to local cache:", err);
+      })
+      .finally(() => {
+        if (!isCancelled) setDbLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [address, isAuthenticated]);
 
   const handleSelectRiskTier = (tier: Exclude<RiskTier, "custom">) => {
+    if (!address) return;
     setIsCustomRisk(false);
     setRiskTier(tier);
-    setRiskTierPreference(tier);
-    triggerSaveNotification();
+    setRiskTierPreference(tier, undefined, address);
+    persistSettings({ riskTier: tier, customRiskBuffer: null });
   };
 
   const handleCustomRiskChange = (valStr: string) => {
+    if (!address) return;
     setCustomRiskBuffer(valStr);
     const num = parseFloat(valStr);
     if (!isNaN(num) && num >= 5.0 && num <= 50.0) {
       setRiskTier("custom");
-      setRiskTierPreference("custom", num);
-      triggerSaveNotification();
+      setRiskTierPreference("custom", num, address);
+      persistSettings({ riskTier: "custom", customRiskBuffer: num });
     }
   };
 
   const handleSelectPreset = (val: number) => {
+    if (!address) return;
     setIsCustom(false);
     setSlippageState(val);
-    setSlippageTolerance(val);
-    triggerSaveNotification();
+    setSlippageTolerance(val, address);
+    persistSettings({ slippageTolerance: val });
   };
 
   const handleCustomChange = (valStr: string) => {
+    if (!address) return;
     setCustomSlippage(valStr);
     const num = parseFloat(valStr);
     if (!isNaN(num) && num >= 0.01 && num <= 50) {
       setSlippageState(num);
-      setSlippageTolerance(num);
-      triggerSaveNotification();
+      setSlippageTolerance(num, address);
+      persistSettings({ slippageTolerance: num });
     }
   };
 
   const handleDeadlineChange = (val: number) => {
+    if (!address) return;
     setDeadline(val);
     if (typeof window !== "undefined") {
-      localStorage.setItem("othelio_deadline_minutes", val.toString());
+      localStorage.setItem(`othelio_deadline_${address.toLowerCase()}`, val.toString());
     }
-    triggerSaveNotification();
+    persistSettings({ deadlineMinutes: val });
   };
 
   const handleMevToggle = () => {
+    if (!address) return;
     const next = !mevProtection;
     setMevProtection(next);
     if (typeof window !== "undefined") {
-      localStorage.setItem("othelio_mev_protection", next.toString());
+      localStorage.setItem(`othelio_mev_${address.toLowerCase()}`, next.toString());
     }
-    triggerSaveNotification();
+    persistSettings({ mevProtection: next });
   };
 
-  const triggerSaveNotification = () => {
-    setSaveToast(true);
-    setTimeout(() => setSaveToast(false), 2000);
-  };
+  // Guard: If wallet is not connected or session is not authenticated, render connection prompt
+  if (!isAuthenticated || !address) {
+    return (
+      <section className="app-page-frame">
+        <header className="index-head">
+          <div>
+            <h1 className="page-title">Settings</h1>
+            <p className="page-description">Configure rebalancing slippage limits, execution speed, and account security.</p>
+          </div>
+        </header>
+
+        <div
+          style={{
+            marginTop: "40px",
+            padding: "56px 28px",
+            background: "var(--panel)",
+            border: "1px solid var(--line)",
+            borderRadius: "20px",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "18px",
+            maxWidth: "620px",
+            margin: "40px auto 0",
+          }}
+        >
+          <div
+            style={{
+              width: "60px",
+              height: "60px",
+              borderRadius: "18px",
+              background: "rgba(215, 255, 70, 0.12)",
+              border: "1px solid rgba(215, 255, 70, 0.3)",
+              display: "grid",
+              placeItems: "center",
+              color: "#d7ff46",
+            }}
+          >
+            <span style={{ width: "28px", height: "28px", display: "inline-flex" }}>
+              <AppIcon type="shield" />
+            </span>
+          </div>
+
+          <div>
+            <span
+              style={{
+                display: "inline-block",
+                padding: "3px 10px",
+                borderRadius: "12px",
+                background: "rgba(215, 255, 70, 0.15)",
+                color: "#d7ff46",
+                fontSize: "11px",
+                fontWeight: 700,
+                letterSpacing: "0.5px",
+                textTransform: "uppercase",
+                marginBottom: "10px",
+              }}
+            >
+              Account Scoped Preferences
+            </span>
+            <h2 style={{ fontSize: "22px", fontWeight: 700, color: "var(--ink)", margin: "0 0 10px 0" }}>
+              Connect Wallet to Configure Settings
+            </h2>
+            <p style={{ fontSize: "14px", color: "var(--muted-ink)", margin: 0, maxWidth: "480px", lineHeight: "1.55" }}>
+              Rebalancing slippage limits, transaction execution speed, and account security settings are account-specific and persisted in the database. Please connect and sign in with your Web3 wallet to load and manage your account preferences.
+            </p>
+          </div>
+
+          {authError && (
+            <div
+              style={{
+                padding: "12px 18px",
+                borderRadius: "12px",
+                background: "rgba(239, 68, 68, 0.1)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                color: "#ff7770",
+                fontSize: "13px",
+                fontWeight: 600,
+                maxWidth: "480px",
+              }}
+            >
+              {authError}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowConnectModal(true)}
+            disabled={isAuthenticating}
+            style={{
+              marginTop: "8px",
+              padding: "12px 28px",
+              borderRadius: "12px",
+              background: "#d7ff46",
+              border: "none",
+              color: "#10110f",
+              fontSize: "14px",
+              fontWeight: 700,
+              cursor: isAuthenticating ? "not-allowed" : "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            {isAuthenticating ? "Authenticating..." : "Connect Wallet"}
+          </button>
+        </div>
+
+        <WalletConnectModal isOpen={showConnectModal} onClose={() => setShowConnectModal(false)} />
+      </section>
+    );
+  }
 
   return (
     <section className="app-page-frame">
-      {/* Index Header matching /app/baskets */}
+      {/* Top-Right Floating Notification Toast */}
+      {saveToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            top: "24px",
+            right: "24px",
+            zIndex: 99999,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "10px 16px",
+            background: "var(--panel)",
+            border: "1px solid rgba(215, 255, 70, 0.35)",
+            borderRadius: "12px",
+            color: "#d7ff46",
+            fontSize: "13px",
+            fontWeight: 600,
+            boxShadow: "0 12px 32px rgba(0, 0, 0, 0.55), 0 0 12px rgba(215, 255, 70, 0.12)",
+            pointerEvents: "none",
+            userSelect: "none",
+            transition: "all 0.2s ease",
+          }}
+        >
+          <span
+            style={{
+              width: "7px",
+              height: "7px",
+              borderRadius: "50%",
+              background: "#d7ff46",
+              display: "inline-block",
+              boxShadow: "0 0 8px #d7ff46",
+            }}
+          />
+          <span>{saveToast}</span>
+        </div>
+      )}
+
+      {/* Index Header */}
       <header className="index-head">
         <div>
-          <h1 className="page-title">Settings</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <h1 className="page-title">Settings</h1>
+            {dbLoading && (
+              <span style={{ fontSize: "11px", color: "var(--muted-ink)", fontStyle: "italic" }}>
+                Loading account preferences...
+              </span>
+            )}
+          </div>
           <p className="page-description">Configure rebalancing slippage limits, execution speed, and account security.</p>
         </div>
-        {saveToast && (
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "6px 14px",
-              background: "rgba(215, 255, 70, 0.12)",
-              border: "1px solid rgba(215, 255, 70, 0.3)",
-              borderRadius: "20px",
-              color: "#d7ff46",
-              fontSize: "12px",
-              fontWeight: 600,
-            }}
-          >
-            <span>✓</span> Saved
-          </div>
-        )}
       </header>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "32px", marginTop: "12px" }}>
@@ -139,7 +383,7 @@ export default function SettingsPage() {
           <div className="section-title" style={{ marginBottom: "16px" }}>
             <div>
               <h2>Slippage tolerance limit</h2>
-              <p>Maximum price impact allowed during DEX swaps when executing or rebalancing basket positions.</p>
+              <p>Maximum price impact allowed during DEX swaps when executing or rebalancing basket positions for this account.</p>
             </div>
           </div>
 
@@ -414,7 +658,7 @@ export default function SettingsPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "20px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <strong style={{ fontSize: "13px", color: "var(--ink)" }}>Transaction Deadline</strong>
+                <strong style={{ fontSize: "13px", color: "var(--ink)" }}>Transaction Deadline (Execution Speed)</strong>
                 <p style={{ fontSize: "11px", color: "var(--muted-ink)", margin: "2px 0 0" }}>
                   Transactions revert automatically if not confirmed within this window.
                 </p>
@@ -445,7 +689,7 @@ export default function SettingsPage() {
 
             <div style={{ borderTop: "1px solid var(--line)", paddingTop: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <strong style={{ fontSize: "13px", color: "var(--ink)" }}>MEV / Front-Running Protection</strong>
+                <strong style={{ fontSize: "13px", color: "var(--ink)" }}>MEV / Front-Running Protection (Account Security)</strong>
                 <p style={{ fontSize: "11px", color: "var(--muted-ink)", margin: "2px 0 0" }}>
                   Route rebalance transactions through private mempools to prevent sandwich attacks.
                 </p>
@@ -489,28 +733,26 @@ export default function SettingsPage() {
                 Connected Wallet & Network
               </h2>
               <p style={{ fontSize: "12px", color: "var(--muted-ink)", margin: "4px 0 0" }}>
-                {isConnected && address ? `${formatAddress(address)} · ${chain?.name || "Anvil Local"}` : "No wallet connected"}
+                {formatAddress(address)} · {chain?.name || "Anvil Local"}
               </p>
             </div>
-            {isConnected && (
-              <button
-                type="button"
-                onClick={() => disconnect()}
-                style={{
-                  minHeight: "36px",
-                  padding: "0 16px",
-                  borderRadius: "9px",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  background: "rgba(239, 68, 68, 0.08)",
-                  color: "#ff7770",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Disconnect
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => logout()}
+              style={{
+                minHeight: "36px",
+                padding: "0 16px",
+                borderRadius: "9px",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                background: "rgba(239, 68, 68, 0.08)",
+                color: "#ff7770",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Disconnect
+            </button>
           </div>
         </div>
 

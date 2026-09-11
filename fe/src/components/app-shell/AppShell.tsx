@@ -20,6 +20,7 @@ const navigation: { id: AppNavId; label: string; href: string }[] = [
 ];
 
 import { WalletConnectModal } from "@/components/WalletConnectModal";
+import { useAuth } from "@/context/AuthContext";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -34,11 +35,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { address, isConnected, isConnecting, chain, chainId: activeChainId } = useAccount();
   const { connect, connectors, isPending: isConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
+  const { isAuthenticated, isAuthenticating, authError, logout } = useAuth();
   const queryClient = useQueryClient();
   const { switchChain } = useSwitchChain();
   const targetChainId = process.env.NEXT_PUBLIC_CHAIN_ID ? Number(process.env.NEXT_PUBLIC_CHAIN_ID) : 31337;
   const isWrongNetwork = mounted && isConnected && activeChainId !== undefined && activeChainId !== targetChainId;
-  const isWalletConnecting = mounted && (isConnecting || isConnectPending);
+  const isWalletConnecting = mounted && (isConnecting || isConnectPending || isAuthenticating);
 
   const handleSwitchNetwork = async () => {
     const hexChainId = `0x${targetChainId.toString(16)}`;
@@ -76,7 +78,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Wallet Connect modal state
   const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
-
   // Dynamic chain ID & USDC Contract address
   const currentChainId = activeChainId || targetChainId;
   const usdcAddr = (CONTRACT_ADDRESSES[currentChainId as keyof typeof CONTRACT_ADDRESSES]?.usdc || CONTRACT_ADDRESSES[8453].usdc) as `0x${string}`;
@@ -178,7 +179,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // Detail/activity responses are wallet-specific in the app. Remove them
     // immediately instead of leaving a previous wallet's cache on screen.
     queryClient.clear();
-    disconnect();
+    logout();
   };
 
   // User Profile & Onboarding state
@@ -332,7 +333,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               padding: "16px",
             } : undefined}
           >
-            {mounted && isConnected && address ? (
+            {mounted && isConnected && address && isAuthenticated ? (
               <>
                 <header>
                   <span className="avatar">{userInitials}</span>
@@ -428,16 +429,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </header>
 
                 <div className="account-balance" style={{ textAlign: 'center', padding: '16px 8px 8px' }}>
-                  <p style={{ color: 'var(--ink-3)', fontSize: "12px", marginBottom: '14px', lineHeight: 1.4 }}>
-                    Connect Web3 wallet to manage baskets & view portfolio
-                  </p>
+                  {authError ? (
+                    <div style={{ color: "#ef4444", fontSize: "11px", marginBottom: "12px", lineHeight: 1.4, padding: "8px 10px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.25)", textAlign: "left" }}>
+                      {authError}
+                    </div>
+                  ) : (
+                    <></>
+                  )}
                   <button
                     onClick={handleConnectWallet}
                     disabled={isWalletConnecting}
                     className="primary connect-wallet-button"
                     style={{ width: '100%', fontSize: '13px', justifyContent: 'center', padding: '10px 14px', borderRadius: '10px' }}
                   >
-                    {isWalletConnecting ? "Connecting..." : "Connect Wallet"}
+                    {isWalletConnecting ? "Authenticating..." : "Connect Wallet"}
                   </button>
                 </div>
               </>
