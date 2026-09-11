@@ -11,10 +11,12 @@ import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets } from "@/lib/baskets";
 import { fetchCreateSeedQuote, receiptCreatesAndFunds, registerConfirmedBasket } from "@/lib/createSeed";
 import { useSupportedAssets } from "@/hooks/useBaskets";
+import { useHydrated } from "@/hooks/useHydrated";
 
 export default function CreateBasketPage() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
+  const isHydrated = useHydrated();
 
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -69,6 +71,7 @@ export default function CreateBasketPage() {
   const { isPending: isSending, sendTransactionAsync } = useSendTransaction();
   const isPending = isApproving || isSending;
   const hasValidDeposit = Number.isFinite(Number(depositAmount)) && Number(depositAmount) > 0;
+  const hasConnectedWallet = isHydrated && isConnected && Boolean(address);
 
   const addToken = (tokenSymbol: string) => {
     setTargets((current) => {
@@ -113,7 +116,7 @@ export default function CreateBasketPage() {
   };
 
   const handleExecute = async () => {
-    if (!isConnected || !address) {
+    if (!hasConnectedWallet || !address) {
       setTransactionError("Connect your wallet before creating and funding a basket.");
       return;
     }
@@ -548,7 +551,7 @@ export default function CreateBasketPage() {
 
             <button
               className="primary"
-              disabled={!isConnected || total !== 100 || selectedAssets.length === 0 || !hasValidDeposit || isPending}
+              disabled={!hasConnectedWallet || total !== 100 || selectedAssets.length === 0 || !hasValidDeposit || isPending}
               onClick={handleExecute}
               style={{
                 width: "100%",
@@ -562,7 +565,7 @@ export default function CreateBasketPage() {
                 gap: "8px",
               }}
             >
-              {isPending ? "Waiting Wallet..." : !isConnected ? "Connect wallet first" : "Create & Fund Basket"}
+              {isPending ? "Waiting Wallet..." : !hasConnectedWallet ? "Connect wallet first" : "Create & Fund Basket"}
               <AppIcon type="arrow" />
             </button>
 

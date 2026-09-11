@@ -1,27 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useAccount, useConnect } from "wagmi";
+import { useAccount } from "wagmi";
 import { useBasketsList } from "@/hooks/useBaskets";
-import { formatCompactNumber, getCreatedBaskets, baskets as defaultBaskets, type Basket } from "@/lib/baskets";
+import { useHydrated } from "@/hooks/useHydrated";
+import { formatCompactNumber } from "@/lib/baskets";
 import { BasketLogo } from "./BasketLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { CreateBasketModal } from "@/components/CreateBasketModal";
 
 export function BasketList() {
   const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
+  const isHydrated = useHydrated();
+  const hasConnectedWallet = isHydrated && isConnected && Boolean(address);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   
   // Fetch indexed baskets directly from smart contract / indexer service
-  const { data: apiResponse, isLoading } = useBasketsList(31337, address);
-  const indexedBaskets = apiResponse?.data ?? [];
-
+  const { data: apiResponse, isLoading } = useBasketsList(31337, hasConnectedWallet ? address : undefined);
   const displayBaskets = useMemo(() => {
-    if (!isConnected || !address) return [];
+    if (!hasConnectedWallet || !address) return [];
 
-    return indexedBaskets.map((ib) => ({
+    return (apiResponse?.data ?? []).map((ib) => ({
       name: ib.name,
       symbol: ib.symbol || 'OTH',
       value: ib.snapshot?.total_nav_usdc ? Number(ib.snapshot.total_nav_usdc) : Number(ib.seed_amount || 0),
@@ -31,7 +31,7 @@ export function BasketList() {
       holdingsCount: ib.assets ? ib.assets.length : 0,
       isIndexed: true,
     }));
-  }, [isConnected, address, indexedBaskets]);
+  }, [hasConnectedWallet, address, apiResponse]);
 
   const totalPortfolioValue = displayBaskets.reduce((acc, b) => acc + b.value, 0);
 
@@ -82,18 +82,27 @@ export function BasketList() {
       </div>
 
       <div className="basket-list">
-        {isLoading && displayBaskets.length === 0 ? (
+        {hasConnectedWallet && isLoading && displayBaskets.length === 0 ? (
           <div style={{ padding: '36px 20px', textAlign: 'center', opacity: 0.6, fontSize: '13px' }}>
             Loading your created baskets...
           </div>
         ) : displayBaskets.length === 0 ? (
           <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--muted-ink)' }}>
-            <p style={{ fontSize: '14px', marginBottom: '8px', color: 'var(--ink)' }}>
-              No Baskets Created Yet
-            </p>
-            <p style={{ fontSize: '12px' }}>
-              Your connected wallet has not deployed any baskets on this network yet.
-            </p>
+            {hasConnectedWallet ? <>
+              <p style={{ fontSize: '14px', marginBottom: '8px', color: 'var(--ink)' }}>
+                No Baskets Created Yet
+              </p>
+              <p style={{ fontSize: '12px' }}>
+                Your connected wallet has not deployed any baskets on this network yet.
+              </p>
+            </> : <>
+              <p style={{ fontSize: '14px', marginBottom: '8px', color: 'var(--ink)' }}>
+                Connect your wallet to see your baskets
+              </p>
+              <p style={{ fontSize: '12px' }}>
+                Your portfolio and activity appear after you connect.
+              </p>
+            </>}
           </div>
         ) : (
           displayBaskets.map((basket) => (
