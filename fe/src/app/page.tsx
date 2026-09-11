@@ -15,10 +15,6 @@ export default function Home() {
 
       <section className="quiet-hero-grid" aria-labelledby="quiet-title">
         <div className="hero-left-content">
-          <div className="hero-brand-pill">
-            <OthelioLogo size={18} style={{ color: "#dbff75" }} />
-            <span>Decentralized Stock Baskets</span>
-          </div>
           <h1 id="quiet-title">Build the <span className="text-[#DBFF75]">basket</span><br />you want to own.</h1>
         </div>
 
