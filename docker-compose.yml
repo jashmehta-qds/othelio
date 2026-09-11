@@ -40,7 +40,7 @@ services:
       - sh
       - -c
       - >-
-        if [ "$$(cast code 0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9 --rpc-url http://anvil:8545)" != "0x" ]; then
+        if [ "$$(cast code 0x742b49cF43083584cb53467b119146Ef361b571f --rpc-url http://anvil:8545)" != "0x" ]; then
           echo "Othelio contracts already deployed; skipping deployment";
           exit 0;
         fi;
@@ -56,8 +56,8 @@ services:
       DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
       RPC_URL: http://anvil:8545
       CHAIN_ID: "31337"
-      FACTORY_ADDRESS: "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"
-      MODULE_ADDRESS: "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+      FACTORY_ADDRESS: "0x742b49cF43083584cb53467b119146Ef361b571f"
+      MODULE_ADDRESS: "0x835E426B749C7a215CeD0E487981271Cbf399c05"
     depends_on:
       postgres: { condition: service_healthy }
       contracts-deployer: { condition: service_completed_successfully }
