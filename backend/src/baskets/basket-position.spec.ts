@@ -27,6 +27,7 @@ function makeService(variableDebtFails = false, symbol = 'USDC') {
           stableDebtTokenAddress: stableDebt,
           variableDebtTokenAddress: variableDebt,
         };
+        case 'getUserAccountData': return [0n, 0n, 0n, 0n, 0n, 3_200_000_000_000_000_000n];
         case 'decimals': return 6;
         case 'symbol': return symbol;
         case 'getAssetPrice': return 100_000_000n;
@@ -53,7 +54,7 @@ function makeService(variableDebtFails = false, symbol = 'USDC') {
 }
 
 describe('BasketPositionService', () => {
-  it('reads and values liquid balances without querying the disabled lending integration', async () => {
+  it('reads and values liquid balances together with configured Aave positions', async () => {
     const { service, observedBlockNumbers } = makeService();
     const result = await service.getPositionSnapshot(basket, 31337);
 
@@ -65,14 +66,25 @@ describe('BasketPositionService', () => {
       liquidAmountBaseUnits: '100000000',
       priceUsdE8: '100000000',
     })]);
-    expect(result.data.markets).toEqual([]);
+    expect(result.data.markets).toEqual([expect.objectContaining({
+      identity: expect.objectContaining({
+        protocol: 'AAVE_V3',
+        marketAddress: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',
+        assetAddress: usdc.toLowerCase(),
+      }),
+      suppliedAmountBaseUnits: '200000000',
+      accruedDebtAmountBaseUnits: '50000000',
+    })]);
     expect(observedBlockNumbers.every((number) => number === 123n)).toBe(true);
     expect(result.data.readCompleteness).toBe('COMPLETE');
-    expect(result.data.equityUsdE8).toBe('10000000000');
+    expect(result.data.grossAssetsUsdE8).toBe('30000000000');
+    expect(result.data.accruedDebtUsdE8).toBe('5000000000');
+    expect(result.data.equityUsdE8).toBe('25000000000');
+    expect(result.data.aaveHealthFactorRay).toBe('3200000000000000000');
     expect(result.data.issues).not.toContain('POSITION_DISCOVERY_SCOPED_TO_CONFIGURED_AAVE_V3_POOL');
     expect(result.capabilities.actions.BORROW.enforcement).toEqual({ api: true, onchain: false });
     expect(result.capabilities.authorityMode).toBe('UNRESTRICTED_OWNER');
-    expect(result.capabilities.actions.REPAY.availability).toBe('CONDITIONAL');
+    expect(result.capabilities.actions.REPAY.availability).toBe('AVAILABLE');
     expect(result.capabilities.actions.RELEASE_COLLATERAL.availability).toBe('CONDITIONAL');
   });
 

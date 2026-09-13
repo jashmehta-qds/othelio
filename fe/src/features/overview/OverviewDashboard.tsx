@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { useAllActivity, useBasketsList } from "@/hooks/useBaskets";
 import {
   assetPrices,
@@ -41,6 +41,7 @@ const SECTOR_CATEGORIES = [
 ] as const;
 
 export function OverviewDashboard() {
+  const chainId = useChainId() || 31337;
   const { address, isConnected } = useAccount();
   const [localBaskets, setLocalBaskets] = useState<Basket[]>([]);
   const [timeframe, setTimeframe] = useState<Timeframe>("30D");
@@ -62,11 +63,11 @@ export function OverviewDashboard() {
   }, []);
 
   // Fetch indexed baskets from backend API
-  const { data: apiResponse } = useBasketsList(31337, isConnected ? address : undefined);
+  const { data: apiResponse } = useBasketsList(chainId, isConnected ? address : undefined);
   const indexedBaskets = apiResponse?.data || [];
 
   // Fetch recent activity feed
-  const { data: activityRes } = useAllActivity(31337, Boolean(isConnected && address));
+  const { data: activityRes } = useAllActivity(chainId, Boolean(isConnected && address));
   const indexedEvents = activityRes?.data || [];
 
   // Combine active baskets (User Created -> Backend Indexed) - Strict 0 when disconnected

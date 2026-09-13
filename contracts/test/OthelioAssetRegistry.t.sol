@@ -66,4 +66,46 @@ contract OthelioAssetRegistryTest is Test {
         vm.expectRevert("DECIMALS_TOO_LARGE");
         registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 39, 8, true);
     }
+
+    function testEnumerationAndRemovalOfSupportedTokens() public {
+        address tokenAAPL = address(0x555);
+        address feedAAPL = address(0x666);
+        address tokenUSDC = address(0x777);
+        address feedUSDC = address(0x888);
+
+        vm.startPrank(owner);
+        // Configure NVDA (B20)
+        registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 18, 8, true);
+        // Configure AAPL (B20)
+        registry.configure(block.chainid, tokenAAPL, feedAAPL, true, 18, 8, true);
+        // Configure USDC (not B20)
+        registry.configure(block.chainid, tokenUSDC, feedUSDC, true, 6, 8, false);
+
+        address[] memory supported = registry.getSupportedTokens(block.chainid);
+        assertEq(supported.length, 3);
+        assertEq(supported[0], tokenNVDA);
+        assertEq(supported[1], tokenAAPL);
+        assertEq(supported[2], tokenUSDC);
+
+        address[] memory b20 = registry.getSupportedB20Tokens(block.chainid);
+        assertEq(b20.length, 2);
+        assertEq(b20[0], tokenNVDA);
+        assertEq(b20[1], tokenAAPL);
+
+        // Disabling an asset removes it from both supported lists
+        registry.configure(block.chainid, tokenNVDA, feedNVDA, false, 18, 8, true);
+        supported = registry.getSupportedTokens(block.chainid);
+        assertEq(supported.length, 2);
+
+        b20 = registry.getSupportedB20Tokens(block.chainid);
+        assertEq(b20.length, 1);
+        assertEq(b20[0], tokenAAPL);
+
+        // Re-enabling re-adds it
+        registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 18, 8, true);
+        supported = registry.getSupportedTokens(block.chainid);
+        assertEq(supported.length, 3);
+        vm.stopPrank();
+    }
 }
+

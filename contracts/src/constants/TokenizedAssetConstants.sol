@@ -35,4 +35,22 @@ library TokenizedAssetConstants {
     address public constant FEED_SNDK  = 0x388b0dC46C0Fb05A74BeE0994fa5b02c6Fcca2eA;
     address public constant FEED_SPCX  = 0x6A634B235903C4ad6376892180d6fF8612e3Fa68;
     address public constant FEED_TSLA  = 0xFaf869185383a24F8cb00e27BdA6b63B9905DCb4;
+
+    /// @notice Returns all 13 reviewed Coinbase B20 token addresses on Base Mainnet.
+    function getB20Tokens() external pure returns (address[13] memory tokens) {
+        tokens[0] = AAPLc;
+        tokens[1] = AMZNc;
+        tokens[2] = COINc;
+        tokens[3] = CRCLc;
+        tokens[4] = GOOGLc;
+        tokens[5] = INTCc;
+        tokens[6] = METAc;
+        tokens[7] = MSFTc;
+        tokens[8] = MSTRc;
+        tokens[9] = NVDAc;
+        tokens[10] = SNDKc;
+        tokens[11] = SPCXc;
+        tokens[12] = TSLAc;
+    }
 }
+

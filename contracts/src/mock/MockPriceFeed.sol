@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {AggregatorV3Interface} from "../oracle/BasketOracle.sol";
+
 /// @notice Deterministic local-only price feed whose timestamp always matches
 /// the current Anvil block, avoiding stale mainnet-fork oracle rounds.
-contract MockPriceFeed {
+contract MockPriceFeed is AggregatorV3Interface {
     uint8 public constant decimals = 8;
     int256 public immutable answer;
 

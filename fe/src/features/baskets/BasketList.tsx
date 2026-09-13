@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { useBasketsList } from "@/hooks/useBaskets";
 import { useHydrated } from "@/hooks/useHydrated";
 import { formatCompactNumber } from "@/lib/baskets";
@@ -11,13 +11,14 @@ import { AppIcon } from "@/components/app-shell/AppIcon";
 import { CreateBasketModal } from "@/components/CreateBasketModal";
 
 export function BasketList() {
+  const chainId = useChainId() || 31337;
   const { address, isConnected } = useAccount();
   const isHydrated = useHydrated();
   const hasConnectedWallet = isHydrated && isConnected && Boolean(address);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   
   // Fetch indexed baskets directly from smart contract / indexer service
-  const { data: apiResponse, isLoading } = useBasketsList(31337, hasConnectedWallet ? address : undefined);
+  const { data: apiResponse, isLoading } = useBasketsList(chainId, hasConnectedWallet ? address : undefined);
   const displayBaskets = useMemo(() => {
     if (!hasConnectedWallet || !address) return [];
 

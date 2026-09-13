@@ -7,8 +7,11 @@ export interface SwapQuoteParams {
   slippageBps: number;
 }
 
+export type AerodromeRouteKind = 'DIRECT' | 'VIA_USDC';
+
 export interface SwapQuoteResult {
-  providerName: '0x' | '1inch' | 'Aerodrome' | 'UniswapV3' | 'LocalAnvil' | 'Fallback';
+  providerName: 'Aerodrome';
+  kind: AerodromeRouteKind;
   chainId: number;
   sellToken: string;
   buyToken: string;
@@ -16,7 +19,9 @@ export interface SwapQuoteResult {
   routerAddress: string;
   allowanceSpender: string;
   recipientAddress: string;
-  dexCalldata: string;
+  tickSpacing: number;
+  firstTickSpacing: number;
+  secondTickSpacing: number;
   expectedBuyAmount: bigint;
   minBuyAmount: bigint;
   expiresAt: string;
@@ -27,7 +32,7 @@ export interface SwapQuoteResult {
 }
 
 export interface IDexAdapter {
-  readonly name: '0x' | '1inch' | 'Aerodrome' | 'UniswapV3' | 'LocalAnvil' | 'Fallback';
+  readonly name: 'Aerodrome';
   readonly supportedChainIds: number[];
   getQuote(params: SwapQuoteParams): Promise<SwapQuoteResult | null>;
 }

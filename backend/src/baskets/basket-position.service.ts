@@ -22,6 +22,7 @@ const AAVE_POOL_POSITION_ABI = parseAbi([
   'function ADDRESSES_PROVIDER() view returns (address)',
   'function getReservesList() view returns (address[])',
   'function getReserveData(address asset) view returns ((uint256 configuration, uint128 liquidityIndex, uint128 currentLiquidityRate, uint128 variableBorrowIndex, uint128 currentVariableBorrowRate, uint128 currentStableBorrowRate, uint40 lastUpdateTimestamp, uint16 id, address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress, address interestRateStrategyAddress, uint128 accruedToTreasury, uint128 unbacked, uint128 isolationModeTotalDebt))',
+  'function getUserAccountData(address user) view returns (uint256 totalCollateralBase,uint256 totalDebtBase,uint256 availableBorrowsBase,uint256 currentLiquidationThreshold,uint256 ltv,uint256 healthFactor)',
 ]);
 
 const AAVE_PROVIDER_ABI = parseAbi([
@@ -125,11 +126,15 @@ export class BasketPositionService {
         throw new BadRequestException('Every additional asset must be a valid EVM address.');
       }
     });
-    // Lending is not part of the current product surface.  Reading the forked
-    // Aave pool is both unnecessary for liquid positions and unreliable against
-    // the local mock, so keep the canonical snapshot strictly portfolio-only.
-    const poolAddress: Address | undefined = undefined;
-    const reserveAssets: Address[] = [];
+    // Aave remains write-disabled in the product UI, but existing positions must
+    // be discovered accurately so recovery actions can later be enabled safely.
+    const poolAddress = AAVE_V3_POOLS[chainId];
+    const reserveAssets = poolAddress
+      ? await this.getAaveReserves(client, poolAddress, blockNumber, issues)
+      : [];
+    const aaveHealthFactorRay = poolAddress
+      ? await this.getAaveHealthFactor(client, poolAddress, basketAddress, blockNumber, issues)
+      : null;
 
     const configuredKeys = new Set(configuredAssets.map((address) => address.toLowerCase()));
     const universe = new Map<string, Address>();
@@ -224,12 +229,13 @@ export class BasketPositionService {
       grossAssetsUsdE8: totalsKnown ? grossAssets.toString() : null,
       accruedDebtUsdE8: totalsKnown ? accruedDebt.toString() : null,
       equityUsdE8: totalsKnown ? (grossAssets - accruedDebt).toString() : null,
+      aaveHealthFactorRay: aaveHealthFactorRay?.toString() ?? null,
       readCompleteness,
       valuationStatus,
       issues: [...new Set(issues)].sort(),
     });
 
-    return { data: snapshot, capabilities: this.getCapabilities(chainId) };
+    return { data: snapshot, capabilities: this.resolveRecoveryCapabilities(chainId, snapshot) };
   }
 
   private getCapabilities(chainId: number): BasketCapabilities {
@@ -356,6 +362,28 @@ export class BasketPositionService {
     } catch {
       issues.push(`AAVE_RESERVE_DISCOVERY_UNAVAILABLE:${poolAddress}`);
       return [];
+    }
+  }
+
+  private async getAaveHealthFactor(
+    client: PositionClient,
+    poolAddress: Address,
+    basketAddress: Address,
+    blockNumber: bigint,
+    issues: string[],
+  ): Promise<bigint | null> {
+    try {
+      const account = await client.readContract({
+        address: poolAddress,
+        abi: AAVE_POOL_POSITION_ABI,
+        functionName: 'getUserAccountData',
+        args: [basketAddress],
+        blockNumber,
+      });
+      return account[5];
+    } catch {
+      issues.push(`AAVE_HEALTH_FACTOR_UNAVAILABLE:${poolAddress}`);
+      return null;
     }
   }
 

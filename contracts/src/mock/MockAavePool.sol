@@ -5,6 +5,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {IAaveV3AccountData} from "../lending/OthelioAaveV3Adapter.sol";
 
 contract MockAToken is ERC20 {
     address public immutable POOL;
@@ -30,7 +31,7 @@ contract MockAToken is ERC20 {
     }
 }
 
-contract MockAavePool {
+contract MockAavePool is IAaveV3AccountData {
     using SafeERC20 for IERC20;
 
     uint256 public constant BASE_UNIT = 1e8;

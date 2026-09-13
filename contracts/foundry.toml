@@ -7,3 +7,16 @@ solc_version = "0.8.24"
 optimizer = true
 optimizer_runs = 10000
 via_ir = true
+
+[lint]
+lint_on_build = false
+ignore = ["test/**", "script/**"]
+exclude_lints = [
+    "literal-instead-of-constant",
+    "custom-errors",
+    "mixed-case-variable",
+    "screaming-snake-case-immutable",
+    "screaming-snake-case-const",
+    "multi-contract-file"
+]
+

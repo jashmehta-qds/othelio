@@ -1,10 +1,6 @@
 import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { ZeroXAdapter } from './adapters/zero-x.adapter';
-import { OneInchAdapter } from './adapters/one-inch.adapter';
 import { AerodromeAdapter } from './adapters/aerodrome.adapter';
-import { FallbackAdapter } from './adapters/fallback.adapter';
-import { LocalAnvilAdapter } from './adapters/local-anvil.adapter';
 import { IDexAdapter, SwapQuoteParams, SwapQuoteResult } from './interfaces/dex-adapter.interface';
 
 @Injectable()
@@ -14,13 +10,9 @@ export class DexManagerService {
   constructor(
     @Inject(DatabaseService)
     private readonly db: DatabaseService,
-    @Inject(ZeroXAdapter) zeroXAdapter: ZeroXAdapter,
-    @Inject(OneInchAdapter) oneInchAdapter: OneInchAdapter,
     @Inject(AerodromeAdapter) aerodromeAdapter: AerodromeAdapter,
-    @Inject(LocalAnvilAdapter) localAnvilAdapter: LocalAnvilAdapter,
-    @Inject(FallbackAdapter) fallbackAdapter: FallbackAdapter,
   ) {
-    this.adapters = [zeroXAdapter, oneInchAdapter, aerodromeAdapter, localAnvilAdapter, fallbackAdapter];
+    this.adapters = [aerodromeAdapter];
   }
 
   async getBestQuote(params: SwapQuoteParams): Promise<{
@@ -47,7 +39,7 @@ export class DexManagerService {
       && q.buyToken.toLowerCase() === params.buyToken.toLowerCase()
       && q.sellAmount === BigInt(params.sellAmount)
       && q.recipientAddress.toLowerCase() === params.takerAddress.toLowerCase()
-      && q.dexCalldata !== '0x'
+      && Number.isInteger(q.tickSpacing)
     ));
 
     if (validQuotes.length === 0) {

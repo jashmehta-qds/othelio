@@ -33,7 +33,19 @@ interface IOthelioEvents {
         uint256 remainingNAV         // Remaining Basket NAV in USDC
     );
 
-    /// @notice Emitted when internal holdings are rebalanced via external DEX swaps (measured via pre/post delta)
+    /// @notice Emitted when basket constituents are swapped into one output asset and paid to the recipient.
+    event BasketSwapWithdrawn(
+        address indexed safe,
+        address indexed owner,
+        address indexed recipient,
+        address outputAsset,
+        uint256 outputAmount,
+        address[] soldAssets,
+        uint256[] soldAmounts,
+        uint256 remainingNAV
+    );
+
+    /// @notice Emitted when internal holdings are rebalanced via external DEX swaps
     event BasketRebalanced(
         address indexed safe,
         address indexed controller,
@@ -42,6 +54,18 @@ interface IOthelioEvents {
         address[] boughtAssets,      // Assets bought during rebalance (e.g. GOOGc)
         uint256[] boughtAmounts,     // Actual quantities bought (after DEX fee/slippage)
         uint256 totalNAV             // Aggregate Basket NAV in USDC post-rebalance
+    );
+
+    /// @notice Emitted for each route leg executed within a portfolio funding or rebalancing operation
+    event AerodromeRouteExecuted(
+        address indexed basket,
+        address indexed tokenIn,
+        address indexed tokenOut,
+        uint8 kind,
+        uint256 amountIn,
+        uint256 amountOut,
+        int24 firstTickSpacing,
+        int24 secondTickSpacing
     );
 
     /// @notice Emitted when an owner sweeps accidental / untracked tokens

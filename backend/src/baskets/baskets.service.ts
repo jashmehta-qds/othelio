@@ -2,7 +2,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { addressSchema, chainIdSchema } from '@othelio/shared';
 import { createPublicClient, decodeEventLog, formatUnits, http, isHash, parseAbi } from 'viem';
 import { DatabaseService } from '../database/database.service';
-import { BasketQuotePlannerService, BasketQuoteRequest, CreateSeedQuoteRequest } from './basket-quote-planner.service';
+import { BasketQuotePlannerService, BasketQuoteRequest } from './basket-quote-planner.service';
 import { LendingEventRequest, LendingEventService } from './lending-event.service';
 
 @Injectable()
@@ -494,10 +494,6 @@ export class BasketsService {
 
   async quoteSwaps(basketAddress: string, body: BasketQuoteRequest) {
     return this.quotePlanner.quoteSwaps(basketAddress, body);
-  }
-
-  async quoteCreateSeed(body: CreateSeedQuoteRequest) {
-    return this.quotePlanner.quoteCreateSeed(body);
   }
 
   async recordLendingEvent(body: LendingEventRequest) {

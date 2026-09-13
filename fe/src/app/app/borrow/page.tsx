@@ -5,11 +5,22 @@ import { useAccount, useChainId } from "wagmi";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { useBasketsList } from "@/hooks/useBaskets";
 import { formatAddress } from "@/lib/baskets";
+import { AAVE_UI_ENABLED } from "@/lib/contracts";
 
 export default function LendingRecoveryPage() {
   const { address } = useAccount();
   const chainId = useChainId() || 31337;
   const { data, isLoading, error } = useBasketsList(chainId, address);
+
+  if (!AAVE_UI_ENABLED) {
+    return (
+      <section className="app-page-frame">
+        <p className="eyebrow">Portfolio-only release</p>
+        <h1 className="page-title">Aave is not enabled yet</h1>
+        <p className="page-description">The Aave adapter and position discovery are wired, but lending actions remain unavailable pending launch review.</p>
+      </section>
+    );
+  }
 
   return (
     <section className="app-page-frame">

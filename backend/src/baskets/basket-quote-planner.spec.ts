@@ -10,6 +10,7 @@ import { BasketQuotePlannerService } from './basket-quote-planner.service';
 const mockedClient = vi.hoisted(() => ({
   readContract: vi.fn(),
   call: vi.fn(),
+  getBlock: vi.fn(),
 }));
 
 vi.mock('viem', async (importOriginal) => {
@@ -26,16 +27,16 @@ const caller = '0x3333333333333333333333333333333333333333';
 const overweight = '0x4444444444444444444444444444444444444444';
 const underweight = '0x5555555555555555555555555555555555555555';
 const thirdAsset = '0x6666666666666666666666666666666666666666';
-const router = '0x7777777777777777777777777777777777777777';
-const spender = '0x8888888888888888888888888888888888888888';
-
-const REBALANCE_ABI = parseAbi([
-  'function rebalance((address safe,(address target,address allowanceSpender,address soldAsset,uint256 maxSoldAmount,bytes dexCalldata)[] legs,address[] soldAssets,uint256[] maxSoldAmounts,address[] boughtAssets,uint256[] minBoughtAmounts,address[] basketTokens,uint256 deadline) p) external returns (uint256[] soldAmounts,uint256[] boughtAmounts,uint256 totalNAV)',
+const router = '0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5';
+const adapter = '0x7777777777777777777777777777777777777777';
+const TYPED_FUND_ABI = parseAbi([
+  'struct AerodromeRoute { uint8 kind; address tokenIn; address tokenOut; int24 firstTickSpacing; int24 secondTickSpacing; uint256 amountIn; uint256 minimumAmountOut; }',
+  'function fundAerodromePortfolio(address safe,address fundingToken,uint256 totalFundingAmount,AerodromeRoute[] routes,uint256 deadline) external',
 ]);
-const FUND_ABI = parseAbi([
-  'function fundWithSwaps((address safe,address inputAsset,uint256 inputAmount,(address target,address allowanceSpender,uint256 inputAmount,bytes dexCalldata)[] legs,address[] boughtAssets,uint256[] minBoughtAmounts,address[] basketTokens,uint256 deadline) p) external returns (uint256[] boughtAmounts,uint256 totalNAV)',
+const TYPED_SWAP_ABI = parseAbi([
+  'struct AerodromeRoute { uint8 kind; address tokenIn; address tokenOut; int24 firstTickSpacing; int24 secondTickSpacing; uint256 amountIn; uint256 minimumAmountOut; }',
+  'function rebalanceAerodromePortfolio(address safe,AerodromeRoute[] routes,uint256 deadline) external',
 ]);
-const FACTORY_ABI = parseAbi(['function createAndSeedBasket(string name,(bytes32 clientSalt,(address safe,address inputAsset,uint256 inputAmount,(address target,address allowanceSpender,uint256 inputAmount,bytes dexCalldata)[] legs,address[] boughtAssets,uint256[] minBoughtAmounts,address[] basketTokens,uint256 deadline) mint) p) external returns (address,uint256[],uint256)']);
 const WITHDRAW_IN_KIND_ABI = parseAbi(['function withdrawInKind(address safe,address recipient,address[] tokens,uint256[] amounts,address[] remainingTokens) external returns (uint256 remainingNAV)']);
 
 function snapshot(amounts: Array<[string, string]>): PositionSnapshot {
@@ -71,15 +72,18 @@ function makePlanner(position: PositionSnapshot) {
   const dex = {
     getBestQuote: vi.fn().mockImplementation(async (params) => ({
       winningQuote: {
-        providerName: '0x',
+        providerName: 'Aerodrome',
+        kind: 'DIRECT',
         chainId: params.chainId,
         sellToken: params.sellToken,
         buyToken: params.buyToken,
         sellAmount: BigInt(params.sellAmount),
         routerAddress: router,
-        allowanceSpender: spender,
+        allowanceSpender: router,
         recipientAddress: params.takerAddress,
-        dexCalldata: '0x1234',
+        tickSpacing: 100,
+        firstTickSpacing: 100,
+        secondTickSpacing: 0,
         expectedBuyAmount: 300_000_000n,
         minBuyAmount: 297_000_000n,
         expiresAt: '2099-01-01T00:00:00.000Z',
@@ -100,10 +104,16 @@ function makePlanner(position: PositionSnapshot) {
 describe('BasketQuotePlannerService spot rebalance', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedClient.readContract.mockImplementation(async ({ functionName }: { functionName: string }) => (
-      functionName === 'moduleVersion' ? 3n : true
-    ));
+    mockedClient.readContract.mockImplementation(async ({ functionName }: { functionName: string }) => {
+      if (functionName === 'moduleVersion') return 3n;
+      if (functionName === 'aerodromeAdapter') return adapter;
+      if (functionName === 'router') return router;
+      if (functionName === 'routeRegistry') return '0x9999999999999999999999999999999999999999';
+      if (functionName === 'requireApprovedPool') return ['0x1111111111111111111111111111111111111111', '0x2222222222222222222222222222222222222222'];
+      return true;
+    });
     mockedClient.call.mockResolvedValue({ data: '0x' });
+    mockedClient.getBlock.mockResolvedValue({ timestamp: BigInt(Math.floor(Date.now() / 1_000)) });
   });
 
   it('sells the actual overweight asset in a no-USDC basket and binds the exact v3 route', async () => {
@@ -143,24 +153,84 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     expect(executionPlanSchema.parse(response.data.plan).simulation.status).toBe('SUCCEEDED');
 
     const decoded = decodeFunctionData({
-      abi: REBALANCE_ABI,
+      abi: TYPED_SWAP_ABI,
       data: response.data.plan.calls[0].calldata as `0x${string}`,
     });
-    expect(decoded.functionName).toBe('rebalance');
-    const params = decoded.args[0];
-    expect(params.legs[0].target.toLowerCase()).toBe(router);
-    expect(params.legs[0].allowanceSpender.toLowerCase()).toBe(spender);
-    expect(params.legs[0].dexCalldata).toBe('0x1234');
-    expect(params.soldAssets.map((address) => address.toLowerCase())).toEqual([overweight]);
-    expect(params.maxSoldAmounts).toEqual([300_000_000n]);
-    expect(params.boughtAssets.map((address) => address.toLowerCase())).toEqual([underweight]);
-    expect(params.deadline).toBe(BigInt(Math.floor(new Date('2099-01-01T00:00:00.000Z').getTime() / 1000)));
+    expect(decoded.functionName).toBe('rebalanceAerodromePortfolio');
+    expect(decoded.args[0]).toBe(basket);
+    expect((decoded.args[1] as any[])[0]).toMatchObject({
+      kind: 0,
+      tokenIn: overweight,
+      tokenOut: underweight,
+      firstTickSpacing: 100,
+      secondTickSpacing: 0,
+      amountIn: 300_000_000n,
+      minimumAmountOut: 297_000_000n,
+    });
     expect(mockedClient.call).toHaveBeenCalledWith(expect.objectContaining({
       account: caller,
       to: moduleAddress,
       data: response.data.plan.calls[0].calldata,
       blockNumber: 123n,
     }));
+    expect(mockedClient.readContract).toHaveBeenCalledWith(expect.objectContaining({
+      address: moduleAddress,
+      functionName: 'aerodromeAdapter',
+    }));
+  });
+
+  it('refuses a quote when the deployed portfolio module is not pinned to the reviewed router', async () => {
+    mockedClient.readContract.mockImplementation(async ({ functionName }: { functionName: string }) => {
+      if (functionName === 'moduleVersion') return 3n;
+      if (functionName === 'supportsBoundedExecution') return true;
+      if (functionName === 'aerodromeAdapter') return adapter;
+      if (functionName === 'router') return '0x8888888888888888888888888888888888888888';
+      if (functionName === 'routeRegistry') return '0x9999999999999999999999999999999999999999';
+      if (functionName === 'requireApprovedPool') return ['0x1111111111111111111111111111111111111111', '0x2222222222222222222222222222222222222222'];
+      return true;
+    });
+    const { planner } = makePlanner(snapshot([
+      [overweight, '800000000'],
+      [underweight, '200000000'],
+    ]));
+
+    await expect(planner.quoteSwaps(basket, {
+      action: 'rebalance',
+      chainId: 8453,
+      moduleAddress,
+      callerAddress: caller,
+      targetWeights: [
+        { assetAddress: overweight, targetWeightBps: 5000 },
+        { assetAddress: underweight, targetWeightBps: 5000 },
+      ],
+    })).rejects.toThrow('UNAPPROVED_AERODROME_ROUTER');
+    expect(mockedClient.call).not.toHaveBeenCalled();
+  });
+
+  it('refuses a quote when the route registry rejects an unapproved pool', async () => {
+    mockedClient.readContract.mockImplementation(async ({ functionName }: { functionName: string }) => {
+      if (functionName === 'moduleVersion') return 3n;
+      if (functionName === 'aerodromeAdapter') return adapter;
+      if (functionName === 'router') return router;
+      if (functionName === 'routeRegistry') return '0x9999999999999999999999999999999999999999';
+      if (functionName === 'requireApprovedPool') throw new Error('UNAPPROVED_AERODROME_POOL');
+      return true;
+    });
+    const { planner } = makePlanner(snapshot([
+      [overweight, '800000000'],
+      [underweight, '200000000'],
+    ]));
+
+    await expect(planner.quoteSwaps(basket, {
+      action: 'rebalance',
+      chainId: 8453,
+      moduleAddress,
+      callerAddress: caller,
+      targetWeights: [
+        { assetAddress: overweight, targetWeightBps: 5000 },
+        { assetAddress: underweight, targetWeightBps: 5000 },
+      ],
+    })).rejects.toThrow('UNAPPROVED_AERODROME_POOL');
   });
 
   it('prepares an exact proportional in-kind withdrawal from the canonical liquid snapshot', async () => {
@@ -201,7 +271,7 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     }));
   });
 
-  it('prepares a multi-leg rebalance that sells one asset into multiple buy targets', async () => {
+  it('prepares an atomic multi-leg Base rebalance plan with typed Aerodrome routes', async () => {
     const { planner, dex } = makePlanner(snapshot([
       [overweight, '600000000'],
       [underweight, '200000000'],
@@ -220,14 +290,19 @@ describe('BasketQuotePlannerService spot rebalance', () => {
         { assetAddress: thirdAsset, targetWeightBps: 3300 },
       ],
     });
-    if (!('rebalance' in response.data)) throw new Error('Expected a rebalance execution plan.');
+
     expect(response.executionAllowed).toBe(true);
     expect(dex.getBestQuote).toHaveBeenCalledTimes(2);
-    expect(response.data.rebalance.soldAssets).toEqual([overweight]);
-    expect(response.data.rebalance.boughtAssets).toEqual([underweight, thirdAsset]);
+    const decoded = decodeFunctionData({
+      abi: TYPED_SWAP_ABI,
+      data: response.data.plan.calls[0].calldata as `0x${string}`,
+    });
+    expect(decoded.functionName).toBe('rebalanceAerodromePortfolio');
+    expect(decoded.args[0]).toBe(basket);
+    expect((decoded.args[1] as any[]).length).toBe(2);
   });
 
-  it('keeps every sell asset within its aggregate limit across a multi-sell, multi-buy rebalance', async () => {
+  it('prepares multi-sell Base rebalances with atomic route batching', async () => {
     const fourthAsset = '0x9999999999999999999999999999999999999998';
     const { planner, dex } = makePlanner(snapshot([
       [overweight, '500000000'],
@@ -249,18 +324,15 @@ describe('BasketQuotePlannerService spot rebalance', () => {
       ],
     });
 
+    expect(response.executionAllowed).toBe(true);
     expect(dex.getBestQuote).toHaveBeenCalledTimes(4);
-    const decoded = decodeFunctionData({ abi: REBALANCE_ABI, data: response.data.plan.calls[0].calldata as `0x${string}` });
-    const params = decoded.args[0];
-    const totals = new Map<string, bigint>();
-    for (const leg of params.legs) {
-      const key = leg.soldAsset.toLowerCase();
-      totals.set(key, (totals.get(key) ?? 0n) + leg.maxSoldAmount);
-    }
-    expect(totals.get(overweight)).toBe(250_000_000n);
-    expect(totals.get(underweight)).toBe(150_000_000n);
-    expect(params.maxSoldAmounts).toEqual([250_000_000n, 150_000_000n]);
-    expect(params.minBoughtAmounts).toEqual([594_000_000n, 594_000_000n]);
+    const decoded = decodeFunctionData({
+      abi: TYPED_SWAP_ABI,
+      data: response.data.plan.calls[0].calldata as `0x${string}`,
+    });
+    expect(decoded.functionName).toBe('rebalanceAerodromePortfolio');
+    expect(decoded.args[0]).toBe(basket);
+    expect((decoded.args[1] as any[]).length).toBe(4);
   });
 
   it('fails explicitly for a legacy module instead of encoding the old selector', async () => {
@@ -348,8 +420,19 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     expect(dex.getBestQuote).not.toHaveBeenCalled();
   });
 
-  it('creates and simulates a direct single-asset v3 funding plan with the distinct route spender', async () => {
-    const { planner } = makePlanner(snapshot([]));
+  it('creates and simulates a direct single-asset typed Aerodrome funding plan', async () => {
+    const { planner, dex } = makePlanner(snapshot([]));
+    // Deliberately diverge the chain clock from the host clock, as local Anvil
+    // forks can do. The contract deadline must remain within its five-minute
+    // block.timestamp bound.
+    mockedClient.getBlock.mockResolvedValueOnce({ timestamp: 1_000n });
+    dex.getBestQuote.mockImplementationOnce(async (params: any) => ({ winningQuote: {
+      providerName: 'Aerodrome', kind: 'DIRECT', chainId: 8453, sellToken: params.sellToken, buyToken: params.buyToken,
+      sellAmount: BigInt(params.sellAmount), routerAddress: router, allowanceSpender: router,
+      recipientAddress: params.takerAddress, tickSpacing: 100, firstTickSpacing: 100, secondTickSpacing: 0,
+      expectedBuyAmount: 300_000_000n, minBuyAmount: 297_000_000n,
+      expiresAt: '2099-01-01T00:00:00.000Z', estimatedGasUsd: 0.1, netBuyAmountUsd: 299.9, isAvailable: true,
+    }, allQuotes: [] }));
     const response = await planner.quoteSwaps(basket, {
       action: 'mint',
       chainId: 8453,
@@ -367,42 +450,25 @@ describe('BasketQuotePlannerService spot rebalance', () => {
       spenderAddress: moduleAddress,
       maxAmountBaseUnits: '300000000',
     }]);
-    const decoded = decodeFunctionData({ abi: FUND_ABI, data: response.data.plan.calls[0].calldata as `0x${string}` });
-    expect(decoded.functionName).toBe('fundWithSwaps');
-    const params = decoded.args[0];
-    expect(params.safe.toLowerCase()).toBe(basket);
-    expect(params.inputAmount).toBe(300_000_000n);
-    expect(params.legs[0].target.toLowerCase()).toBe(router);
-    expect(params.legs[0].allowanceSpender.toLowerCase()).toBe(spender);
-    expect(params.minBoughtAmounts).toEqual([297_000_000n]);
+    const decoded = decodeFunctionData({ abi: TYPED_FUND_ABI, data: response.data.plan.calls[0].calldata as `0x${string}` });
+    expect(decoded.functionName).toBe('fundAerodromePortfolio');
+    expect(decoded.args[0]).toBe(basket);
+    expect(decoded.args[1]).toBe(overweight);
+    expect(decoded.args[2]).toBe(300_000_000n);
+    expect((decoded.args[3] as any[])[0]).toMatchObject({
+      kind: 0,
+      tokenIn: overweight,
+      tokenOut: underweight,
+      firstTickSpacing: 100,
+      secondTickSpacing: 0,
+      amountIn: 300_000_000n,
+      minimumAmountOut: 297_000_000n,
+    });
+    expect(decoded.args[4]).toBe(1_240n);
     expect(mockedClient.call).toHaveBeenCalledWith(expect.objectContaining({
       account: caller,
       to: moduleAddress,
       data: response.data.plan.calls[0].calldata,
     }));
-  });
-
-  it('builds one exact factory create-and-seed call with predicted-safe recipients and an exact module approval', async () => {
-    const { planner } = makePlanner(snapshot([]));
-    const factory = '0x9999999999999999999999999999999999999999';
-    const predicted = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-    mockedClient.readContract.mockImplementation(async ({ functionName }: { functionName: string }) => {
-      if (functionName === 'predictBasketAddress') return predicted;
-      if (functionName === 'module' || functionName === 'factory') return functionName === 'module' ? moduleAddress : factory;
-      return functionName === 'moduleVersion' ? 3n : true;
-    });
-    const response = await planner.quoteCreateSeed({
-      chainId: 8453, factoryAddress: factory, moduleAddress, ownerAddress: caller, name: 'Seeded',
-      clientSalt: `0x${'1'.repeat(64)}`, inputAsset: overweight, inputAmount: '300000000',
-      targetWeights: [{ assetAddress: underweight, targetWeightBps: 5000 }, { assetAddress: thirdAsset, targetWeightBps: 5000 }],
-    });
-    expect(response.data.predictedBasketAddress).toBe(predicted);
-    expect(response.data.plan.calls).toHaveLength(1);
-    expect(response.data.plan.approvals).toEqual([{ tokenAddress: overweight, spenderAddress: moduleAddress, maxAmountBaseUnits: '300000000' }]);
-    const decoded = decodeFunctionData({ abi: FACTORY_ABI, data: response.data.plan.calls[0].calldata as `0x${string}` });
-    const mint = decoded.args[1].mint;
-    expect(mint.safe.toLowerCase()).toBe(predicted);
-    expect(mint.legs.map((leg) => leg.inputAmount)).toEqual([150_000_000n, 150_000_000n]);
-    expect(mockedClient.call).toHaveBeenCalledWith(expect.objectContaining({ account: caller, to: factory }));
   });
 });

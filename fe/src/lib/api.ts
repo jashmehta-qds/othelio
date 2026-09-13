@@ -32,12 +32,10 @@ export async function fetchSwapQuote(basketAddress: string, body: unknown) {
       slippageBps?: number;
       target?: string;
       allowanceSpender?: string;
-      dexCalldata: `0x${string}`;
       soldAssets: string[];
       boughtAssets: string[];
       minBoughtAmounts: string[];
       basketTokens: string[];
-      trades: unknown[];
       preparationReason?: string;
       plan?: ExecutionPlan;
       module?: {
@@ -48,7 +46,6 @@ export async function fetchSwapQuote(basketAddress: string, body: unknown) {
       route?: {
         provider: string;
         target: string;
-        calldata: `0x${string}`;
         allowanceSpender: string;
         recipient: string;
         sellAsset: string;
@@ -171,4 +168,3 @@ export async function updateAccountSettingsApi(
     body: JSON.stringify(settings),
   });
 }
-

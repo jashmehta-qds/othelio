@@ -6,7 +6,7 @@ import { parseUnits } from "viem";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { AAVE_V3_BASE_POOL_ADDRESS, calculateHealthFactor } from "@/lib/lending";
 import { type Basket } from "@/lib/baskets";
-import { CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { AAVE_UI_ENABLED, CONTRACT_ADDRESSES, OTHELIO_PORTFOLIO_MODULE_ABI } from "@/lib/contracts";
 import { fetchApi } from "@/lib/api";
 
 interface AaveActionModalProps {
@@ -15,58 +15,6 @@ interface AaveActionModalProps {
   moduleAddress?: `0x${string}`;
   onClose: () => void;
 }
-
-const MODULE_AAVE_ABI = [
-  {
-    inputs: [
-      { name: "safe", type: "address" },
-      { name: "aavePool", type: "address" },
-      { name: "asset", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    name: "supplyToAave",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { name: "safe", type: "address" },
-      { name: "aavePool", type: "address" },
-      { name: "debtAsset", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    name: "borrowFromAave",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { name: "safe", type: "address" },
-      { name: "aavePool", type: "address" },
-      { name: "debtAsset", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    name: "repayAave",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { name: "safe", type: "address" },
-      { name: "aavePool", type: "address" },
-      { name: "asset", type: "address" },
-      { name: "amount", type: "uint256" },
-      { name: "to", type: "address" },
-    ],
-    name: "withdrawFromAave",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-] as const;
 
 export function AaveActionModal({ basket, initialMode = "borrow", moduleAddress, onClose }: AaveActionModalProps) {
   const chainId = useChainId();
@@ -104,6 +52,10 @@ export function AaveActionModal({ basket, initialMode = "borrow", moduleAddress,
     return calculateHealthFactor(nextCollateral, nextDebt, 80.0);
   }, [mode, amountInput, currentDebt, collateralNAV]);
 
+  if (!AAVE_UI_ENABLED) {
+    return null;
+  }
+
   const handleSetPercent = (pct: number) => {
     let base = 0;
     if (mode === "borrow") base = maxBorrowAmount;
@@ -126,17 +78,23 @@ export function AaveActionModal({ basket, initialMode = "borrow", moduleAddress,
       if (mode === "withdraw") {
         txHash = await writeContractAsync({
           address: targetModule,
-          abi: MODULE_AAVE_ABI,
-          functionName: "withdrawFromAave",
-          args: [basket.address as `0x${string}`, AAVE_V3_BASE_POOL_ADDRESS, usdcAddress, amountUnits, basket.address as `0x${string}`],
+          abi: OTHELIO_PORTFOLIO_MODULE_ABI,
+          functionName: "withdrawAaveCollateral",
+          args: [basket.address as `0x${string}`, usdcAddress, amountUnits, BigInt("1250000000000000000")],
         });
-      } else {
-        const funcName = mode === "borrow" ? "borrowFromAave" : mode === "repay" ? "repayAave" : "supplyToAave";
+      } else if (mode === "repay") {
         txHash = await writeContractAsync({
           address: targetModule,
-          abi: MODULE_AAVE_ABI,
-          functionName: funcName,
-          args: [basket.address as `0x${string}`, AAVE_V3_BASE_POOL_ADDRESS, usdcAddress, amountUnits],
+          abi: OTHELIO_PORTFOLIO_MODULE_ABI,
+          functionName: "repayAave",
+          args: [basket.address as `0x${string}`, usdcAddress, amountUnits],
+        });
+      } else {
+        txHash = await writeContractAsync({
+          address: targetModule,
+          abi: OTHELIO_PORTFOLIO_MODULE_ABI,
+          functionName: "supplyAave",
+          args: [basket.address as `0x${string}`, usdcAddress, amountUnits],
         });
       }
 

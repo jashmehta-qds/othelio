@@ -15,8 +15,54 @@ export const basketAbi = [
   { type: "event", name: "TargetWeightsUpdated", inputs: [{indexed:true,name:"basket",type:"address"},{indexed:true,name:"controller",type:"address"},{indexed:false,name:"assets",type:"address[]"},{indexed:false,name:"weightsBps",type:"uint16[]"}] },
   { type: "event", name: "ControllerTransferred", inputs: [{indexed:true,name:"basket",type:"address"},{indexed:true,name:"previousController",type:"address"},{indexed:true,name:"newController",type:"address"}] }
 ] as const;
+
+export const assetRegistryAbi = [
+  { type: "function", name: "getSupportedTokens", stateMutability: "view", inputs: [{ name: "chainId", type: "uint256" }], outputs: [{ name: "", type: "address[]" }] },
+  { type: "function", name: "getSupportedB20Tokens", stateMutability: "view", inputs: [{ name: "chainId", type: "uint256" }], outputs: [{ name: "", type: "address[]" }] },
+  { type: "function", name: "isSupported", stateMutability: "view", inputs: [{ name: "chainId", type: "uint256" }, { name: "token", type: "address" }], outputs: [{ name: "", type: "bool" }] },
+  { type: "function", name: "getAsset", stateMutability: "view", inputs: [{ name: "chainId", type: "uint256" }, { name: "token", type: "address" }], outputs: [{ name: "", type: "tuple", components: [{ name: "supported", type: "bool" }, { name: "priceFeed", type: "address" }, { name: "tokenDecimals", type: "uint8" }, { name: "feedDecimals", type: "uint8" }, { name: "isCoinbaseB20", type: "bool" }] }] },
+] as const;
+
+export const tokenizedAssetConstantsAbi = [
+  { type: "function", name: "getB20Tokens", stateMutability: "pure", inputs: [], outputs: [{ name: "tokens", type: "address[13]" }] },
+  { type: "function", name: "AAPLc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "AMZNc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "COINc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "CRCLc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "GOOGLc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "INTCc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "METAc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "MSFTc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "MSTRc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "NVDAc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "SNDKc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "SPCXc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "TSLAc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+] as const;
+
+/**
+ * 13 Coinbase B20 token addresses extracted directly from TokenizedAssetConstants.sol contract bytecode.
+ */
+export const CONTRACT_B20_TOKENS = [
+  '0xb200000000000000000000C2e324d24d7eEcd1fb', // AAPLc
+  '0xb200000000000000000000d9192b6B456483C2E8', // AMZNc
+  '0xb200000000000000000000c85a31389D71F3ecfb', // COINc
+  '0xB20000000000000000000019f6E7C675b73C2e4D', // CRCLc
+  '0xb2000000000000000000002D0BA3164cc74f58B7', // GOOGLc
+  '0xB2000000000000000000004AFF16039bA04bdFBc', // INTCc
+  '0xb2000000000000000000008bC8786B856E61707C', // METAc
+  '0xB200000000000000000000Ab99cFa739E253872B', // MSFTc
+  '0xb2000000000000000000004884b426556b92883d', // MSTRc
+  '0xb20000000000000000000078ee7ce2fE4908108C', // NVDAc
+  '0xb200000000000000000000397293Cb8cda9a10c5', // SNDKc
+  '0xb2000000000000000000007b9fcbd005511aCBd5', // SPCXc
+  '0xb2000000000000000000001e800a7f5189430cD0', // TSLAc
+] as const;
+
 export const USDC_DECIMALS = 6;
 export const DEFAULT_TOKEN_DECIMALS = 18;
+
+
 
 /**
  * Unified helper to convert human-readable amounts (e.g. "100", 100.5) to raw BigInt token amounts

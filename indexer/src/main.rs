@@ -22,6 +22,7 @@ abigen!(
         event BasketFunded(address indexed safe, address indexed funder, address inputAsset, uint256 inputAmount, address[] acquiredAssets, uint256[] acquiredAmounts, uint256 totalNAVAfter)
         event BasketRebalanced(address indexed safe, address indexed controller, address[] soldAssets, uint256[] soldAmounts, address[] boughtAssets, uint256[] boughtAmounts, uint256 totalNAV)
         event BasketWithdrawn(address indexed safe, address indexed owner, address outputAsset, uint256 navRedeemed, address[] withdrawnAssets, uint256[] withdrawnAmounts, uint256 remainingNAV)
+        event AerodromeRouteExecuted(address indexed basket, address indexed tokenIn, address indexed tokenOut, uint8 kind, uint256 amountIn, uint256 amountOut, int24 firstTickSpacing, int24 secondTickSpacing)
         event Supply(address indexed reserve, address user, address indexed onBehalfOf, uint256 amount, uint16 indexed referralCode)
         event Borrow(address indexed reserve, address user, address indexed onBehalfOf, uint256 amount, uint8 interestRateMode, uint256 borrowRate, uint16 indexed referralCode)
         event Repay(address indexed reserve, address indexed user, address indexed repayer, uint256 amount, bool useATokens)
@@ -73,7 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let latest_block = provider.get_block_number().await.map(|b| b.as_u64()).unwrap_or(0);
-    let default_start = if latest_block > 5000 { latest_block - 1000 } else { 0 };
+    let default_start = resolve_start_block(&pool, chain_id, latest_block).await;
+
+    info!("📌 [Rust Indexer] Start block configured as: {}", default_start);
 
     let mut current_block = get_next_block(&pool, chain_id, default_start).await?;
 
@@ -82,7 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(latest_block) => {
                 let latest_block = latest_block.as_u64();
 
-                if latest_block > current_block + 50000 {
+                if chain_id != 31337 && latest_block > current_block + 50000 {
                     let target_block = latest_block.saturating_sub(100);
                     info!("[Rust Indexer] Fast-forwarding indexer from block {} to latest block {}...", current_block, target_block);
                     current_block = target_block;
@@ -105,6 +108,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tokio::time::sleep(Duration::from_secs(10)).await;
             }
         }
+    }
+}
+
+async fn resolve_start_block(pool: &PgPool, chain_id: i64, latest_block: u64) -> u64 {
+    if let Ok(start_env) = std::env::var("START_BLOCK") {
+        if let Ok(block_num) = start_env.parse::<u64>() {
+            return block_num.saturating_sub(1);
+        }
+    }
+
+    let min_created: Option<(Option<i64>,)> = sqlx::query_as("SELECT MIN(created_block) FROM baskets WHERE chain_id = $1")
+        .bind(chain_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None);
+
+    if let Some((Some(min_block),)) = min_created {
+        if min_block > 0 {
+            return (min_block as u64).saturating_sub(1);
+        }
+    }
+
+    if chain_id == 31337 {
+        0
+    } else if latest_block > 1000 {
+        latest_block - 1000
+    } else {
+        0
     }
 }
 
@@ -146,12 +177,24 @@ async fn process_block_range(
     from_block: u64,
     to_block: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut addresses = vec![factory_addr, module_addr];
-    addresses.extend_from_slice(lending_pool_addrs);
-    let filter = Filter::new()
-        .address(addresses)
-        .from_block(from_block)
-        .to_block(to_block);
+    let mut addresses = Vec::new();
+    if factory_addr != Address::zero() {
+        addresses.push(factory_addr);
+    }
+    if module_addr != Address::zero() {
+        addresses.push(module_addr);
+    }
+    for addr in lending_pool_addrs {
+        if *addr != Address::zero() {
+            addresses.push(*addr);
+        }
+    }
+
+    let filter = if addresses.is_empty() {
+        Filter::new().from_block(from_block).to_block(to_block)
+    } else {
+        Filter::new().address(addresses).from_block(from_block).to_block(to_block)
+    };
 
     let logs = provider.get_logs(&filter).await?;
 
@@ -345,6 +388,37 @@ async fn process_block_range(
                     .bind(chain_id).bind(&safe).bind(block_number as i64).execute(pool).await?;
 
                     info!("[Rust Indexer] Indexed BasketWithdrawn: safe={} remainingNAV=${:.2}", safe, remaining_nav_usdc);
+                }
+                IOthelioEventsEvents::AerodromeRouteExecutedFilter(e) => {
+                    let basket = format!("{:#x}", e.basket);
+                    let token_in = format!("{:#x}", e.token_in);
+                    let token_out = format!("{:#x}", e.token_out);
+                    let payload = json!({
+                        "tokenIn": token_in,
+                        "tokenOut": token_out,
+                        "kind": e.kind,
+                        "amountIn": e.amount_in.to_string(),
+                        "amountOut": e.amount_out.to_string(),
+                        "firstTickSpacing": e.first_tick_spacing,
+                        "secondTickSpacing": e.second_tick_spacing,
+                    });
+
+                    sqlx::query(
+                        "INSERT INTO basket_events (chain_id, tx_hash, log_index, block_number, block_hash, basket_address, event_type, actor_address, payload, occurred_at)
+                         VALUES ($1, $2, $3, $4, $5, LOWER($6), 'DEX_ROUTE_EXECUTED', LOWER($6), $7, NOW())
+                         ON CONFLICT (chain_id, tx_hash, log_index) DO NOTHING"
+                    )
+                    .bind(chain_id)
+                    .bind(&tx_hash)
+                    .bind(log_index)
+                    .bind(block_number as i64)
+                    .bind(&block_hash)
+                    .bind(&basket)
+                    .bind(&payload)
+                    .execute(pool)
+                    .await?;
+
+                    info!("[Rust Indexer] Indexed AerodromeRouteExecuted: basket={} tokenIn={} tokenOut={}", basket, token_in, token_out);
                 }
                 IOthelioEventsEvents::SupplyFilter(e) => {
                     index_lending_event(pool, chain_id, &tx_hash, &block_hash, block_number, log_index,

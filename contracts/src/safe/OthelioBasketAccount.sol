@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {OthelioAssetRegistry} from "../registry/OthelioAssetRegistry.sol";
+
 interface ISafeAccount {
     function isOwner(address owner) external view returns (bool);
     function execTransactionFromModule(address to, uint256 value, bytes memory data, uint8 operation)
@@ -12,14 +16,18 @@ interface ISafeAccount {
 }
 
 contract OthelioBasketAccount is ISafeAccount {
+    using SafeERC20 for IERC20;
+
     address public owner;
     address public immutable module;
     address public immutable registry;
     mapping(address => bool) public isModuleEnabled;
 
     event OwnerUpdated(address indexed previousOwner, address indexed newOwner);
+    // Retained in the ABI for legacy event consumers. Module configuration is now immutable.
     event ModuleEnabled(address indexed module);
     event ModuleDisabled(address indexed module);
+    event UntrackedTokenRecovered(address indexed token, address indexed recipient, uint256 amount);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "NOT_OWNER");
@@ -32,23 +40,21 @@ contract OthelioBasketAccount is ISafeAccount {
     }
 
     constructor(address owner_, address module_, address registry_) {
-        require(owner_ != address(0) && module_ != address(0), "ZERO_ADDRESS");
+        require(owner_ != address(0) && module_ != address(0) && registry_ != address(0), "ZERO_ADDRESS");
         owner = owner_;
         module = module_;
         registry = registry_;
         isModuleEnabled[module_] = true;
     }
 
-    function enableModule(address module_) external onlyOwner {
-        require(module_ != address(0), "ZERO_ADDRESS");
-        isModuleEnabled[module_] = true;
-        emit ModuleEnabled(module_);
+    /// @notice Kept only to make legacy callers fail explicitly. Basket module configuration is immutable.
+    function enableModule(address) external onlyOwner {
+        revert("MODULE_CONFIGURATION_LOCKED");
     }
 
-    function disableModule(address module_) external onlyOwner {
-        require(isModuleEnabled[module_], "MODULE_NOT_ENABLED");
-        isModuleEnabled[module_] = false;
-        emit ModuleDisabled(module_);
+    /// @notice Kept only to make legacy callers fail explicitly. The primary module cannot be disabled.
+    function disableModule(address) external onlyOwner {
+        revert("MODULE_CONFIGURATION_LOCKED");
     }
 
     function isOwner(address owner_) external view override returns (bool) {
@@ -96,5 +102,19 @@ contract OthelioBasketAccount is ISafeAccount {
         owner = newOwner;
     }
 
-    receive() external payable {}
+    /// @notice Recover an ERC-20 that is not a configured basket asset.
+    /// @dev Supported assets must leave through reviewed portfolio operations on the immutable module.
+    function recoverUntrackedToken(address token, address recipient, uint256 amount) external onlyOwner {
+        require(token != address(0) && token.code.length > 0, "INVALID_TOKEN");
+        require(recipient != address(0), "ZERO_RECIPIENT");
+        require(amount > 0, "ZERO_AMOUNT");
+        require(!OthelioAssetRegistry(registry).isSupported(block.chainid, token), "TRACKED_ASSET");
+
+        IERC20(token).safeTransfer(recipient, amount);
+        emit UntrackedTokenRecovered(token, recipient, amount);
+    }
+
+    receive() external payable {
+        revert("NATIVE_ASSET_UNSUPPORTED");
+    }
 }

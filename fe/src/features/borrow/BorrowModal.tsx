@@ -6,7 +6,7 @@ import { parseUnits } from "viem";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { AAVE_V3_BASE_POOL_ADDRESS } from "@/lib/lending";
 import { type Basket } from "@/lib/baskets";
-import { CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { AAVE_UI_ENABLED, CONTRACT_ADDRESSES, OTHELIO_PORTFOLIO_MODULE_ABI } from "@/lib/contracts";
 import { fetchApi } from "@/lib/api";
 
 interface BorrowModalProps {
@@ -16,40 +16,16 @@ interface BorrowModalProps {
   onClose: () => void;
 }
 
-// Module ABI fragment for Aave execution
-const MODULE_AAVE_ABI = [
-  {
-    inputs: [
-      { name: "safe", type: "address" },
-      { name: "aavePool", type: "address" },
-      { name: "debtAsset", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    name: "borrowFromAave",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { name: "safe", type: "address" },
-      { name: "aavePool", type: "address" },
-      { name: "debtAsset", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    name: "repayAave",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-] as const;
-
 export function BorrowModal({ basket, mode, moduleAddress, onClose }: BorrowModalProps) {
   const chainId = useChainId();
   const activeChainId = chainId && (chainId in CONTRACT_ADDRESSES) ? (chainId as 31337 | 8453 | 84532) : 31337;
 
   const [amountInput, setAmountInput] = useState<string>("");
   const { writeContractAsync, isPending, isSuccess, error } = useWriteContract();
+
+  if (!AAVE_UI_ENABLED) {
+    return null;
+  }
 
   const handleExecute = async () => {
     if (!amountInput || isNaN(Number(amountInput)) || Number(amountInput) <= 0) return;
@@ -59,14 +35,12 @@ export function BorrowModal({ basket, mode, moduleAddress, onClose }: BorrowModa
     const usdcAddress = CONTRACT_ADDRESSES[activeChainId].usdc;
 
     try {
-      const funcName = mode === "borrow" ? "borrowFromAave" : "repayAave";
       const txHash = await writeContractAsync({
         address: targetModule,
-        abi: MODULE_AAVE_ABI,
-        functionName: funcName,
+        abi: OTHELIO_PORTFOLIO_MODULE_ABI,
+        functionName: "repayAave",
         args: [
           basket.address as `0x${string}`,
-          AAVE_V3_BASE_POOL_ADDRESS,
           usdcAddress,
           amountUnits,
         ],

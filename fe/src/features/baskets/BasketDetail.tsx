@@ -21,7 +21,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
   const [localBasket, setLocalBasket] = useState<Basket | null>(null);
 
   // Live queries for basket details and activity by contract address
-  const { data: ownedBasketsResponse } = useBasketsList(31337, isConnected ? address : undefined);
+  const { data: ownedBasketsResponse } = useBasketsList(chainId, isConnected ? address : undefined);
   const ownedBasket = ownedBasketsResponse?.data.find((candidate) =>
     candidate.address.toLowerCase() === fallbackBasket.address.toLowerCase()
     && candidate.controller.toLowerCase() === address?.toLowerCase(),
@@ -29,8 +29,8 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
   const canManageBasket = Boolean(ownedBasket);
   // A basket address is the public, shareable read surface. Activity and
   // browser-local drafts are controller-session data and remain private.
-  const { data: apiDetails } = useBasketDetails(fallbackBasket.address, 31337);
-  const { data: fetchedActivity } = useBasketActivity(fallbackBasket.address, 31337, canManageBasket);
+  const { data: apiDetails } = useBasketDetails(fallbackBasket.address, chainId);
+  const { data: fetchedActivity } = useBasketActivity(fallbackBasket.address, chainId, canManageBasket);
   const { data: priceMap } = useAssetPrices();
   const { data: portfolioResponse } = usePortfolioPositions(fallbackBasket.address, chainId);
   const apiActivity = canManageBasket ? fetchedActivity : undefined;
@@ -175,9 +175,16 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
       ? h.quantity
       : (tokenPrice > 0 ? Number((h.value / tokenPrice).toFixed(4)) : 0);
 
+    const effectiveInputUsdc = eventInputAmount > 0 ? eventInputAmount : (fallbackBasket.value || activeBasketValue);
+    const targetWeightFrac = (h.target || 0) / 100;
+    const allocatedInputUsdc = effectiveInputUsdc * targetWeightFrac;
+    const fallbackAvgCost = realQuantity > 0 && allocatedInputUsdc > 0
+      ? Number((allocatedInputUsdc / realQuantity).toFixed(4))
+      : (h.symbol === "USDC" ? 1.0 : tokenPrice);
+
     const avgCost = matchedPos?.avg_cost_usdc && Number(matchedPos.avg_cost_usdc) > 0
       ? Number(matchedPos.avg_cost_usdc)
-      : (h.avgCost ?? (h.symbol === "USDC" ? 1.0 : tokenPrice));
+      : (h.avgCost ?? fallbackAvgCost);
     const assetValue = h.value;
     const costBasis = realQuantity * avgCost;
     const gainUsd = assetValue - costBasis;

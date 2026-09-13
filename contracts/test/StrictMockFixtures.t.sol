@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {MockDEXRouter} from "../src/dex/MockDEXRouter.sol";
+import {IAerodromeSlipstreamSwapRouter} from "../src/dex/IAerodromeSlipstreamSwapRouter.sol";
 import {MockAavePool, MockAToken} from "../src/mock/MockAavePool.sol";
 
 contract FixtureERC20 is ERC20 {
@@ -87,6 +88,78 @@ contract StrictMockDEXRouterTest is Test {
         assertEq(tokenIn.balanceOf(address(router)), 0);
         assertEq(tokenOut.balanceOf(trader), 0);
         assertEq(tokenOut.balanceOf(address(router)), 4 ether);
+    }
+
+    function testExactInput2HopConservesIntermediateUsdc() public {
+        FixtureERC20 usdc = new FixtureERC20("USD Coin", "USDC", 6);
+        bytes memory path = abi.encodePacked(address(tokenIn), int24(100), address(usdc), int24(100), address(tokenOut));
+
+        vm.prank(trader);
+        tokenIn.approve(address(router), 6 ether);
+
+        // Reverts if router holds no USDC liquidity for intermediate hop
+        vm.prank(trader);
+        vm.expectRevert("INSUFFICIENT_INTERMEDIATE_USDC");
+        router.exactInput(
+            IAerodromeSlipstreamSwapRouter.ExactInputParams({
+                path: path,
+                recipient: trader,
+                deadline: block.timestamp,
+                amountIn: 1 ether,
+                amountOutMinimum: 1 ether
+            })
+        );
+
+        // When router holds USDC, 2-hop succeeds and intermediate USDC is deducted proportionally
+        usdc.mint(address(router), 100e6);
+        assertEq(usdc.balanceOf(address(router)), 100e6);
+
+        // Trade 1: 1 ether input consumes 1e6 USDC
+        vm.prank(trader);
+        router.exactInput(
+            IAerodromeSlipstreamSwapRouter.ExactInputParams({
+                path: path,
+                recipient: trader,
+                deadline: block.timestamp,
+                amountIn: 1 ether,
+                amountOutMinimum: 1 ether
+            })
+        );
+
+        assertEq(usdc.balanceOf(address(router)), 99e6);
+        assertEq(usdc.balanceOf(address(0x000000000000000000000000000000000000dEaD)), 1e6);
+
+        // Trade 2: 5 ether input consumes 5e6 USDC proportionally
+        vm.prank(trader);
+        router.exactInput(
+            IAerodromeSlipstreamSwapRouter.ExactInputParams({
+                path: path,
+                recipient: trader,
+                deadline: block.timestamp,
+                amountIn: 5 ether,
+                amountOutMinimum: 1 ether
+            })
+        );
+
+        assertEq(usdc.balanceOf(address(router)), 94e6);
+        assertEq(usdc.balanceOf(address(0x000000000000000000000000000000000000dEaD)), 6e6);
+
+        // Trade 3: 100 ether input requires 100e6 USDC, but router only holds 94e6 -> reverts
+        tokenIn.mint(trader, 100 ether);
+        vm.prank(trader);
+        tokenIn.approve(address(router), 100 ether);
+
+        vm.prank(trader);
+        vm.expectRevert("INSUFFICIENT_INTERMEDIATE_USDC");
+        router.exactInput(
+            IAerodromeSlipstreamSwapRouter.ExactInputParams({
+                path: path,
+                recipient: trader,
+                deadline: block.timestamp,
+                amountIn: 100 ether,
+                amountOutMinimum: 1 ether
+            })
+        );
     }
 }
 

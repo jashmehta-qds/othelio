@@ -6,9 +6,10 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {TokenizedAssetConstants} from "../src/constants/TokenizedAssetConstants.sol";
 import {OthelioAssetRegistry} from "../src/registry/OthelioAssetRegistry.sol";
 import {BasketOracle} from "../src/oracle/BasketOracle.sol";
-import {OthelioBasketModule} from "../src/safe/OthelioBasketModule.sol";
-import {OthelioBasketGuard} from "../src/safe/OthelioBasketGuard.sol";
-import {OthelioBorrowModule} from "../src/safe/OthelioBorrowModule.sol";
+import {OthelioPortfolioModule} from "../src/safe/OthelioPortfolioModule.sol";
+import {OthelioAaveV3Adapter} from "../src/lending/OthelioAaveV3Adapter.sol";
+import {OthelioAerodromeSlipstreamAdapter} from "../src/dex/OthelioAerodromeSlipstreamAdapter.sol";
+import {OthelioAerodromeRouteRegistry, IAerodromeSlipstreamFactory} from "../src/dex/OthelioAerodromeRouteRegistry.sol";
 import {OthelioSafeFactory} from "../src/factory/OthelioSafeFactory.sol";
 import {MockDEXRouter} from "../src/dex/MockDEXRouter.sol";
 import {MockAavePool} from "../src/mock/MockAavePool.sol";
@@ -26,6 +27,12 @@ contract DeployMockERC20 is ERC20 {
     }
 }
 
+contract MockAerodromeFactory {
+    function getPool(address, address, int24) external view returns (address) {
+        return address(this);
+    }
+}
+
 contract DeployOthelio is Script {
     function run()
         external
@@ -33,10 +40,9 @@ contract DeployOthelio is Script {
             address registryAddr,
             address oracleAddr,
             address moduleAddr,
-            address guardAddr,
             address factoryAddr,
             address dexRouterAddr,
-            address borrowModuleAddr
+            address aaveAdapterAddr
         )
     {
         return _run(vm.envOr("OTHELIO_INSTALL_LOCAL_MOCKS", false));
@@ -48,10 +54,9 @@ contract DeployOthelio is Script {
             address registryAddr,
             address oracleAddr,
             address moduleAddr,
-            address guardAddr,
             address factoryAddr,
             address dexRouterAddr,
-            address borrowModuleAddr
+            address aaveAdapterAddr
         )
     {
         return _run(installLocalMocks);
@@ -63,10 +68,9 @@ contract DeployOthelio is Script {
             address registryAddr,
             address oracleAddr,
             address moduleAddr,
-            address guardAddr,
             address factoryAddr,
             address dexRouterAddr,
-            address borrowModuleAddr
+            address aaveAdapterAddr
         )
     {
         uint256 deployerPrivateKey = vm.envOr(
@@ -87,33 +91,70 @@ contract DeployOthelio is Script {
         BasketOracle oracle = new BasketOracle(registryAddr);
         oracleAddr = address(oracle);
 
-        // 3. Deploy Othelio Basket Module
-        OthelioBasketModule module = new OthelioBasketModule(oracleAddr);
-        moduleAddr = address(module);
+        if (installLocalMocks) {
+            require(block.chainid == 31337, "LOCAL_MOCKS_REQUIRE_31337");
+            dexRouterAddr = 0xBD606f1dAE0285D55113eFC11501677B2221A4dd;
+            vm.etch(dexRouterAddr, type(MockDEXRouter).runtimeCode);
+        }
 
-        // 4. Deploy Othelio Basket Guard (MultiSend router set or address(0) for default)
-        address multiSend = vm.envOr("MULTISEND_ADDRESS", address(0));
-        OthelioBasketGuard guard = new OthelioBasketGuard(registryAddr, moduleAddr, multiSend);
-        guardAddr = address(guard);
+        // 3. Deploy Route Registry
+        OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(deployer);
+
+        // 4. Deploy Adapters and Portfolio Module
+        address aavePoolAddr = 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5;
+        OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(aavePoolAddr);
+        aaveAdapterAddr = address(aaveAdapter);
+        address aerodromeSlipstreamRouter = installLocalMocks ? dexRouterAddr : 0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5;
+        if (aerodromeSlipstreamRouter.code.length == 0) {
+            vm.etch(aerodromeSlipstreamRouter, type(MockDEXRouter).runtimeCode);
+        }
+        address usdcAddress = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
+
+        OthelioAerodromeSlipstreamAdapter aerodromeAdapter = new OthelioAerodromeSlipstreamAdapter(
+            aerodromeSlipstreamRouter,
+            usdcAddress,
+            address(routeRegistry)
+        );
+
+        OthelioPortfolioModule module = new OthelioPortfolioModule(
+            oracleAddr,
+            aaveAdapterAddr,
+            address(aerodromeAdapter),
+            false,
+            1.25e18
+        );
+        moduleAddr = address(module);
 
         // 5. Deploy Othelio Safe Factory
         OthelioSafeFactory factory = new OthelioSafeFactory(moduleAddr, registryAddr);
         factoryAddr = address(factory);
 
-        if (installLocalMocks) {
-            require(block.chainid == 31337, "LOCAL_MOCKS_REQUIRE_31337");
-            // The local quote adapter uses a stable router address. Etching keeps
-            // it stable regardless of the forked deployer account nonce.
-            dexRouterAddr = 0xBD606f1dAE0285D55113eFC11501677B2221A4dd;
-            vm.etch(dexRouterAddr, type(MockDEXRouter).runtimeCode);
-        }
-
-        // 7. Deploy Othelio Borrow Module
-        OthelioBorrowModule borrowModule = new OthelioBorrowModule(oracleAddr);
-        borrowModuleAddr = address(borrowModule);
-
-        // 8. Connect Factory to Module
+        // 6. Connect Factory to Module
         module.setFactory(factoryAddr);
+
+        // 7. Configure Route Registry Pool Approvals across candidate factories
+        address[] memory candidateFactories;
+        if (installLocalMocks) {
+            address extraMock = vm.envOr("ADDITIONAL_AERODROME_FACTORY", address(0));
+            if (extraMock != address(0)) {
+                candidateFactories = new address[](2);
+                candidateFactories[0] = address(new MockAerodromeFactory());
+                candidateFactories[1] = extraMock;
+            } else {
+                candidateFactories = new address[](1);
+                candidateFactories[0] = address(new MockAerodromeFactory());
+            }
+        } else {
+            address extraFactory = vm.envOr("ADDITIONAL_AERODROME_FACTORY", address(0));
+            if (extraFactory != address(0) && extraFactory != 0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A) {
+                candidateFactories = new address[](2);
+                candidateFactories[0] = 0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A;
+                candidateFactories[1] = extraFactory;
+            } else {
+                candidateFactories = new address[](1);
+                candidateFactories[0] = 0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A;
+            }
+        }
 
         // 8. Batch Configure Coinbase B20 Tokens and Chainlink Price Feeds
         address[] memory tokens = new address[](13);
@@ -150,6 +191,8 @@ contract DeployOthelio is Script {
         tokens[12] = TokenizedAssetConstants.TSLAc;
         priceFeeds[12] = TokenizedAssetConstants.FEED_TSLA;
 
+        int24[4] memory candidateTicks = [int24(100), int24(200), int24(500), int24(2000)];
+
         for (uint256 i = 0; i < 13; i++) {
             supporteds[i] = true;
             tokenDecimals[i] = 18;
@@ -162,8 +205,35 @@ contract DeployOthelio is Script {
             }
         }
 
+        for (uint256 f = 0; f < candidateFactories.length; f++) {
+            address factory = candidateFactories[f];
+            if (factory.code.length == 0) {
+                if (installLocalMocks) {
+                    vm.etch(factory, type(MockAerodromeFactory).runtimeCode);
+                } else {
+                    continue;
+                }
+            }
+
+            for (uint256 i = 0; i < 13; i++) {
+                for (uint256 t = 0; t < candidateTicks.length; t++) {
+                    int24 tickSpacing = candidateTicks[t];
+                    address pool = IAerodromeSlipstreamFactory(factory).getPool(usdcAddress, tokens[i], tickSpacing);
+                    if (pool != address(0) && pool.code.length > 0) {
+                        routeRegistry.setPoolApproval(
+                            block.chainid,
+                            usdcAddress,
+                            tokens[i],
+                            tickSpacing,
+                            factory,
+                            true
+                        );
+                    }
+                }
+            }
+        }
+
         if (installLocalMocks) {
-            address aavePoolAddr = 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5;
             // A fork already contains the real Aave pool. Preserve it; only install
             // the mock on an empty local chain.
             if (aavePoolAddr.code.length == 0) {
@@ -174,15 +244,39 @@ contract DeployOthelio is Script {
         registry.configureBatch(
             block.chainid, tokens, priceFeeds, supporteds, tokenDecimals, feedDecimals, isCoinbaseB20s
         );
+        if (installLocalMocks) {
+            registry.configure(
+                block.chainid,
+                usdcAddress,
+                address(new MockPriceFeed(1e8)),
+                true,
+                6,
+                8,
+                false
+            );
+        }
 
-        // Approve Base Mainnet lending pools for protocol-agnostic execution
+        // Aave is pinned by the dedicated lending module.
         registry.setApprovedLendingPool(0xA238Dd80C259a72e81d7e4664a9801593F98d1c5, true); // Aave v3
-        registry.setApprovedLendingPool(0xb125E6687d4313864e53df431d5425969c15Eb2F, true); // Compound v3
-        registry.setApprovedLendingPool(0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22, true); // Moonwell
-        registry.setApprovedLendingPool(0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb, true); // Morpho Blue
+
+        address govOwner = vm.envOr("GOVERNANCE_OWNER_ADDRESS", address(0));
+        if (!installLocalMocks) {
+            require(govOwner != address(0), "GOVERNANCE_OWNER_ADDRESS_REQUIRED");
+            require(govOwner != deployer, "GOVERNANCE_OWNER_MUST_NOT_BE_DEPLOYER");
+            registry.transferOwnership(govOwner);
+            routeRegistry.transferOwnership(govOwner);
+            console.log("Transferred registry ownership to governance:", govOwner);
+        } else {
+            if (govOwner != address(0) && govOwner != deployer) {
+                registry.transferOwnership(govOwner);
+                routeRegistry.transferOwnership(govOwner);
+                console.log("Transferred registry ownership to governance:", govOwner);
+            }
+        }
 
         if (dexRouterAddr != address(0)) console.log("MockDEXRouter deployed at:", dexRouterAddr);
-        console.log("OthelioBorrowModule deployed at:", borrowModuleAddr);
+        console.log("OthelioAaveV3Adapter deployed at:", aaveAdapterAddr);
+        console.log("OthelioAerodromeRouteRegistry deployed at:", address(routeRegistry));
 
         vm.stopBroadcast();
     }

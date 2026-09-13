@@ -87,11 +87,6 @@ export class BasketsController {
     return this.basketsService.confirmRebalance(address, body);
   }
 
-  @Post('create-seed-quote')
-  async quoteCreateSeed(@Body() body: import('./basket-quote-planner.service').CreateSeedQuoteRequest) {
-    return this.basketsService.quoteCreateSeed(body);
-  }
-
   @Post(':address/lending-log')
   async recordLendingLog(
     @Param('address') address: string,

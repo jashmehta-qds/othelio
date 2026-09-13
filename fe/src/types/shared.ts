@@ -118,6 +118,7 @@ export interface PositionSnapshot {
   grossAssetsUsdE8: string | null;
   accruedDebtUsdE8: string | null;
   equityUsdE8: string | null;
+  aaveHealthFactorRay?: string | null;
   readCompleteness: "COMPLETE" | "PARTIAL" | "UNAVAILABLE";
   valuationStatus: "COMPLETE" | "PARTIAL" | "UNAVAILABLE" | "STALE";
   issues: string[];

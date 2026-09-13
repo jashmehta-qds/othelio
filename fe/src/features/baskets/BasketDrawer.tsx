@@ -252,8 +252,8 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
             <div className="safety-note">
               <span className="shield">✓</span>
               <p>
-                <strong>Atomic Multi-Swap Execution</strong>
-                <small>Executes target rebalance directly via OthelioBasketModule on-chain.</small>
+                <strong>Typed Aerodrome Execution</strong>
+                <small>Executes reviewed constrained Aerodrome Slipstream routes through the portfolio module.</small>
               </p>
             </div>
 

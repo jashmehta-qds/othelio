@@ -7,37 +7,9 @@ import { useAccount, useChainId, usePublicClient, useWriteContract } from "wagmi
 import type { BasketAction, MarketPosition } from "@/types/shared";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { useBasketsList, usePortfolioPositions } from "@/hooks/useBaskets";
-import { CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { AAVE_UI_ENABLED, CONTRACT_ADDRESSES, OTHELIO_PORTFOLIO_MODULE_ABI } from "@/lib/contracts";
 import { formatAddress } from "@/lib/baskets";
 import { recordLendingSubmission } from "@/lib/api";
-
-const RECOVERY_ABI = [
-  {
-    inputs: [
-      { name: "safe", type: "address" },
-      { name: "aavePool", type: "address" },
-      { name: "debtAsset", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    name: "repayAave",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      { name: "safe", type: "address" },
-      { name: "aavePool", type: "address" },
-      { name: "asset", type: "address" },
-      { name: "amount", type: "uint256" },
-      { name: "to", type: "address" },
-    ],
-    name: "withdrawFromAave",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-] as const;
 
 type RecoveryKind = Extract<BasketAction, "REPAY" | "RELEASE_COLLATERAL">;
 type TxState = { kind: RecoveryKind; hash?: `0x${string}`; message: string } | null;
@@ -82,6 +54,15 @@ export function BasketBorrowManagement({ basketId }: { basketId: string }) {
     () => new Map((snapshot?.tokens ?? []).map((token) => [token.assetAddress.toLowerCase(), token])),
     [snapshot?.tokens],
   );
+
+  if (!AAVE_UI_ENABLED) {
+    return (
+      <section className="app-page-frame">
+        <h1 className="page-title">Aave is not enabled yet</h1>
+        <p style={{ color: "var(--muted-ink)", marginTop: "10px" }}>Lending actions remain unavailable pending launch review.</p>
+      </section>
+    );
+  }
 
   if (!ownsBasket) {
     return (
@@ -141,15 +122,15 @@ export function BasketBorrowManagement({ basketId }: { basketId: string }) {
       const hash = kind === "REPAY"
         ? await writeContractAsync({
             address: moduleAddress,
-            abi: RECOVERY_ABI,
+            abi: OTHELIO_PORTFOLIO_MODULE_ABI,
             functionName: "repayAave",
-            args: [basketId as `0x${string}`, position.identity.marketAddress as `0x${string}`, position.identity.assetAddress as `0x${string}`, amountBaseUnits],
+            args: [basketId as `0x${string}`, position.identity.assetAddress as `0x${string}`, amountBaseUnits],
           })
         : await writeContractAsync({
             address: moduleAddress,
-            abi: RECOVERY_ABI,
-            functionName: "withdrawFromAave",
-            args: [basketId as `0x${string}`, position.identity.marketAddress as `0x${string}`, position.identity.assetAddress as `0x${string}`, amountBaseUnits, address],
+            abi: OTHELIO_PORTFOLIO_MODULE_ABI,
+            functionName: "withdrawAaveCollateral",
+            args: [basketId as `0x${string}`, position.identity.assetAddress as `0x${string}`, amountBaseUnits, BigInt("1250000000000000000")],
           });
 
       const submission = await recordLendingSubmission(basketId, {

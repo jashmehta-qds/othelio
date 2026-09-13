@@ -16,6 +16,20 @@ export const positionIdentitySchema = z.object({
 });
 export type PositionIdentity = z.infer<typeof positionIdentitySchema>;
 
+export const aerodromeRouteKindSchema = z.enum(["DIRECT", "VIA_USDC"]);
+export type AerodromeRouteKind = z.infer<typeof aerodromeRouteKindSchema>;
+
+export const aerodromeRouteSchema = z.object({
+  kind: aerodromeRouteKindSchema,
+  tokenIn: addressSchema,
+  tokenOut: addressSchema,
+  firstTickSpacing: z.number().int(),
+  secondTickSpacing: z.number().int(),
+  amountIn: baseUnitAmountSchema,
+  minimumAmountOut: baseUnitAmountSchema,
+});
+export type AerodromeRoute = z.infer<typeof aerodromeRouteSchema>;
+
 export const tokenPositionSchema = z.object({
   assetAddress: addressSchema,
   symbol: z.string().min(1).optional(),
@@ -43,6 +57,8 @@ export const positionSnapshotSchema = z.object({
   grossAssetsUsdE8: nullableBaseUnitAmountSchema,
   accruedDebtUsdE8: nullableBaseUnitAmountSchema,
   equityUsdE8: nullableBaseUnitAmountSchema,
+  /** Raw Aave health factor scaled by 1e18, when the configured pool can be read. */
+  aaveHealthFactorRay: nullableBaseUnitAmountSchema.optional(),
   readCompleteness: z.enum(["COMPLETE", "PARTIAL", "UNAVAILABLE"]),
   valuationStatus: z.enum(["COMPLETE", "PARTIAL", "UNAVAILABLE", "STALE"]),
   issues: z.array(z.string()).default([]),

@@ -1,13 +1,14 @@
 "use client";
 
-import { useAccount } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { useAllActivity, useBasketsList } from "@/hooks/useBaskets";
 import { ActivityEventRow } from "@/features/baskets/ActivityEventRow";
 
 export default function ActivityPage() {
+  const chainId = useChainId() || 31337;
   const { address, isConnected } = useAccount();
-  const { data: activityRes, isLoading } = useAllActivity(31337, Boolean(isConnected && address));
-  const { data: basketsRes } = useBasketsList(31337, isConnected ? address : undefined);
+  const { data: activityRes, isLoading } = useAllActivity(chainId, Boolean(isConnected && address));
+  const { data: basketsRes } = useBasketsList(chainId, isConnected ? address : undefined);
   const rawEvents = !isConnected || !address ? [] : activityRes?.data ?? [];
   const basketSymbols = new Map<string, string>(
     (basketsRes?.data ?? []).map((basket): [string, string] => [basket.address.toLowerCase(), basket.symbol]),

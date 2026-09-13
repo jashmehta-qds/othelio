@@ -9,7 +9,7 @@ import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets } from "@/lib/baskets";
-import { fetchCreateSeedQuote, receiptCreatesAndFunds, registerConfirmedBasket } from "@/lib/createSeed";
+import { extractCreatedBasketAddress, registerConfirmedBasket } from "@/lib/createSeed";
 import { useSupportedAssets } from "@/hooks/useBaskets";
 import { useHydrated } from "@/hooks/useHydrated";
 
@@ -128,44 +128,30 @@ export default function CreateBasketPage() {
       const config = CONTRACT_ADDRESSES[chainId];
       const inputAmount = parseUnits(depositAmount, 6);
       if (!publicClient) throw new Error("Wallet client is unavailable on this network.");
-      const approval = await writeContractAsync({
-        address: config.usdc,
-        abi: [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] }],
-        functionName: "approve",
-        args: [config.module, inputAmount],
+
+      const createTxHash = await writeContractAsync({
+        address: config.factory,
+        abi: [{
+          type: "function",
+          name: "createBasket",
+          stateMutability: "nonpayable",
+          inputs: [{ name: "name", type: "string" }],
+          outputs: [{ name: "basket", type: "address" }],
+        }],
+        functionName: "createBasket",
+        args: [cleanName],
       });
-      await publicClient.waitForTransactionReceipt({ hash: approval });
-      const clientSalt = `0x${crypto.getRandomValues(new Uint8Array(32)).reduce((hex, byte) => hex + byte.toString(16).padStart(2, "0"), "")}`;
-      const quote = await fetchCreateSeedQuote({
-        chainId,
-        factoryAddress: config.factory,
-        moduleAddress: config.module,
-        ownerAddress: address,
-        name: cleanName,
-        clientSalt,
-        inputAsset: config.usdc,
-        inputAmount: inputAmount.toString(),
-        targetWeights: selectedAssets.map((asset) => ({
-          assetAddress: asset.address,
-          targetWeightBps: (targets[asset.symbol] ?? 0) * 100,
-        })),
-      });
-      const { data } = quote;
-      const call = data.plan.calls[0];
-      if (!quote.executionAllowed || data.plan.action !== "FUND" || data.plan.chainId !== chainId || data.plan.accountAddress.toLowerCase() !== data.predictedBasketAddress.toLowerCase() || data.factory.address.toLowerCase() !== config.factory.toLowerCase() || call?.to.toLowerCase() !== config.factory.toLowerCase() || data.module.moduleVersion !== 3 || !data.module.supportsBoundedExecution || new Date(data.plan.expiresAt).getTime() <= Date.now()) {
-        throw new Error("The create-and-seed plan is no longer executable.");
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: createTxHash });
+      if (receipt.status !== "success") {
+        throw new Error("Basket creation transaction failed.");
       }
-      if (data.plan.approvals.length !== 1 || data.plan.approvals[0].spenderAddress.toLowerCase() !== config.module.toLowerCase() || data.plan.approvals[0].maxAmountBaseUnits !== inputAmount.toString()) {
-        throw new Error("The planned approval does not match the exact seed input.");
-      }
-      const tx = await sendTransactionAsync({ to: call.to as `0x${string}`, data: call.calldata as `0x${string}`, value: BigInt(call.valueBaseUnits) });
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
-      if (receipt.status !== "success" || !receiptCreatesAndFunds(receipt, config.factory, config.module, data.predictedBasketAddress)) {
-        throw new Error("The receipt did not contain the expected BasketCreated and BasketFunded events.");
+      const basketAddress = extractCreatedBasketAddress(receipt, config.factory);
+      if (!basketAddress) {
+        throw new Error("The receipt did not contain the BasketCreated event.");
       }
       await registerConfirmedBasket({
         chainId,
-        address: data.predictedBasketAddress,
+        address: basketAddress,
         controller: address,
         name: cleanName,
         symbol: symbol.trim() ? `OTH-${symbol.trim()}` : "OTH",
@@ -174,7 +160,7 @@ export default function CreateBasketPage() {
         createdTx: receipt.transactionHash,
         assets: selectedAssets.map((asset) => ({ address: asset.address as string, targetWeightBps: (targets[asset.symbol] ?? 0) * 100 })),
       });
-      router.push(`/app/baskets/${data.predictedBasketAddress}`);
+      router.push(`/app/baskets/${basketAddress}`);
     } catch (error) {
       setTransactionError(error instanceof Error ? error.message : "Unable to create and fund the basket.");
     }

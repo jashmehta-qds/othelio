@@ -12,6 +12,10 @@ import {
   PositionSnapshot,
 } from '@othelio/shared';
 import { createPublicClient, encodeFunctionData, http, parseAbi } from 'viem';
+import {
+  BASE_AERODROME_SLIPSTREAM_ROUTER,
+  LOCAL_AERODROME_SLIPSTREAM_ROUTER,
+} from '../dex/aerodrome-slipstream-routes';
 import { DexManagerService } from '../dex/dex-manager.service';
 import { SwapQuoteResult } from '../dex/interfaces/dex-adapter.interface';
 import { BasketPositionService } from './basket-position.service';
@@ -19,20 +23,21 @@ import { BasketPositionService } from './basket-position.service';
 const MODULE_CAPABILITY_ABI = parseAbi([
   'function moduleVersion() external view returns (uint256)',
   'function supportsBoundedExecution() external view returns (bool)',
+  'function aerodromeAdapter() external view returns (address)',
 ]);
-const BASKET_MODULE_V3_ABI = parseAbi([
-  'function rebalance((address safe,(address target,address allowanceSpender,address soldAsset,uint256 maxSoldAmount,bytes dexCalldata)[] legs,address[] soldAssets,uint256[] maxSoldAmounts,address[] boughtAssets,uint256[] minBoughtAmounts,address[] basketTokens,uint256 deadline) p) external returns (uint256[] soldAmounts,uint256[] boughtAmounts,uint256 totalNAV)',
+const AERODROME_ADAPTER_ABI = parseAbi([
+  'function router() external view returns (address)',
 ]);
-const BASKET_FUND_MODULE_V3_ABI = parseAbi([
-  'function fundWithSwaps((address safe,address inputAsset,uint256 inputAmount,(address target,address allowanceSpender,uint256 inputAmount,bytes dexCalldata)[] legs,address[] boughtAssets,uint256[] minBoughtAmounts,address[] basketTokens,uint256 deadline) p) external returns (uint256[] boughtAmounts,uint256 totalNAV)',
+const PORTFOLIO_AERODROME_FUND_ABI = parseAbi([
+  'struct AerodromeRoute { uint8 kind; address tokenIn; address tokenOut; int24 firstTickSpacing; int24 secondTickSpacing; uint256 amountIn; uint256 minimumAmountOut; }',
+  'function fundAerodromePortfolio(address safe,address fundingToken,uint256 totalFundingAmount,AerodromeRoute[] routes,uint256 deadline) external',
+]);
+const PORTFOLIO_AERODROME_REBALANCE_ABI = parseAbi([
+  'struct AerodromeRoute { uint8 kind; address tokenIn; address tokenOut; int24 firstTickSpacing; int24 secondTickSpacing; uint256 amountIn; uint256 minimumAmountOut; }',
+  'function rebalanceAerodromePortfolio(address safe,AerodromeRoute[] routes,uint256 deadline) external',
 ]);
 const BASKET_WITHDRAW_IN_KIND_V3_ABI = parseAbi([
   'function withdrawInKind(address safe,address recipient,address[] tokens,uint256[] amounts,address[] remainingTokens) external returns (uint256 remainingNAV)',
-]);
-const FACTORY_CREATE_SEED_V3_ABI = parseAbi([
-  'function predictBasketAddress(address owner,bytes32 clientSalt) external view returns (address)',
-  'function module() external view returns (address)',
-  'function createAndSeedBasket(string name,(bytes32 clientSalt,(address safe,address inputAsset,uint256 inputAmount,(address target,address allowanceSpender,uint256 inputAmount,bytes dexCalldata)[] legs,address[] boughtAssets,uint256[] minBoughtAmounts,address[] basketTokens,uint256 deadline) mint) p) external returns (address basket,uint256[] boughtAmounts,uint256 totalNAV)',
 ]);
 const RPC_URLS: Record<number, string | undefined> = {
   1: process.env.ETHEREUM_RPC_URL,
@@ -64,19 +69,6 @@ export interface BasketQuoteRequest {
   targetWeights?: BasketTargetWeight[];
   /** Transitional alias used by the existing funding UI. */
   holdings?: BasketTargetWeight[];
-}
-
-export interface CreateSeedQuoteRequest {
-  chainId: number;
-  factoryAddress: string;
-  moduleAddress: string;
-  ownerAddress: string;
-  name: string;
-  clientSalt: `0x${string}`;
-  inputAsset: string;
-  inputAmount: string;
-  slippageBps?: number;
-  targetWeights: BasketTargetWeight[];
 }
 
 interface NetTrade {
@@ -174,57 +166,6 @@ export class BasketQuotePlannerService {
     };
   }
 
-  async quoteCreateSeed(body: CreateSeedQuoteRequest) {
-    const chainId = this.requireChainId(body.chainId);
-    const factoryAddress = this.parseAddress(body.factoryAddress, 'factoryAddress');
-    const moduleAddress = this.parseAddress(body.moduleAddress, 'moduleAddress');
-    const ownerAddress = this.parseAddress(body.ownerAddress, 'ownerAddress');
-    const inputAsset = this.parseAddress(body.inputAsset, 'inputAsset');
-    const inputAmount = this.parsePositiveAmount(body.inputAmount, 'inputAmount');
-    if (!body.name.trim() || body.name.length > 128) throw new BadRequestException('name must contain 1 through 128 characters.');
-    if (!/^0x[\da-fA-F]{64}$/.test(body.clientSalt)) throw new BadRequestException('clientSalt must be a 32-byte hex value.');
-    const targets = this.parseTargetWeights(body.targetWeights).filter((target) => target.targetWeightBps > 0)
-      .sort((a, b) => this.parseAddress(a.assetAddress ?? a.address, 'target assetAddress').localeCompare(this.parseAddress(b.assetAddress ?? b.address, 'target assetAddress')));
-    if (targets.length === 0) throw new BadRequestException('At least one positive target is required.');
-    const rpcUrl = RPC_URLS[chainId];
-    if (!rpcUrl) throw new ServiceUnavailableException(`No RPC is configured for chain ${chainId}.`);
-    const client = createPublicClient({ transport: http(rpcUrl) });
-    const [predictedBasketAddress, configuredModule, moduleVersion, bounded, boundFactory] = await Promise.all([
-      client.readContract({ address: factoryAddress, abi: FACTORY_CREATE_SEED_V3_ABI, functionName: 'predictBasketAddress', args: [ownerAddress, body.clientSalt] }),
-      client.readContract({ address: factoryAddress, abi: FACTORY_CREATE_SEED_V3_ABI, functionName: 'module' }),
-      client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'moduleVersion' }),
-      client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'supportsBoundedExecution' }),
-      client.readContract({ address: moduleAddress, abi: parseAbi(['function factory() view returns (address)']), functionName: 'factory' }),
-    ]).catch(() => { throw new UnprocessableEntityException('CREATE_SEED_CAPABILITY_UNAVAILABLE'); });
-    if (configuredModule.toLowerCase() !== moduleAddress || moduleVersion !== 3n || !bounded || boundFactory.toLowerCase() !== factoryAddress) {
-      throw new UnprocessableEntityException('CREATE_SEED_CAPABILITY_MISMATCH');
-    }
-    const legs: Array<{ target: Address; allowanceSpender: Address; inputAmount: bigint; dexCalldata: `0x${string}` }> = [];
-    const boughtAssets: Address[] = [];
-    const minBoughtAmounts: bigint[] = [];
-    const trades: any[] = [];
-    let spent = 0n;
-    let expiry: string | null = null;
-    for (let i = 0; i < targets.length; i++) {
-      const buyAsset = this.parseAddress(targets[i].assetAddress ?? targets[i].address, 'target assetAddress');
-      if (buyAsset === inputAsset) throw new UnprocessableEntityException('CREATE_SEED_INPUT_TARGET_UNSUPPORTED');
-      const amount = i === targets.length - 1 ? inputAmount - spent : (inputAmount * BigInt(targets[i].targetWeightBps)) / 10_000n;
-      spent += amount;
-      const { winningQuote: route } = await this.dexManagerService.getBestQuote({ chainId, sellToken: inputAsset, buyToken: buyAsset, sellAmount: amount.toString(), takerAddress: predictedBasketAddress, slippageBps: this.parseSlippage(body.slippageBps) });
-      this.assertBoundRoute(route, chainId, predictedBasketAddress, { assetAddress: inputAsset, amountBaseUnits: amount, valueUsdE8: 0n }, { assetAddress: buyAsset, amountBaseUnits: 0n, valueUsdE8: 0n });
-      if (new Date(route.expiresAt).getTime() <= Date.now()) throw new ServiceUnavailableException('The DEX route expired before create-and-seed could be prepared.');
-      if (!expiry || new Date(route.expiresAt).getTime() < new Date(expiry).getTime()) expiry = route.expiresAt;
-      legs.push({ target: route.routerAddress as Address, allowanceSpender: route.allowanceSpender as Address, inputAmount: amount, dexCalldata: route.dexCalldata as `0x${string}` });
-      boughtAssets.push(buyAsset); minBoughtAmounts.push(route.minBuyAmount);
-      trades.push({ sellAsset: inputAsset, buyAsset, amountIn: amount.toString(), expectedOut: route.expectedBuyAmount.toString(), minOut: route.minBuyAmount.toString(), target: route.routerAddress, allowanceSpender: route.allowanceSpender, expiresAt: route.expiresAt });
-    }
-    const deadline = Math.floor(new Date(expiry!).getTime() / 1000);
-    const calldata = encodeFunctionData({ abi: FACTORY_CREATE_SEED_V3_ABI, functionName: 'createAndSeedBasket', args: [body.name, { clientSalt: body.clientSalt, mint: { safe: predictedBasketAddress, inputAsset, inputAmount, legs, boughtAssets, minBoughtAmounts, basketTokens: boughtAssets, deadline: BigInt(deadline) } }] });
-    try { await client.call({ account: ownerAddress, to: factoryAddress, data: calldata }); } catch (error) { throw new UnprocessableEntityException(`CREATE_SEED_SIMULATION_FAILED: ${error instanceof Error ? error.message : 'exact factory call reverted'}`); }
-    const plan = executionPlanSchema.parse({ action: 'FUND', accountAddress: predictedBasketAddress, chainId, snapshot: { chainId, basketAddress: predictedBasketAddress, blockNumber: 0, blockHash: `0x${'0'.repeat(64)}` }, calls: [{ order: 0, to: factoryAddress, calldata, valueBaseUnits: '0' }], approvals: [{ tokenAddress: inputAsset, spenderAddress: moduleAddress, maxAmountBaseUnits: inputAmount.toString() }], limits: [{ assetAddress: inputAsset, maxInputBaseUnits: inputAmount.toString(), minOutputBaseUnits: null }, ...boughtAssets.map((assetAddress, i) => ({ assetAddress, maxInputBaseUnits: null, minOutputBaseUnits: minBoughtAmounts[i].toString() }))], expiresAt: expiry, expectedAfterState: [], simulation: { status: 'SUCCEEDED', reason: null, simulatedAt: new Date().toISOString(), blockNumber: null } });
-    return { success: true, executionAllowed: true, data: { plan, predictedBasketAddress, factory: { address: factoryAddress, moduleAddress }, module: { address: moduleAddress, moduleVersion: 3, supportsBoundedExecution: true }, deadline: deadline.toString(), trades } };
-  }
-
   private async quoteRebalance(basketAddress: Address, body: BasketQuoteRequest) {
     const chainId = this.requireChainId(body.chainId);
     const moduleAddress = this.parseAddress(body.moduleAddress, 'moduleAddress');
@@ -244,7 +185,7 @@ export class BasketQuotePlannerService {
       throw new UnprocessableEntityException('The requested targets produce no executable rebalance trade.');
     }
 
-    const legs: Array<{ target: Address; allowanceSpender: Address; soldAsset: Address; maxSoldAmount: bigint; dexCalldata: `0x${string}` }> = [];
+    const legs: Array<{ target: Address; allowanceSpender: Address; soldAsset: Address; maxSoldAmount: bigint }> = [];
     const soldAssets: Address[] = sells.map((s) => s.assetAddress);
     const maxSoldAmounts: bigint[] = sells.map((s) => s.amountBaseUnits);
     const boughtAssets: Address[] = buys.map((b) => b.assetAddress);
@@ -290,7 +231,9 @@ export class BasketQuotePlannerService {
           slippageBps,
         });
 
-        this.assertBoundRoute(route, chainId, basketAddress, { ...sell, amountBaseUnits: legSellAmount }, buy);
+        await this.assertBoundRoute(
+          route, chainId, basketAddress, { ...sell, amountBaseUnits: legSellAmount }, buy, moduleAddress,
+        );
 
         if (new Date(route.expiresAt).getTime() <= Date.now()) {
           throw new ServiceUnavailableException('The DEX route expired before it could be prepared.');
@@ -304,7 +247,6 @@ export class BasketQuotePlannerService {
           allowanceSpender: route.allowanceSpender as Address,
           soldAsset: sell.assetAddress,
           maxSoldAmount: legSellAmount,
-          dexCalldata: route.dexCalldata as `0x${string}`,
         });
 
         minBoughtAmounts.push(route.minBuyAmount);
@@ -326,15 +268,17 @@ export class BasketQuotePlannerService {
         trades.push({
           sellAsset: sell.assetAddress,
           buyAsset: buy.assetAddress,
+          kind: route.kind,
           amountIn: legSellAmount.toString(),
           expectedOut: route.expectedBuyAmount.toString(),
           minOut: route.minBuyAmount.toString(),
           provider: route.providerName,
           estimatedGasUsd: route.estimatedGasUsd,
-          calldata: route.dexCalldata,
           target: route.routerAddress,
           allowanceSpender: route.allowanceSpender,
           expiresAt: route.expiresAt,
+          firstTickSpacing: route.firstTickSpacing,
+          secondTickSpacing: route.secondTickSpacing,
         });
       }
     } else {
@@ -365,7 +309,9 @@ export class BasketQuotePlannerService {
             slippageBps,
           });
 
-          this.assertBoundRoute(route, chainId, basketAddress, { ...sell, amountBaseUnits: legSellAmount }, buy);
+          await this.assertBoundRoute(
+            route, chainId, basketAddress, { ...sell, amountBaseUnits: legSellAmount }, buy, moduleAddress,
+          );
 
           if (new Date(route.expiresAt).getTime() <= Date.now()) {
             throw new ServiceUnavailableException('The DEX route expired before it could be prepared.');
@@ -379,7 +325,6 @@ export class BasketQuotePlannerService {
             allowanceSpender: route.allowanceSpender as Address,
             soldAsset: sell.assetAddress,
             maxSoldAmount: legSellAmount,
-            dexCalldata: route.dexCalldata as `0x${string}`,
           });
 
           buyMinAmountSums[buyIndex] += route.minBuyAmount;
@@ -400,15 +345,17 @@ export class BasketQuotePlannerService {
           trades.push({
             sellAsset: sell.assetAddress,
             buyAsset: buy.assetAddress,
+            kind: route.kind,
             amountIn: legSellAmount.toString(),
             expectedOut: route.expectedBuyAmount.toString(),
             minOut: route.minBuyAmount.toString(),
             provider: route.providerName,
             estimatedGasUsd: route.estimatedGasUsd,
-            calldata: route.dexCalldata,
             target: route.routerAddress,
             allowanceSpender: route.allowanceSpender,
             expiresAt: route.expiresAt,
+            firstTickSpacing: route.firstTickSpacing,
+            secondTickSpacing: route.secondTickSpacing,
           });
         }
       }
@@ -422,24 +369,26 @@ export class BasketQuotePlannerService {
     }
 
     const routeExpiry = earliestExpiry ?? new Date(Date.now() + 300_000).toISOString();
-    const deadline = Math.floor(new Date(routeExpiry).getTime() / 1_000);
-    if (!Number.isSafeInteger(deadline) || deadline <= Math.floor(Date.now() / 1_000)) {
-      throw new ServiceUnavailableException('The DEX route expired before it could be prepared.');
+    const deadline = await this.boundedRouteDeadline(chainId, routeExpiry);
+
+    if (trades.length > 16) {
+      throw new UnprocessableEntityException('EXCEEDS_MAX_REBALANCE_ROUTES: maximum 16 routes allowed per rebalance.');
     }
 
+    const aerodromeRoutes = trades.map((t) => ({
+      kind: t.kind === 'VIA_USDC' ? 1 : 0,
+      tokenIn: t.sellAsset as Address,
+      tokenOut: t.buyAsset as Address,
+      firstTickSpacing: t.firstTickSpacing,
+      secondTickSpacing: t.secondTickSpacing,
+      amountIn: BigInt(t.amountIn),
+      minimumAmountOut: BigInt(t.minOut),
+    }));
+
     const moduleCalldata = encodeFunctionData({
-      abi: BASKET_MODULE_V3_ABI,
-      functionName: 'rebalance',
-      args: [{
-        safe: basketAddress,
-        legs,
-        soldAssets,
-        maxSoldAmounts,
-        boughtAssets,
-        minBoughtAmounts,
-        basketTokens,
-        deadline: BigInt(deadline),
-      }],
+      abi: PORTFOLIO_AERODROME_REBALANCE_ABI,
+      functionName: 'rebalanceAerodromePortfolio',
+      args: [basketAddress, aerodromeRoutes, deadline],
     });
 
     const simulation = await this.verifyV2AndSimulate({
@@ -450,11 +399,7 @@ export class BasketQuotePlannerService {
       moduleCalldata,
     });
 
-    const approvals = Array.from(approvalsMap.values()).map((a) => ({
-      tokenAddress: a.tokenAddress,
-      spenderAddress: a.spenderAddress,
-      maxAmountBaseUnits: a.maxAmountBaseUnits.toString(),
-    }));
+    const approvals: Array<{ tokenAddress: Address; spenderAddress: Address; maxAmountBaseUnits: string }> = [];
 
     const plan = executionPlanSchema.parse({
       action: 'SPOT_REBALANCE',
@@ -485,7 +430,6 @@ export class BasketQuotePlannerService {
         route: {
           provider: primaryRoute.provider,
           target: primaryRoute.target,
-          calldata: primaryRoute.calldata,
           allowanceSpender: primaryRoute.allowanceSpender,
           recipient: basketAddress,
           sellAsset: primaryRoute.sellAsset,
@@ -529,7 +473,7 @@ export class BasketQuotePlannerService {
     }
 
     const totalWeightBps = targets.reduce((sum, t) => sum + t.targetWeightBps, 0);
-    const legs: Array<{ target: Address; allowanceSpender: Address; inputAmount: bigint; dexCalldata: `0x${string}` }> = [];
+    const legs: Array<{ target: Address; allowanceSpender: Address; inputAmount: bigint }> = [];
     const boughtAssets: Address[] = [];
     const minBoughtAmounts: bigint[] = [];
     const basketTokensSet = new Set<Address>();
@@ -575,12 +519,13 @@ export class BasketQuotePlannerService {
         slippageBps,
       });
 
-      this.assertBoundRoute(
+      await this.assertBoundRoute(
         route,
         chainId,
         basketAddress,
         { assetAddress: inputAsset, amountBaseUnits: legInputAmount, valueUsdE8: 0n },
         { assetAddress: buyAsset, amountBaseUnits: 0n, valueUsdE8: 0n },
+        moduleAddress,
       );
 
       if (new Date(route.expiresAt).getTime() <= Date.now()) {
@@ -595,7 +540,6 @@ export class BasketQuotePlannerService {
         target: route.routerAddress as Address,
         allowanceSpender: route.allowanceSpender as Address,
         inputAmount: legInputAmount,
-        dexCalldata: route.dexCalldata as `0x${string}`,
       });
 
       minBoughtAmounts.push(route.minBuyAmount);
@@ -604,34 +548,43 @@ export class BasketQuotePlannerService {
 
       trades.push({
         assetAddress: buyAsset,
+        kind: route.kind,
         amountIn: legInputAmount.toString(),
         expectedOut: route.expectedBuyAmount.toString(),
         minOut: route.minBuyAmount.toString(),
         provider: route.providerName,
         estimatedGasUsd: route.estimatedGasUsd,
-        calldata: route.dexCalldata,
         target: route.routerAddress,
         allowanceSpender: route.allowanceSpender,
         recipient: route.recipientAddress,
         expiresAt: route.expiresAt,
+        firstTickSpacing: route.firstTickSpacing,
+        secondTickSpacing: route.secondTickSpacing,
       });
     }
 
     const basketTokens = Array.from(basketTokensSet);
 
+    const deadline = await this.boundedRouteDeadline(chainId, earliestExpiry);
+
+    if (trades.length > 16) {
+      throw new UnprocessableEntityException('EXCEEDS_MAX_FUNDING_ROUTES: maximum 16 routes allowed per funding.');
+    }
+
+    const aerodromeRoutes = trades.map((t) => ({
+      kind: t.kind === 'VIA_USDC' ? 1 : 0,
+      tokenIn: inputAsset,
+      tokenOut: t.assetAddress as Address,
+      firstTickSpacing: t.firstTickSpacing,
+      secondTickSpacing: t.secondTickSpacing,
+      amountIn: BigInt(t.amountIn),
+      minimumAmountOut: BigInt(t.minOut),
+    }));
+
     const moduleCalldata = encodeFunctionData({
-      abi: BASKET_FUND_MODULE_V3_ABI,
-      functionName: 'fundWithSwaps',
-      args: [{
-        safe: basketAddress,
-        inputAsset,
-        inputAmount,
-        legs,
-        boughtAssets,
-        minBoughtAmounts,
-        basketTokens,
-        deadline: BigInt(Math.floor(new Date(earliestExpiry).getTime() / 1_000)),
-      }],
+      abi: PORTFOLIO_AERODROME_FUND_ABI,
+      functionName: 'fundAerodromePortfolio',
+      args: [basketAddress, inputAsset, inputAmount, aerodromeRoutes, deadline],
     });
 
     const simulation = await this.verifyV3AndSimulate({
@@ -661,7 +614,6 @@ export class BasketQuotePlannerService {
 
     const primaryTarget = legs[0]?.target ?? '0x0000000000000000000000000000000000000000';
     const primarySpender = legs[0]?.allowanceSpender ?? '0x0000000000000000000000000000000000000000';
-    const primaryCalldata = legs[0]?.dexCalldata ?? '0x';
 
     return {
       success: true,
@@ -675,7 +627,6 @@ export class BasketQuotePlannerService {
         slippageBps,
         target: primaryTarget,
         allowanceSpender: primarySpender,
-        dexCalldata: primaryCalldata,
         soldAssets: [inputAsset],
         boughtAssets,
         minBoughtAmounts: minBoughtAmounts.map((m) => m.toString()),
@@ -686,6 +637,33 @@ export class BasketQuotePlannerService {
         preparationReason: 'Direct post-create funding was simulated for the supplied owner/funder. Factory create-and-seed uses a distinct factory caller flow and is not prepared here.',
       },
     };
+  }
+
+  /**
+   * The portfolio module bounds deadlines against `block.timestamp`, not the
+   * backend host clock.  Local Anvil forks can intentionally have a different
+   * timestamp, so derive the calldata deadline from the target chain and cap
+   * it below the module's five-minute limit.
+   */
+  private async boundedRouteDeadline(chainId: number, routeExpiry: string): Promise<bigint> {
+    const rpcUrl = RPC_URLS[chainId];
+    if (!rpcUrl) throw new ServiceUnavailableException(`No RPC is configured for chain ${chainId}.`);
+
+    try {
+      const client = createPublicClient({ transport: http(rpcUrl) });
+      const latestBlock = await client.getBlock({ blockTag: 'latest' });
+      const chainNow = latestBlock.timestamp;
+      const quoteExpiry = BigInt(Math.floor(new Date(routeExpiry).getTime() / 1_000));
+      if (quoteExpiry <= chainNow) {
+        throw new ServiceUnavailableException('The DEX route expired before it could be prepared.');
+      }
+
+      // Leave one minute of headroom below the module's five-minute maximum.
+      return quoteExpiry < chainNow + 240n ? quoteExpiry : chainNow + 240n;
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) throw error;
+      throw new ServiceUnavailableException('DEX_ROUTE_CLOCK_UNAVAILABLE: unable to read the target chain timestamp.');
+    }
   }
 
   private computeNetTrades(snapshot: PositionSnapshot, targets: BasketTargetWeight[]) {
@@ -748,7 +726,14 @@ export class BasketQuotePlannerService {
     }
   }
 
-  private assertBoundRoute(route: SwapQuoteResult, chainId: number, recipient: Address, sell: NetTrade, buy: NetTrade) {
+  private async assertBoundRoute(
+    route: SwapQuoteResult,
+    chainId: number,
+    recipient: Address,
+    sell: NetTrade,
+    buy: NetTrade,
+    moduleAddress: Address,
+  ) {
     const valid = route.isAvailable
       && route.chainId === chainId
       && route.sellToken.toLowerCase() === sell.assetAddress.toLowerCase()
@@ -758,11 +743,92 @@ export class BasketQuotePlannerService {
       && route.expectedBuyAmount > 0n
       && route.minBuyAmount > 0n
       && route.minBuyAmount <= route.expectedBuyAmount
-      && route.dexCalldata !== '0x';
+      && route.providerName === 'Aerodrome'
+      && Number.isInteger(route.firstTickSpacing);
     if (!valid) throw new ServiceUnavailableException('The selected DEX route is incomplete or does not match the requested trade.');
-    this.parseAddress(route.routerAddress, 'route target');
-    this.parseAddress(route.allowanceSpender, 'route allowance spender');
+    const target = this.parseAddress(route.routerAddress, 'route target');
+    const allowanceSpender = this.parseAddress(route.allowanceSpender, 'route allowance spender');
     this.parseAddress(route.recipientAddress, 'route recipient');
+    const rpcUrl = RPC_URLS[chainId];
+    if (!rpcUrl) throw new ServiceUnavailableException(`No RPC is configured for chain ${chainId}.`);
+    const approvedRouter = chainId === 31337
+      ? LOCAL_AERODROME_SLIPSTREAM_ROUTER
+      : BASE_AERODROME_SLIPSTREAM_ROUTER;
+
+    if (
+      target.toLowerCase() !== approvedRouter.toLowerCase()
+      || allowanceSpender.toLowerCase() !== approvedRouter.toLowerCase()
+    ) {
+      throw new UnprocessableEntityException(
+        'UNAPPROVED_AERODROME_ROUTER: the reviewed route must use the pinned Aerodrome Slipstream router.',
+      );
+    }
+
+    try {
+      const client = createPublicClient({ transport: http(rpcUrl) });
+      const [moduleVersion, bounded, adapterAddress] = await Promise.all([
+        client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'moduleVersion' }),
+        client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'supportsBoundedExecution' }),
+        client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'aerodromeAdapter' }),
+      ]);
+      if (moduleVersion !== 3n || !bounded) {
+        throw new UnprocessableEntityException(
+          `UNSUPPORTED_MODULE_VERSION: bounded v3 execution requires moduleVersion=3; received ${moduleVersion.toString()} with supportsBoundedExecution=${bounded}.`,
+        );
+      }
+      const adapterRouter = await client.readContract({
+        address: adapterAddress,
+        abi: AERODROME_ADAPTER_ABI,
+        functionName: 'router',
+      });
+      if (adapterRouter.toLowerCase() !== approvedRouter.toLowerCase()) {
+        throw new UnprocessableEntityException(
+          'UNAPPROVED_AERODROME_ROUTER: the deployed portfolio module is not pinned to the reviewed Aerodrome router.',
+        );
+      }
+      const routeRegistryAddress = await client.readContract({
+        address: adapterAddress,
+        abi: parseAbi(['function routeRegistry() external view returns (address)']),
+        functionName: 'routeRegistry',
+      });
+
+      const ROUTE_REGISTRY_ABI = parseAbi([
+        'function requireApprovedPool(uint256 chainId, address tokenA, address tokenB, int24 tickSpacing) external view returns (address factory, address pool)',
+      ]);
+
+      try {
+        if (route.kind === 'DIRECT') {
+          await client.readContract({
+            address: routeRegistryAddress,
+            abi: ROUTE_REGISTRY_ABI,
+            functionName: 'requireApprovedPool',
+            args: [BigInt(chainId), route.sellToken as Address, route.buyToken as Address, route.firstTickSpacing],
+          });
+        } else if (route.kind === 'VIA_USDC') {
+          await client.readContract({
+            address: routeRegistryAddress,
+            abi: ROUTE_REGISTRY_ABI,
+            functionName: 'requireApprovedPool',
+            args: [BigInt(chainId), route.sellToken as Address, BASE_USDC as Address, route.firstTickSpacing],
+          });
+          await client.readContract({
+            address: routeRegistryAddress,
+            abi: ROUTE_REGISTRY_ABI,
+            functionName: 'requireApprovedPool',
+            args: [BigInt(chainId), BASE_USDC as Address, route.buyToken as Address, route.secondTickSpacing],
+          });
+        }
+      } catch (poolErr) {
+        throw new UnprocessableEntityException(
+          'UNAPPROVED_AERODROME_POOL: pool route is not approved in the on-chain route registry.',
+        );
+      }
+    } catch (error) {
+      if (error instanceof UnprocessableEntityException) throw error;
+      throw new UnprocessableEntityException(
+        'DEX_ROUTE_APPROVAL_UNAVAILABLE: unable to verify the deployed module route approval.',
+      );
+    }
   }
 
   private async verifyV2AndSimulate(input: {
