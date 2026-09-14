@@ -219,7 +219,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
 
         require(sumInput == totalFundingAmount, "FUNDING_AMOUNT_MISMATCH");
 
-        uint256 totalNAVAfter = oracle.calculateNAV(acquiredAssets, acquiredAmounts);
+        uint256 totalNAVAfter = _calculateUniqueNAV(acquiredAssets, acquiredAmounts);
         emit BasketFunded(
             safe,
             msg.sender,
@@ -252,7 +252,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
             boughtAmounts[i] = _executeRoute(safe, routes[i], deadline);
         }
 
-        uint256 totalNAV = oracle.calculateNAV(boughtAssets, boughtAmounts);
+        uint256 totalNAV = _calculateUniqueNAV(boughtAssets, boughtAmounts);
         emit BasketRebalanced(
             safe,
             msg.sender,
@@ -262,5 +262,40 @@ contract OthelioPortfolioModule is OthelioBaseModule {
             boughtAmounts,
             totalNAV
         );
+    }
+
+    /// @dev The route event preserves each execution leg, while NAV is valued
+    /// against one summed balance per asset because BasketOracle rejects
+    /// duplicate token entries to prevent double counting.
+    function _calculateUniqueNAV(address[] memory assets, uint256[] memory amounts) private view returns (uint256) {
+        require(assets.length == amounts.length, "LENGTH_MISMATCH");
+
+        uint256 len = assets.length;
+        address[] memory uniqueAssets = new address[](len);
+        uint256[] memory uniqueAmounts = new uint256[](len);
+        uint256 uniqueCount;
+
+        for (uint256 i = 0; i < len; i++) {
+            uint256 j;
+            for (; j < uniqueCount; j++) {
+                if (uniqueAssets[j] == assets[i]) {
+                    uniqueAmounts[j] += amounts[i];
+                    break;
+                }
+            }
+            if (j == uniqueCount) {
+                uniqueAssets[uniqueCount] = assets[i];
+                uniqueAmounts[uniqueCount] = amounts[i];
+                uniqueCount++;
+            }
+        }
+
+        address[] memory compactAssets = new address[](uniqueCount);
+        uint256[] memory compactAmounts = new uint256[](uniqueCount);
+        for (uint256 i = 0; i < uniqueCount; i++) {
+            compactAssets[i] = uniqueAssets[i];
+            compactAmounts[i] = uniqueAmounts[i];
+        }
+        return oracle.calculateNAV(compactAssets, compactAmounts);
     }
 }

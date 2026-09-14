@@ -453,7 +453,7 @@ export class BasketsService {
     address = address.toLowerCase();
 
     const result = await this.db.query(
-      'SELECT * FROM basket_events WHERE chain_id=$1 AND basket_address=$2 ORDER BY block_number DESC, log_index DESC LIMIT 100',
+      "SELECT * FROM basket_events WHERE chain_id=$1 AND basket_address=$2 AND event_type != 'DEX_ROUTE_EXECUTED' ORDER BY block_number DESC, log_index DESC LIMIT 100",
       [chainId, address],
     );
 
@@ -464,7 +464,7 @@ export class BasketsService {
     const chainId = chainIdSchema.parse(chainIdInput);
 
     const result = await this.db.query(
-      'SELECT * FROM basket_events WHERE chain_id=$1 ORDER BY block_number DESC, log_index DESC LIMIT 100',
+      "SELECT * FROM basket_events WHERE chain_id=$1 AND event_type != 'DEX_ROUTE_EXECUTED' ORDER BY block_number DESC, log_index DESC LIMIT 100",
       [chainId],
     );
 

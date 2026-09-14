@@ -2453,7 +2453,7 @@ input[type="number"] {
   display: grid;
   gap: 0;
   margin: 0 4px 12px 98px;
-  padding: 14px 16px;
+  padding: 14px 16px 2px;
   background: var(--panel-2);
   border-radius: 12px;
 }
@@ -2581,7 +2581,7 @@ input[type="number"] {
   .activity-event.full .activity-detail-body,
   .activity-detail-body {
     margin: 0 10px 12px;
-    padding: 12px;
+    padding: 12px 12px 2px;
   }
 
   .activity-detail-line {

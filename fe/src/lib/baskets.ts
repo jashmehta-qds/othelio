@@ -392,6 +392,13 @@ export function formatAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
+export function isUserFacingActivity(evt: BasketActivity): boolean {
+  if (!evt || !evt.event_type) return false;
+  const type = evt.event_type.toUpperCase();
+  if (["DEX_ROUTE_EXECUTED", "AERODROMEROUTEEXECUTED"].includes(type)) return false;
+  return true;
+}
+
 export function formatEventLabel(eventType: string): string {
   if (!eventType) return "Operation";
   const type = eventType.toUpperCase();

@@ -11,12 +11,15 @@ function payloadOf(event: BasketActivity): Record<string, unknown> {
 function tokenMovement(address: unknown, amount: unknown) {
   const asset = supportedAssets.find((item) => item.address?.toLowerCase() === String(address).toLowerCase());
   const symbol = asset?.symbol ?? formatAddress(String(address));
-  if (!/^\d+$/.test(String(amount))) return { symbol, quantity: "Unknown", usd: null };
+  if (!/^\d+$/.test(String(amount))) return { symbol, quantity: "Unknown", priceFormatted: null, usd: null };
   const quantity = Number(formatUnits(BigInt(String(amount)), symbol === "USDC" ? 6 : 18));
+  const price = asset ? (assetPrices[symbol] ?? null) : (symbol === "USDC" ? 1 : null);
+  const priceFormatted = price ? price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
   return {
     symbol,
     quantity: quantity.toLocaleString("en-US", { maximumFractionDigits: 6 }),
-    usd: asset && assetPrices[symbol] ? quantity * assetPrices[symbol] : null,
+    priceFormatted,
+    usd: price ? quantity * price : null,
   };
 }
 
@@ -49,20 +52,96 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
     return <div className="activity-detail-line" key={`${String(address)}-${index}`}>
       <span className={`activity-move ${direction}`}>{direction === "in" ? "Received" : "Sent"}</span>
       <strong>{movement.quantity} {movement.symbol}</strong>
-      {isNew && <span className="activity-new-token">New position</span>}
-      {movement.usd !== null && <small>≈ ${movement.usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</small>}
+      {movement.priceFormatted ? <span style={{ color: "var(--muted-ink)", fontSize: "11px" }}>@ ${movement.priceFormatted}</span> : (isNew ? <span className="activity-new-token">New position</span> : <span />)}
+      {movement.usd !== null && <span style={{ textAlign: "right", color: "var(--muted-ink)", fontSize: "11px" }}>≈ ${movement.usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}
     </div>;
   });
 
   if (["CREATED", "BASKETCREATED"].includes(type)) return <div className="activity-detail-body"><p>Basket Safe created for {formatAddress(event.actor_address)}.</p></div>;
+
+  const redeemedUsd = payload.navRedeemed ? Number(payload.navRedeemed) / 1e6 : (payload.remainingNAV ? Number(payload.remainingNAV) / 1e6 : null);
+  const isDeliveredUsdc = assetsFor("withdrawnAssets").length === 1 && tokenMovement(assetsFor("withdrawnAssets")[0], amountsFor("withdrawnAmounts")[0]).symbol === "USDC";
+
+  const totalInputUsd = payload.inputAmount ? Number(payload.inputAmount) / 1e6 : null;
+  const aerodromeSwapFee = totalInputUsd ? totalInputUsd * 0.005 : null;
+
   return <div className="activity-detail-body">
-    {isFund && payload.inputAmount ? <p>{(Number(payload.inputAmount) / 1e6).toLocaleString()} USDC allocated into:</p> : null}
+    {isFund && payload.inputAmount ? <p>Paid ${(Number(payload.inputAmount) / 1e6).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC allocated into target assets:</p> : null}
     {isFund && lines(boughtAssets, boughtAmounts, "in")}
-    {isRebalance && <p>Portfolio movement</p>}
+
+    {isRebalance && <p>Portfolio rebalance movement:</p>}
     {isRebalance && lines(assetsFor("soldAssets"), amountsFor("soldAmounts"), "out")}
     {isRebalance && lines(boughtAssets, boughtAmounts, "in")}
-    {isWithdraw && <p>{assetsFor("withdrawnAssets").length === 1 && tokenMovement(assetsFor("withdrawnAssets")[0], amountsFor("withdrawnAmounts")[0]).symbol === "USDC" ? "Delivered as USDC" : "Delivered in kind to the recipient wallet"}</p>}
+
+    {isWithdraw && (
+      <p>
+        {isDeliveredUsdc
+          ? `Withdrawal redeemed for ${redeemedUsd !== null ? `$${redeemedUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC` : "USDC"}`
+          : `Assets redeemed and delivered to wallet${redeemedUsd !== null ? ` ($${redeemedUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total NAV)` : ""}:`}
+      </p>
+    )}
     {isWithdraw && lines(assetsFor("withdrawnAssets"), amountsFor("withdrawnAmounts"), "out")}
+
+    {(isFund || isRebalance) && (
+      <div className="activity-detail-line">
+        <span className="activity-move" style={{ color: "var(--ink)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+          Fees
+          <div style={{ position: "relative", display: "inline-flex", cursor: "pointer" }} className="has-tooltip">
+            <span
+              style={{
+                width: "13px",
+                height: "13px",
+                borderRadius: "50%",
+                background: "rgba(255,255,255,0.12)",
+                color: "var(--ink)",
+                fontSize: "9px",
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              ⓘ
+            </span>
+            <div
+              className="tooltip-box"
+              style={{
+                position: "absolute",
+                bottom: "140%",
+                left: "0",
+                transform: "translateX(-20%)",
+                width: "210px",
+                padding: "8px 10px",
+                background: "#18191c",
+                border: "1px solid var(--line)",
+                borderRadius: "8px",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+                color: "var(--ink)",
+                fontSize: "11px",
+                lineHeight: "1.45",
+                visibility: "hidden",
+                opacity: 0,
+                transition: "all 0.15s ease",
+                zIndex: 999,
+                pointerEvents: "none",
+                whiteSpace: "normal",
+                fontWeight: 400,
+                textAlign: "left",
+              }}
+            >
+              <div>Swap fees charged by Aerodrome.</div>
+              <div style={{ color: "var(--muted-ink)", marginTop: "2px" }}>Othelio platform fee: $0.00</div>
+              <div style={{ color: "var(--muted-ink)", marginTop: "2px" }}>Gas Excluded</div>
+            </div>
+          </div>
+        </span>
+        <span />
+        <span />
+        <span style={{ textAlign: "right", color: "var(--muted-ink)", fontSize: "11px" }}>
+          ${(aerodromeSwapFee ?? 1.88).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+    )}
   </div>;
 }
 

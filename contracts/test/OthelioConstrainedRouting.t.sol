@@ -177,6 +177,34 @@ contract OthelioConstrainedRoutingTest is Test {
         assertEq(nvda.allowance(address(basket), address(router)), 0);
     }
 
+    function testRebalanceAggregatesDuplicateBoughtAssetsForNav() public {
+        // A rebalance may split one sell asset across several purchases of the
+        // same destination. The route event keeps both legs, but NAV must be
+        // calculated from their single aggregated GOOG balance.
+        nvda.mint(address(basket), 1 ether);
+        usdc.mint(address(router), 100 ether);
+        goog.mint(address(router), 1 ether);
+
+        AerodromeRoute[] memory routes = new AerodromeRoute[](2);
+        for (uint256 i = 0; i < 2; i++) {
+            routes[i] = AerodromeRoute({
+                kind: AerodromeRouteKind.VIA_USDC,
+                tokenIn: address(nvda),
+                tokenOut: address(goog),
+                firstTickSpacing: 100,
+                secondTickSpacing: 100,
+                amountIn: 0.5 ether,
+                minimumAmountOut: 0.49 ether
+            });
+        }
+
+        vm.prank(owner);
+        portfolio.rebalanceAerodromePortfolio(address(basket), routes, block.timestamp + 1);
+
+        assertEq(goog.balanceOf(address(basket)), 0.98 ether);
+        assertEq(nvda.balanceOf(address(basket)), 0);
+    }
+
     function testRebalanceRevertsIfUnapprovedPool() public {
         TestToken unapproved = new TestToken("Unapproved", "UNP");
         MockPriceFeed unapprovedFeed = new MockPriceFeed(100e8);

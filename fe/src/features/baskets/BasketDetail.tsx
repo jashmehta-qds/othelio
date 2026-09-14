@@ -7,7 +7,7 @@ import { useAccount, useChainId } from "wagmi";
 import AllocationSankey from "@/components/AllocationSankey";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { assetPrices, asset30dChanges, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
+import { assetPrices, asset30dChanges, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, isUserFacingActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
 import { useBasketDetails, useBasketActivity, useBasketsList, useAssetPrices, usePortfolioPositions } from "@/hooks/useBaskets";
 import { BasketDrawer, type BasketAction } from "./BasketDrawer";
 import { BasketLogo } from "./BasketLogo";
