@@ -52,12 +52,11 @@ npm run dev:reset
 # Start the application services after the chain is healthy.
 npm run dev:services
 
-# Optional: seed a non-default connected wallet with mock USDC and router liquidity.
-(cd contracts && CAST_BIN="$HOME/.foundry/bin/cast" FORGE_BIN="$HOME/.foundry/bin/forge" \
-  ./script/bootstrap-local-anvil.sh <wallet-address>)
+# Optional: fund a non-default connected wallet. This does not reset the chain.
+./scripts/fund-local-wallet.sh <wallet-address> 100000
 ```
 
-The reset path deploys the registry, oracle, route registry, adapters, portfolio module, and Safe factory; installs mock USDC/B20 code; and seeds router B20 plus USDC liquidity. The bootstrap command also resets Anvil, so use it only when a clean chain is intended.
+The reset path deploys the registry, oracle, route registry, adapters, portfolio module, and Safe factory; installs mock USDC/B20 code; and seeds router B20 plus USDC liquidity. `scripts/fund-local-wallet.sh` only funds a wallet. `contracts/script/bootstrap-local-anvil.sh` is a standalone alternative that resets Anvil, so do not run it after `dev:reset`.
 
 Local addresses may change after a reset because the fork state and deployment sequence affect deployer nonces. After every deployment, confirm the broadcast output and update every consumer before starting services:
 
@@ -68,6 +67,8 @@ Local addresses may change after a reset because the fork state and deployment s
 | `.env` (local, ignored) and `.env.example` | factory, module, registry, oracle |
 | `contracts/broadcast/.../run-latest.json` | deployed contract addresses and transaction receipts |
 | Postgres / indexer | reset chain-specific indexed data or use `npm run dev:reset`; never retain old events against a fresh Anvil chain |
+
+The local indexer must start at the configured Anvil fork block, not block `0`; otherwise it attempts to replay Base mainnet history through the fork provider. `docker-compose.yml` sets this automatically for the bundled fork.
 
 Do not copy any `31337` address to Base mainnet. Production deployments require their own broadcast review, governance owner, pinned-route verification, and Base fork tests.
 

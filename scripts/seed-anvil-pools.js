@@ -72,12 +72,11 @@ async function seedAnvilPools() {
   }
   const usdcJson = JSON.parse(fs.readFileSync(usdcArtifactPath, "utf8"));
   const routerJson = JSON.parse(fs.readFileSync(routerArtifactPath, "utf8"));
-  if ((await rpc("eth_getCode", [LOCAL_USDC, "latest"])) === "0x") {
-    await rpc("anvil_setCode", [LOCAL_USDC, usdcJson.deployedBytecode.object]);
-  }
-  if ((await rpc("eth_getCode", [LOCAL_ROUTER, "latest"])) === "0x") {
-    await rpc("anvil_setCode", [LOCAL_ROUTER, routerJson.deployedBytecode.object]);
-  }
+  // The fork can expose canonical Base code/precompile stubs at these addresses.
+  // Local tests need deterministic mock ERC-20 semantics, so replace them only
+  // on Anvil through its non-production `anvil_setCode` RPC.
+  await rpc("anvil_setCode", [LOCAL_USDC, usdcJson.deployedBytecode.object]);
+  await rpc("anvil_setCode", [LOCAL_ROUTER, routerJson.deployedBytecode.object]);
   const routerRecipient = LOCAL_ROUTER.slice(2).toLowerCase().padStart(64, "0");
   const usdcAmount = ROUTER_USDC_LIQUIDITY.toString(16).padStart(64, "0");
   await rpc("eth_sendTransaction", [{
@@ -91,9 +90,7 @@ async function seedAnvilPools() {
     const erc20Bytecode = erc20Json.deployedBytecode.object;
 
     for (const addr of TOKEN_ADDRESSES) {
-      if ((await rpc("eth_getCode", [addr, "latest"])) === "0x") {
-        await rpc("anvil_setCode", [addr, erc20Bytecode]);
-      }
+      await rpc("anvil_setCode", [addr, erc20Bytecode]);
       const amount = ROUTER_LIQUIDITY.toString(16).padStart(64, "0");
       await rpc("eth_sendTransaction", [{
         from: LOCAL_DEPLOYER,
