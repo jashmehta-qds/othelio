@@ -16,15 +16,15 @@ export const CONTRACT_ADDRESSES = {
     usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as `0x${string}`,
   },
   31337: {
-    factory: '0x0165878A594ca255338adfa4d48449f69242Eb8F' as `0x${string}`,
-    module: '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707' as `0x${string}`,
-    oracle: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512' as `0x${string}`,
-    registry: '0x5FbDB2315678afecb367f032d93F642f64180aa3' as `0x${string}`,
+    factory: '0x21efb0c4fdA036F670A6a2b05b9Cb3bc3FbE006d' as `0x${string}`,
+    module: '0x49d7AF0c0A242Ca8178f00cE9dc5800C97d9579F' as `0x${string}`,
+    oracle: '0x23D4ae48A1434dA63Cf97efEc10CB6cf2d8b0229' as `0x${string}`,
+    registry: '0x36065592975f6CfBE171e57E6743ef2F6FaD0eDc' as `0x${string}`,
     coinbaseRegistry: '0x0000000000000000000000000000000000000000' as `0x${string}`,
     usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
     dexRouter: '0xBD606f1dAE0285D55113eFC11501677B2221A4dd' as `0x${string}`,
-    aaveAdapter: '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9' as `0x${string}`,
-    aerodromeAdapter: '0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9' as `0x${string}`,
+    aaveAdapter: '0xeb354b33171Ca5072038bCf7d808E6F527BCB15f' as `0x${string}`,
+    aerodromeAdapter: '0x21163F943b3b1721af829e95E13BcCBE42D2cC8E' as `0x${string}`,
   },
 } as const;
 

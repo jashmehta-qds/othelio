@@ -41,6 +41,36 @@ npm run dev:services
 
 Use `npm run dev:reset` only when you want a fresh local chain. It removes the local Postgres volume and all local chain/indexed history before bootstrapping a new environment.
 
+### After a contract change
+
+Any Solidity bytecode change requires a fresh local deployment. Use this sequence:
+
+```bash
+# Stops local containers, deletes the local Postgres volume and starts a new Anvil deployment.
+npm run dev:reset
+
+# Start the application services after the chain is healthy.
+npm run dev:services
+
+# Optional: seed a non-default connected wallet with mock USDC and router liquidity.
+(cd contracts && CAST_BIN="$HOME/.foundry/bin/cast" FORGE_BIN="$HOME/.foundry/bin/forge" \
+  ./script/bootstrap-local-anvil.sh <wallet-address>)
+```
+
+The reset path deploys the registry, oracle, route registry, adapters, portfolio module, and Safe factory; installs mock USDC/B20 code; and seeds router B20 plus USDC liquidity. The bootstrap command also resets Anvil, so use it only when a clean chain is intended.
+
+Local addresses may change after a reset because the fork state and deployment sequence affect deployer nonces. After every deployment, confirm the broadcast output and update every consumer before starting services:
+
+| Consumer | Values to verify |
+| --- | --- |
+| `fe/src/lib/contracts.ts` | `31337` factory, module, registry, oracle, adapters, router, USDC |
+| `docker-compose.yml` | indexer `FACTORY_ADDRESS` and `MODULE_ADDRESS` |
+| `.env` (local, ignored) and `.env.example` | factory, module, registry, oracle |
+| `contracts/broadcast/.../run-latest.json` | deployed contract addresses and transaction receipts |
+| Postgres / indexer | reset chain-specific indexed data or use `npm run dev:reset`; never retain old events against a fresh Anvil chain |
+
+Do not copy any `31337` address to Base mainnet. Production deployments require their own broadcast review, governance owner, pinned-route verification, and Base fork tests.
+
 ---
 
 ## 🛠️ Manual & Granular Commands (Optional)

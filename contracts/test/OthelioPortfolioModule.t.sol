@@ -146,4 +146,27 @@ contract OthelioPortfolioModuleTest is Test {
         assertEq(outputToken.balanceOf(address(basket)), 9.9 ether);
         assertEq(asset.allowance(address(basket), portfolio.aerodromeAdapter().router()), 0);
     }
+
+    function testInKindWithdrawalAcceptsRegistryApprovedNoBytecodeB20Address() public {
+        // B20 stocks are native Base precompiles, which deliberately report no EVM bytecode.
+        address nativeB20 = 0xB200000000000000000000000000000000000000;
+        assertEq(nativeB20.code.length, 0);
+        MockPriceFeed nativeB20Feed = new MockPriceFeed(1e8);
+
+        vm.prank(owner);
+        registry.configure(block.chainid, nativeB20, address(nativeB20Feed), true, 18, 8, true);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = nativeB20;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1 ether;
+        address[] memory remainingTokens = new address[](0);
+
+        vm.prank(owner);
+        uint256 remainingNAV = portfolio.withdrawInKind(
+            address(basket), owner, tokens, amounts, remainingTokens
+        );
+
+        assertEq(remainingNAV, 0);
+    }
 }

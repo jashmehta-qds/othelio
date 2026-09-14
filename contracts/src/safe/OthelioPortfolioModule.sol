@@ -60,11 +60,6 @@ contract OthelioPortfolioModule is OthelioBaseModule {
         return target == router && allowanceSpender == router;
     }
 
-    function _validateAaveAsset(address asset) private view {
-        require(asset.code.length > 0, "INVALID_TOKEN");
-        require(oracle.registry().isSupported(block.chainid, asset), "UNSUPPORTED_ASSET");
-    }
-
     function _tokenCall(address safe, address token, bytes memory data, string memory errorMessage) private {
         (bool success, bytes memory returned) = ISafe(safe).execTransactionFromModuleReturnData(token, 0, data, 0);
         require(success && (returned.length == 0 || (returned.length == 32 && abi.decode(returned, (bool)))), errorMessage);
@@ -85,7 +80,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
 
     function supplyAave(address safe, address asset, uint256 amount) external nonReentrant onlySafeOwner(safe) {
         require(newAaveSupplyEnabled, "NEW_AAVE_SUPPLY_DISABLED");
-        _validateAaveAsset(asset);
+        _validateSupportedAsset(asset);
         _approveAave(safe, asset, amount);
         (address target, bytes memory data) = aaveAdapter.supplyCall(asset, amount, safe);
         _callAave(safe, target, data);
@@ -94,7 +89,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
     }
 
     function repayAave(address safe, address asset, uint256 amount) external nonReentrant onlySafeOwner(safe) returns (uint256 repaid) {
-        _validateAaveAsset(asset);
+        _validateSupportedAsset(asset);
         _approveAave(safe, asset, amount);
         (address target, bytes memory data) = aaveAdapter.repayCall(asset, amount, safe);
         bytes memory returned = _callAave(safe, target, data);
@@ -108,7 +103,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
     function repayAaveFromWallet(address safe, address asset, uint256 amount)
         external nonReentrant onlySafeOwner(safe) returns (uint256 repaid)
     {
-        _validateAaveAsset(asset);
+        _validateSupportedAsset(asset);
         require(amount > 0, "INVALID_AMOUNT");
         IERC20(asset).safeTransferFrom(msg.sender, safe, amount);
         _approveAave(safe, asset, amount);
@@ -127,7 +122,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
     function withdrawAaveCollateral(address safe, address asset, uint256 amount, uint256 minHealthFactor)
         external nonReentrant onlySafeOwner(safe) returns (uint256 withdrawn)
     {
-        _validateAaveAsset(asset);
+        _validateSupportedAsset(asset);
         require(minHealthFactor >= minimumAaveHealthFactor, "HEALTH_FACTOR_FLOOR_TOO_LOW");
         (address target, bytes memory data) = aaveAdapter.withdrawCall(asset, amount, safe);
         bytes memory returned = _callAave(safe, target, data);
@@ -159,8 +154,8 @@ contract OthelioPortfolioModule is OthelioBaseModule {
         AerodromeRoute calldata route,
         uint256 deadline
     ) private returns (uint256 amountOut) {
-        _validateAaveAsset(route.tokenIn);
-        _validateAaveAsset(route.tokenOut);
+        _validateSupportedAsset(route.tokenIn);
+        _validateSupportedAsset(route.tokenOut);
 
         _verifyOracleValueLoss(route.tokenIn, route.amountIn, route.tokenOut, route.minimumAmountOut);
 

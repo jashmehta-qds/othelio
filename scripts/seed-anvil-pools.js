@@ -4,7 +4,9 @@ const path = require("path");
 const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
 const LOCAL_ROUTER = "0xBD606f1dAE0285D55113eFC11501677B2221A4dd";
 const LOCAL_DEPLOYER = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+const LOCAL_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const ROUTER_LIQUIDITY = 1_000_000n * 10n ** 18n;
+const ROUTER_USDC_LIQUIDITY = 1_000_000n * 10n ** 6n;
 
 async function rpc(method, params) {
   const response = await fetch(RPC_URL, {
@@ -35,12 +37,7 @@ const TOKEN_ADDRESSES = [
 
 async function seedAnvilPools() {
   const rpcUrl = RPC_URL;
-  if ((await rpc("eth_getCode", [LOCAL_ROUTER, "latest"])) !== "0x") {
-    console.log("[seed-anvil-pools] Local fixtures already installed; skipping seed.");
-    return;
-  }
-
-  // 1. Etch MockAavePool contract bytecode
+  // 1. Install MockAavePool code only when the fork did not already provide it.
   const aaveArtifactPath = path.join(__dirname, "../contracts/out/MockAavePool.sol/MockAavePool.json");
   if (fs.existsSync(aaveArtifactPath)) {
     const aaveJson = JSON.parse(fs.readFileSync(aaveArtifactPath, "utf8"));
@@ -65,27 +62,46 @@ async function seedAnvilPools() {
     }
   }
 
-  // 2. Etch DeployMockERC20 bytecode onto all 13 Coinbase B20 token addresses
+  // 2. Install six-decimal USDC, the router, and B20 tokens. Deployment may
+  // already have installed some of this code; liquidity must still be seeded.
+  const usdcArtifactPath = path.join(__dirname, "../contracts/out/MockUSDC.sol/MockUSDC.json");
   const erc20ArtifactPath = path.join(__dirname, "../contracts/out/DeployOthelio.s.sol/DeployMockERC20.json");
   const routerArtifactPath = path.join(__dirname, "../contracts/out/MockDEXRouter.sol/MockDEXRouter.json");
-  if (!fs.existsSync(routerArtifactPath)) throw new Error("MockDEXRouter artifact is missing; run forge build first.");
+  if (!fs.existsSync(usdcArtifactPath) || !fs.existsSync(routerArtifactPath)) {
+    throw new Error("Mock USDC/router artifacts are missing; run forge build first.");
+  }
+  const usdcJson = JSON.parse(fs.readFileSync(usdcArtifactPath, "utf8"));
   const routerJson = JSON.parse(fs.readFileSync(routerArtifactPath, "utf8"));
-  await rpc("anvil_setCode", [LOCAL_ROUTER, routerJson.deployedBytecode.object]);
+  if ((await rpc("eth_getCode", [LOCAL_USDC, "latest"])) === "0x") {
+    await rpc("anvil_setCode", [LOCAL_USDC, usdcJson.deployedBytecode.object]);
+  }
+  if ((await rpc("eth_getCode", [LOCAL_ROUTER, "latest"])) === "0x") {
+    await rpc("anvil_setCode", [LOCAL_ROUTER, routerJson.deployedBytecode.object]);
+  }
+  const routerRecipient = LOCAL_ROUTER.slice(2).toLowerCase().padStart(64, "0");
+  const usdcAmount = ROUTER_USDC_LIQUIDITY.toString(16).padStart(64, "0");
+  await rpc("eth_sendTransaction", [{
+    from: LOCAL_DEPLOYER,
+    to: LOCAL_USDC,
+    data: `0x40c10f19${routerRecipient}${usdcAmount}`,
+  }]);
+
   if (fs.existsSync(erc20ArtifactPath)) {
     const erc20Json = JSON.parse(fs.readFileSync(erc20ArtifactPath, "utf8"));
     const erc20Bytecode = erc20Json.deployedBytecode.object;
 
     for (const addr of TOKEN_ADDRESSES) {
-      await rpc("anvil_setCode", [addr, erc20Bytecode]);
-      const recipient = LOCAL_ROUTER.slice(2).toLowerCase().padStart(64, "0");
+      if ((await rpc("eth_getCode", [addr, "latest"])) === "0x") {
+        await rpc("anvil_setCode", [addr, erc20Bytecode]);
+      }
       const amount = ROUTER_LIQUIDITY.toString(16).padStart(64, "0");
       await rpc("eth_sendTransaction", [{
         from: LOCAL_DEPLOYER,
         to: addr,
-        data: `0x40c10f19${recipient}${amount}`,
+        data: `0x40c10f19${routerRecipient}${amount}`,
       }]);
     }
-    console.log(`[seed-anvil-pools] Etched DeployMockERC20 bytecode onto all ${TOKEN_ADDRESSES.length} Coinbase stock token contracts on local Anvil RPC.`);
+    console.log(`[seed-anvil-pools] Seeded ${TOKEN_ADDRESSES.length} B20 assets and USDC liquidity for the local router.`);
   } else throw new Error("DeployMockERC20 artifact is missing; run forge build first.");
 }
 

@@ -23,6 +23,24 @@ function tokenMovement(address: unknown, amount: unknown) {
   };
 }
 
+function totalReferenceValueUsd(assets: unknown[], amounts: unknown[]): number | null {
+  if (assets.length !== amounts.length || assets.length === 0) return null;
+
+  let total = 0;
+  for (let index = 0; index < assets.length; index++) {
+    const value = tokenMovement(assets[index], amounts[index]).usd;
+    if (value === null || !Number.isFinite(value)) return null;
+    total += value;
+  }
+  return total;
+}
+
+function recordedSlippageBps(payload: Record<string, unknown>): number | null {
+  const candidate = payload.maxSlippageBps ?? payload.slippageBps;
+  const bps = typeof candidate === "number" ? candidate : Number(candidate);
+  return Number.isInteger(bps) && bps >= 0 && bps <= 10_000 ? bps : null;
+}
+
 function priorAssets(events: BasketActivity[]) {
   const seen = new Set<string>();
   events.forEach((event) => {
@@ -62,8 +80,20 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
   const redeemedUsd = payload.navRedeemed ? Number(payload.navRedeemed) / 1e6 : (payload.remainingNAV ? Number(payload.remainingNAV) / 1e6 : null);
   const isDeliveredUsdc = assetsFor("withdrawnAssets").length === 1 && tokenMovement(assetsFor("withdrawnAssets")[0], amountsFor("withdrawnAmounts")[0]).symbol === "USDC";
 
-  const totalInputUsd = payload.inputAmount ? Number(payload.inputAmount) / 1e6 : null;
-  const aerodromeSwapFee = totalInputUsd ? totalInputUsd * 0.005 : null;
+  const inputReferenceUsd = isFund && payload.inputAmount
+    ? Number(payload.inputAmount) / 1e6
+    : isRebalance
+      ? totalReferenceValueUsd(assetsFor("soldAssets"), amountsFor("soldAmounts"))
+      : null;
+  const outputReferenceUsd = (isFund || isRebalance)
+    ? totalReferenceValueUsd(boughtAssets, boughtAmounts)
+    : null;
+  // This is deliberately not called a fee: reference-value deltas can include
+  // LP fees, price impact, and movement between the quote and execution.
+  const executionCostUsd = inputReferenceUsd !== null && outputReferenceUsd !== null
+    ? Math.max(0, inputReferenceUsd - outputReferenceUsd)
+    : null;
+  const maxSlippageBps = recordedSlippageBps(payload);
 
   return <div className="activity-detail-body">
     {isFund && payload.inputAmount ? <p>Paid ${(Number(payload.inputAmount) / 1e6).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC allocated into target assets:</p> : null}
@@ -85,7 +115,7 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
     {(isFund || isRebalance) && (
       <div className="activity-detail-line">
         <span className="activity-move" style={{ color: "var(--ink)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-          Fees
+          Tx cost
           <div style={{ position: "relative", display: "inline-flex", cursor: "pointer" }} className="has-tooltip">
             <span
               style={{
@@ -129,16 +159,23 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
                 textAlign: "left",
               }}
             >
-              <div>Swap fees charged by Aerodrome.</div>
-              <div style={{ color: "var(--muted-ink)", marginTop: "2px" }}>Othelio platform fee: $0.00</div>
-              <div style={{ color: "var(--muted-ink)", marginTop: "2px" }}>Gas Excluded</div>
+              <div>Reference-value difference between assets sent and received.</div>
+              <div style={{ color: "var(--muted-ink)", marginTop: "2px" }}>May include Aerodrome pool fees, price impact, and quote-to-execution movement.</div>
+              <div style={{ color: "var(--muted-ink)", marginTop: "2px" }}>
+                {maxSlippageBps === null
+                  ? "Maximum slippage was not recorded for this transaction."
+                  : `Maximum slippage: ${(maxSlippageBps / 100).toFixed(2)}% — a limit, not a fee.`}
+              </div>
+              <div style={{ color: "var(--muted-ink)", marginTop: "2px" }}>Network gas excluded.</div>
             </div>
           </div>
         </span>
         <span />
         <span />
         <span style={{ textAlign: "right", color: "var(--muted-ink)", fontSize: "11px" }}>
-          ${(aerodromeSwapFee ?? 1.88).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {executionCostUsd === null
+            ? "Unavailable"
+            : `$${executionCostUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
         </span>
       </div>
     )}

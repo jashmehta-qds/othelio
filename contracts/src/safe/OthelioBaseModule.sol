@@ -73,10 +73,18 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
         require(returnData.length == 0 || (returnData.length == 32 && abi.decode(returnData, (bool))), errorMessage);
     }
 
+    /// @dev B20 tokenized stocks are Base-native precompiles and intentionally have no EVM bytecode.
+    /// The configured asset registry is the authority for basket constituents; code checks remain
+    /// appropriate only for executable infrastructure such as Safes, routers, and price feeds.
+    function _validateSupportedAsset(address asset) internal view {
+        require(asset != address(0), "ZERO_TOKEN");
+        require(oracle.registry().isSupported(block.chainid, asset), "UNSUPPORTED_ASSET");
+    }
+
     function _validateBasketTokens(address[] memory basketTokens) internal view {
         uint256 len = basketTokens.length;
         for (uint256 i = 0; i < len; ++i) {
-            require(basketTokens[i].code.length > 0, "INVALID_TOKEN");
+            _validateSupportedAsset(basketTokens[i]);
             for (uint256 j = 0; j < i; ++j) {
                 require(basketTokens[i] != basketTokens[j], "DUPLICATE_TOKEN");
             }
@@ -98,7 +106,7 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
         _validateBasketTokens(remainingTokens);
 
         for (uint256 i = 0; i < tokensLen; ++i) {
-            require(tokens[i].code.length > 0, "INVALID_TOKEN");
+            _validateSupportedAsset(tokens[i]);
             require(amounts[i] > 0, "ZERO_AMOUNT");
             for (uint256 k = 0; k < i; ++k) {
                 require(tokens[i] != tokens[k], "DUPLICATE_TOKEN");
