@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Inject, Param, Post, Query } from '@nestjs/common';
 import { BasketsService } from './baskets.service';
 import { BasketPositionService } from './basket-position.service';
 import { LendingReceiptReconciliationService } from './lending-receipt-reconciliation.service';
@@ -40,6 +40,45 @@ export class BasketsController {
   @Get('activity/all')
   async getAllActivity(@Query('chainId') chainId: string) {
     return this.basketsService.getAllActivity(chainId);
+  }
+
+  @Get('valuation-history')
+  async getValuationHistory(
+    @Query('chainId') chainId: string,
+    @Query('controller') controller: string,
+    @Query('timeframe') timeframe?: string,
+  ) {
+    return this.basketsService.getValuationHistory(chainId, controller, timeframe);
+  }
+
+  @Get(':address/accounting-summary')
+  async getAccountingSummary(
+    @Param('address') address: string,
+    @Query('chainId') chainId: string,
+    @Query('controller') controller: string,
+  ) {
+    return this.basketsService.getAccountingSummary(address, chainId, controller);
+  }
+
+  @Get(':address/accounting-events')
+  async getAccountingEvents(
+    @Param('address') address: string,
+    @Query('chainId') chainId: string,
+    @Query('controller') controller: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.basketsService.getAccountingEvents(address, chainId, controller, cursor, limit);
+  }
+
+  @Get(':address/accounting-export.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async getAccountingExport(
+    @Param('address') address: string,
+    @Query('chainId') chainId: string,
+    @Query('controller') controller: string,
+  ) {
+    return this.basketsService.getAccountingCsv(address, chainId, controller);
   }
 
   @Get(':address')

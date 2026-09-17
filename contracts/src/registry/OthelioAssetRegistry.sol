@@ -62,16 +62,12 @@ contract OthelioAssetRegistry is Ownable2Step {
         require(!supported || priceFeed != address(0), "ZERO_FEED");
         require(tokenDecimals <= 38 && feedDecimals <= 38, "DECIMALS_TOO_LARGE");
 
-        // Hybrid verification: If marked as Coinbase B20 and Coinbase Registry is set, verify on-chain
-        if (supported && isCoinbaseB20 && coinbaseRegistry != address(0)) {
-            // Verify with Coinbase Onchain Registry (non-reverting check if contract adheres)
-            try ICoinbaseRegistry(coinbaseRegistry).isRegistered(token) returns (bool registered) {
-                if (registered) {
-                    // Validated via Coinbase Onchain Registry
-                }
-            } catch {
-                // If Coinbase registry reverts or is mock, allow admin configuration to proceed
-            }
+        // A B20 classification gives a token special handling elsewhere (including
+        // native/precompile-backed token recovery), so it must be backed by Coinbase's
+        // authoritative registry. Never silently accept a failed verification.
+        if (supported && isCoinbaseB20) {
+            require(coinbaseRegistry != address(0) && coinbaseRegistry.code.length > 0, "INVALID_COINBASE_REGISTRY");
+            require(ICoinbaseRegistry(coinbaseRegistry).isRegistered(token), "UNREGISTERED_COINBASE_B20");
         }
 
         assets[chainId][token] = Asset(supported, priceFeed, tokenDecimals, feedDecimals, isCoinbaseB20);
@@ -129,6 +125,16 @@ contract OthelioAssetRegistry is Ownable2Step {
         return assets[chainId][token].supported;
     }
 
+    /// @notice True when `token` remains an authenticated Coinbase B20 asset,
+    /// including after governance has disabled it as a supported portfolio asset.
+    /// @dev This is intentionally distinct from `isSupported` so owners can recover
+    /// a delisted native/precompile-backed B20 from a basket.
+    function isVerifiedCoinbaseB20(uint256 chainId, address token) external view returns (bool) {
+        if (!assets[chainId][token].isCoinbaseB20) return false;
+        if (coinbaseRegistry == address(0) || coinbaseRegistry.code.length == 0) return false;
+        return ICoinbaseRegistry(coinbaseRegistry).isRegistered(token);
+    }
+
     function getAsset(uint256 chainId, address token) external view returns (Asset memory) {
         return assets[chainId][token];
     }
@@ -169,4 +175,3 @@ contract OthelioAssetRegistry is Ownable2Step {
         return approvedLendingPools[pool];
     }
 }
-

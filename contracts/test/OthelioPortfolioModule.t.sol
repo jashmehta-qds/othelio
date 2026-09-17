@@ -6,6 +6,7 @@ import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {OthelioAssetRegistry} from "../src/registry/OthelioAssetRegistry.sol";
 import {BasketOracle} from "../src/oracle/BasketOracle.sol";
 import {OthelioBasketAccount} from "../src/safe/OthelioBasketAccount.sol";
+import {OthelioSafeFactory} from "../src/factory/OthelioSafeFactory.sol";
 import {OthelioPortfolioModule} from "../src/safe/OthelioPortfolioModule.sol";
 import {OthelioAaveV3Adapter} from "../src/lending/OthelioAaveV3Adapter.sol";
 import {MockAavePool} from "../src/mock/MockAavePool.sol";
@@ -26,12 +27,26 @@ contract MockFactory {
     }
 }
 
+contract PortfolioCoinbaseRegistry {
+    mapping(address => bool) public registered;
+
+    function setRegistered(address token, bool registered_) external {
+        registered[token] = registered_;
+    }
+
+    function isRegistered(address token) external view returns (bool) {
+        return registered[token];
+    }
+}
+
 contract OthelioPortfolioModuleTest is Test {
     address private owner = address(0xA11CE);
     OthelioPortfolioModule private portfolio;
     OthelioPortfolioModule private enabledPortfolio;
     OthelioBasketAccount private basket;
     OthelioBasketAccount private enabledBasket;
+    OthelioSafeFactory private basketFactory;
+    OthelioSafeFactory private enabledBasketFactory;
     OthelioAaveV3Adapter private adapter;
     AaveTestToken private asset;
     AaveTestToken private outputToken;
@@ -40,16 +55,18 @@ contract OthelioPortfolioModuleTest is Test {
     BasketOracle private oracle;
     OthelioAerodromeRouteRegistry private routeRegistry;
     MockDEXRouter private router;
+    PortfolioCoinbaseRegistry private coinbaseRegistry;
 
     function setUp() public {
         vm.startPrank(owner);
-        registry = new OthelioAssetRegistry(owner, address(0));
+        coinbaseRegistry = new PortfolioCoinbaseRegistry();
+        registry = new OthelioAssetRegistry(owner, address(coinbaseRegistry));
         oracle = new BasketOracle(address(registry));
         pool = new MockAavePool();
         adapter = new OthelioAaveV3Adapter(address(pool));
         router = new MockDEXRouter();
-        routeRegistry = new OthelioAerodromeRouteRegistry(owner);
         MockFactory factory = new MockFactory();
+        routeRegistry = new OthelioAerodromeRouteRegistry(owner, address(factory));
 
         asset = new AaveTestToken();
         outputToken = new AaveTestToken();
@@ -61,8 +78,12 @@ contract OthelioPortfolioModuleTest is Test {
         );
         portfolio = new OthelioPortfolioModule(address(oracle), address(adapter), address(dexAdapter), false, 1.25e18);
         enabledPortfolio = new OthelioPortfolioModule(address(oracle), address(adapter), address(dexAdapter), true, 1.25e18);
-        basket = new OthelioBasketAccount(owner, address(portfolio), address(registry));
-        enabledBasket = new OthelioBasketAccount(owner, address(enabledPortfolio), address(registry));
+        basketFactory = new OthelioSafeFactory(address(portfolio), address(registry));
+        enabledBasketFactory = new OthelioSafeFactory(address(enabledPortfolio), address(registry));
+        portfolio.setFactory(address(basketFactory));
+        enabledPortfolio.setFactory(address(enabledBasketFactory));
+        basket = OthelioBasketAccount(payable(basketFactory.createBasket("Test basket")));
+        enabledBasket = OthelioBasketAccount(payable(enabledBasketFactory.createBasket("Enabled test basket")));
 
         pool.configureReserve(address(asset), 18, 1e8);
         registry.configure(block.chainid, address(asset), address(new MockPriceFeed(1e8)), true, 18, 8, false);
@@ -152,6 +173,7 @@ contract OthelioPortfolioModuleTest is Test {
         address nativeB20 = 0xB200000000000000000000000000000000000000;
         assertEq(nativeB20.code.length, 0);
         MockPriceFeed nativeB20Feed = new MockPriceFeed(1e8);
+        coinbaseRegistry.setRegistered(nativeB20, true);
 
         vm.prank(owner);
         registry.configure(block.chainid, nativeB20, address(nativeB20Feed), true, 18, 8, true);

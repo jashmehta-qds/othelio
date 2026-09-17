@@ -11,6 +11,21 @@ import { toRawAmount, USDC_DECIMALS } from "@/types/shared";
 
 export type BasketAction = "mint" | "withdraw" | "rebalance" | null;
 
+const QUOTE_EXPIRED_MESSAGE = "This execution quote expired before it reached the chain. Get a fresh quote, review it, and sign again.";
+
+function isQuoteExpiredError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.toLowerCase().includes("quoteexpired") || message.toLowerCase().includes("0x8727a7f9");
+}
+
+function userFacingExecutionError(error: unknown, fallback: string): string {
+  return isQuoteExpiredError(error)
+    ? QUOTE_EXPIRED_MESSAGE
+    : error instanceof Error
+      ? error.message
+      : fallback;
+}
+
 export function BasketDrawer({ basket, action, onClose }: { basket: Basket; action: Exclude<BasketAction, null>; onClose: () => void }) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -46,7 +61,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
   const [submittedTargets, setSubmittedTargets] = useState<Array<{ assetAddress: string; targetWeightBps: number }>>([]);
   const hash = activeHash;
   const isPending = isSendPending;
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: hash ?? undefined });
+  const { isError: isReceiptError, error: receiptError, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: hash ?? undefined });
 
   const processedHash = useRef<string | null>(null);
   const [countdown, setCountdown] = useState<number>(10);
@@ -94,6 +109,12 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
       onClose();
     }
   }, [isSuccess, countdown, onClose]);
+
+  useEffect(() => {
+    if (!isReceiptError) return;
+    setExecutionError(userFacingExecutionError(receiptError, "The rebalance transaction reverted on-chain."));
+    setActiveHash(null);
+  }, [isReceiptError, receiptError]);
 
   const selected = Object.keys(targets)
     .map((symbol) => supportedAssets.find((asset) => asset.symbol === symbol))
@@ -195,7 +216,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
       setActiveHash(tx);
     } catch (err) {
       console.error("Rebalance execution error:", err);
-      setExecutionError(err instanceof Error ? err.message : "The bounded rebalance plan could not be prepared.");
+      setExecutionError(userFacingExecutionError(err, "The bounded rebalance plan could not be prepared."));
     }
   };
 
@@ -249,14 +270,6 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
           </div>
         ) : previewing ? (
           <>
-            <div className="safety-note">
-              <span className="shield">✓</span>
-              <p>
-                <strong>Typed Aerodrome Execution</strong>
-                <small>Executes reviewed constrained Aerodrome Slipstream routes through the portfolio module.</small>
-              </p>
-            </div>
-
             <div className="quote-summary" style={{ marginTop: "16px" }}>
               <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "8px" }}>Staged Weight Adjustments:</div>
               {selected.map((asset) => {
@@ -283,7 +296,17 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
                 </strong>
               </div>
             </div>
-            {executionError && <p role="alert" style={{ color: "#ef4444", fontSize: "13px" }}>{executionError}</p>}
+            {executionError && (
+              <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
+                <strong style={{ display: "block", marginBottom: "4px" }}>{executionError === QUOTE_EXPIRED_MESSAGE ? "Quote expired" : "Rebalance needs attention"}</strong>
+                <span>{executionError}</span>
+                {executionError === QUOTE_EXPIRED_MESSAGE && (
+                  <button type="button" onClick={handleExecuteRebalance} disabled={isPending || isConfirming} style={{ display: "block", marginTop: "10px", padding: "6px 10px", border: 0, borderRadius: "6px", background: "var(--accent)", color: "var(--coal)", fontWeight: 700, cursor: "pointer" }}>
+                    Get fresh quote
+                  </button>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -488,7 +511,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
   const [activeHash, setActiveHash] = useState<`0x${string}` | null>(null);
   const hash = activeHash;
   const isPending = isWritePending || isSendPending;
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: hash ?? undefined });
+  const { isError: isReceiptError, error: receiptError, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: hash ?? undefined });
 
   const formattedBalance = usdcBalanceRaw !== undefined && userAddress
     ? `${Number(formatUnits(usdcBalanceRaw as bigint, 6)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
@@ -533,6 +556,12 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
       onClose();
     }
   }, [isSuccess, countdown, onClose]);
+
+  useEffect(() => {
+    if (!isReceiptError) return;
+    setActionError(userFacingExecutionError(receiptError, "The transaction reverted on-chain."));
+    setActiveHash(null);
+  }, [isReceiptError, receiptError]);
 
   const publicClient = usePublicClient();
 
@@ -613,7 +642,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         throw new Error("No verified basket module is configured for this network.");
       } catch (err) {
         console.error("Mint execution error:", err);
-        setActionError(err instanceof Error ? err.message : "The funding action could not be prepared.");
+        setActionError(userFacingExecutionError(err, "The funding action could not be prepared."));
       }
     } else {
       if (withdrawInUsdc) {
@@ -659,7 +688,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         setActiveHash(withdrawTx);
       } catch (err) {
         console.error("Withdrawal execution error:", err);
-        setActionError(err instanceof Error ? err.message : "The in-kind withdrawal could not be prepared.");
+        setActionError(userFacingExecutionError(err, "The in-kind withdrawal could not be prepared."));
       }
     }
   };
@@ -902,7 +931,17 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                 <small>No assets move until you approve the transaction in your wallet.</small>
               </p>
             </div>
-            {actionError && <p role="alert" style={{ color: "#ef4444", fontSize: "13px" }}>{actionError}</p>}
+            {actionError && (
+              <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
+                <strong style={{ display: "block", marginBottom: "4px" }}>{actionError === QUOTE_EXPIRED_MESSAGE ? "Quote expired" : "Transaction needs attention"}</strong>
+                <span>{actionError}</span>
+                {actionError === QUOTE_EXPIRED_MESSAGE && (
+                  <button type="button" onClick={handleExecuteAmountAction} disabled={isPending || isConfirming} style={{ display: "block", marginTop: "10px", padding: "6px 10px", border: 0, borderRadius: "6px", background: "var(--accent)", color: "var(--coal)", fontWeight: 700, cursor: "pointer" }}>
+                    Get fresh quote
+                  </button>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

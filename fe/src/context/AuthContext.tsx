@@ -25,7 +25,7 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { address, isConnected } = useAccount();
+  const { address, connector, isConnected, isReconnecting } = useAccount();
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
 
@@ -50,6 +50,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (): Promise<string | null> => {
     if (!address) return null;
+
+    // During refresh wagmi deliberately restores persisted connection metadata
+    // before a connector is usable. Wait for it instead of disconnecting the
+    // wallet session that it is currently restoring.
+    if (isReconnecting) return null;
+
+    if (!connector || typeof connector.getChainId !== 'function') {
+      setAuthError('Your wallet connection is not ready. Please try again.');
+      return null;
+    }
+
     const lowerAddr = address.toLowerCase();
 
     // Check existing valid session
@@ -106,20 +117,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sessionStorage.removeItem(`othelio_auth_token_${lowerAddr}`);
       }
 
-      if (isUserCancellation) {
-        disconnect();
-      }
-
       return null;
     } finally {
       setIsAuthenticating(false);
       authInProgressRef.current = false;
     }
-  }, [address, disconnect, signMessageAsync]);
+  }, [address, connector, isReconnecting, signMessageAsync]);
 
-  // Automatically trigger authentication on wallet connect
+  // Wallet connection and Othelio authentication are separate states. On
+  // refresh, restore an existing session but never create a surprise wallet
+  // signature request; the user can explicitly sign in if a session is absent.
   useEffect(() => {
-    if (!isConnected || !address) {
+    if (isReconnecting) return;
+
+    if (!isConnected || !address || !connector) {
       setToken(null);
       return;
     }
@@ -134,9 +145,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // No existing session token for this connected address -> trigger login
-    login();
-  }, [address, isConnected, login]);
+    setToken(null);
+  }, [address, connector, isConnected, isReconnecting]);
 
   return (
     <AuthContext.Provider

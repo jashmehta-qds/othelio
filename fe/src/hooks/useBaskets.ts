@@ -33,6 +33,9 @@ export interface BasketSnapshot {
   holdings: any;
   prices: any;
   priced_at: string;
+  valuation_scope?: 'LEGACY' | 'END_OF_BLOCK_SPOT';
+  valuation_source?: 'LEGACY_EVENT' | 'INDEXER_BLOCK_PINNED';
+  valuation_status?: 'COMPLETE' | 'UNAVAILABLE';
 }
 
 export interface BasketDetailsResponse {
@@ -53,6 +56,22 @@ export interface BasketEvent {
   actor_address: string;
   payload: any;
   occurred_at: string;
+}
+
+export type ValuationTimeframe = '1D' | '7D' | '30D';
+
+export interface PortfolioValuationPoint {
+  observedAt: string;
+  totalNavUsdc: number;
+  blockNumber: string;
+  basketCount: number;
+}
+
+export interface PortfolioValuationHistoryResponse {
+  data: {
+    timeframe: ValuationTimeframe;
+    points: PortfolioValuationPoint[];
+  };
 }
 
 export function useBasketsList(chainId = 31337, controller?: string) {
@@ -88,6 +107,30 @@ export interface PortfolioPositionsResponse {
   capabilities: BasketCapabilities;
 }
 
+export interface AccountingAssetSummary {
+  assetAddress: string;
+  quantityBaseUnits: string;
+  decimals: number;
+  openBasisUsdcMicro: string;
+  weightedAverageCostUsdcMicroPerBaseUnit: string | null;
+  spotPriceUsdE8: string | null;
+  spotValueUsdcMicro: string | null;
+  unrealisedPnlUsdcMicro: string | null;
+  accountingStatus: 'COMPLETE' | 'INCOMPLETE';
+  issue: string | null;
+  updatedAt: string;
+}
+
+export interface AccountingSummaryResponse {
+  data: {
+    chainId: number;
+    basketAddress: string;
+    controller: string;
+    accountingPolicy: 'WEIGHTED_AVERAGE_PORTFOLIO_ACCOUNTING_NOT_TAX_ADVICE';
+    assets: AccountingAssetSummary[];
+  };
+}
+
 export function usePortfolioPositions(address: string, chainId = 31337, enabled = true) {
   return useQuery<PortfolioPositionsResponse>({
     queryKey: ['basket-positions', address.toLowerCase(), chainId],
@@ -99,12 +142,38 @@ export function usePortfolioPositions(address: string, chainId = 31337, enabled 
   });
 }
 
+export function useAccountingSummary(address: string, chainId = 31337, controller?: string) {
+  return useQuery<AccountingSummaryResponse>({
+    queryKey: ['basket-accounting-summary', address.toLowerCase(), chainId, controller?.toLowerCase()],
+    queryFn: () => fetchApi<AccountingSummaryResponse>(
+      `/v1/baskets/${address}/accounting-summary?chainId=${chainId}&controller=${encodeURIComponent(controller!)}`,
+    ),
+    enabled: Boolean(controller) && /^0x[a-fA-F0-9]{40}$/.test(address),
+    refetchInterval: 15_000,
+  });
+}
+
 export function useAllActivity(chainId = 31337, enabled = true) {
   return useQuery<{ data: BasketEvent[] }>({
     queryKey: ['all-activity', chainId],
     queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/activity/all?chainId=${chainId}`),
     enabled,
     refetchInterval: 3000,
+  });
+}
+
+export function usePortfolioValuationHistory(
+  chainId = 31337,
+  controller?: string,
+  timeframe: ValuationTimeframe = '30D',
+) {
+  return useQuery<PortfolioValuationHistoryResponse>({
+    queryKey: ['portfolio-valuation-history', chainId, controller, timeframe],
+    queryFn: () => fetchApi<PortfolioValuationHistoryResponse>(
+      `/v1/baskets/valuation-history?chainId=${chainId}&controller=${encodeURIComponent(controller!)}&timeframe=${timeframe}`,
+    ),
+    enabled: Boolean(controller),
+    refetchInterval: 15_000,
   });
 }
 

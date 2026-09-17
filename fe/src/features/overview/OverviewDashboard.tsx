@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAccount, useChainId } from "wagmi";
-import { useAllActivity, useBasketsList } from "@/hooks/useBaskets";
+import { useAllActivity, useBasketsList, usePortfolioValuationHistory } from "@/hooks/useBaskets";
+import { canonicalSpotNav } from "@/lib/valuation";
 import {
   assetPrices,
   defaultDemoBaskets,
@@ -26,6 +27,7 @@ import {
 import { SectorDonutChart, type SectorAllocation } from "./SectorDonutChart";
 import { PortfolioPerformanceGraph } from "./PortfolioPerformanceGraph";
 import { AppIcon } from "@/components/app-shell/AppIcon";
+import { useWalletRestoring } from "@/hooks/useWalletRestoring";
 
 type Timeframe = "1D" | "7D" | "30D";
 type IndexedPosition = {
@@ -45,6 +47,7 @@ const SECTOR_CATEGORIES = [
 export function OverviewDashboard() {
   const chainId = useChainId() || 31337;
   const { address, isConnected } = useAccount();
+  const isWalletRestoring = useWalletRestoring();
   const [localBaskets, setLocalBaskets] = useState<Basket[]>([]);
   const [timeframe, setTimeframe] = useState<Timeframe>("30D");
 
@@ -67,6 +70,11 @@ export function OverviewDashboard() {
   // Fetch indexed baskets from backend API
   const { data: apiResponse } = useBasketsList(chainId, isConnected ? address : undefined);
   const indexedBaskets = apiResponse?.data || [];
+  const { data: valuationHistory, isLoading: isValuationHistoryLoading } = usePortfolioValuationHistory(
+    chainId,
+    isConnected ? address : undefined,
+    timeframe,
+  );
 
   // Fetch recent activity feed
   const { data: activityRes } = useAllActivity(chainId, Boolean(isConnected && address));
@@ -84,9 +92,7 @@ export function OverviewDashboard() {
       if (ib.controller && ib.controller.toLowerCase() !== address.toLowerCase()) {
         return;
       }
-      const navFromSnap = (ib as any).snapshot?.total_nav_usdc ? Number((ib as any).snapshot.total_nav_usdc) : 0;
-      const inputAmtFromSnap = (ib as any).snapshot?.holdings?.inputAmount ? Number((ib as any).snapshot.holdings.inputAmount) / 1e6 : 0;
-      const basketVal = navFromSnap > 0 ? navFromSnap : (inputAmtFromSnap > 0 ? inputAmtFromSnap : Number((ib as any).seed_amount || 0));
+      const basketVal = canonicalSpotNav((ib as any).snapshot) ?? 0;
 
       const mappedHoldings: Holding[] = (ib as any).assets && Array.isArray((ib as any).assets) && (ib as any).assets.length > 0
         ? (ib as any).assets.map((ast: any) => {
@@ -100,15 +106,6 @@ export function OverviewDashboard() {
             const val = (basketVal * targetWeight) / 100;
             const price = assetPrices[symbolKey] || 100;
             const quantity = price > 0 ? Number((val / price).toFixed(4)) : 0;
-            const indexedPositions = (ib as unknown as { positions?: unknown }).positions;
-            const positions = Array.isArray(indexedPositions)
-              ? indexedPositions as IndexedPosition[]
-              : [];
-            const position = positions.find((candidate) =>
-              candidate.symbol?.toLowerCase() === symbolKey.toLowerCase()
-              || (rawAddr && candidate.asset_address?.toLowerCase() === rawAddr.toLowerCase()),
-            );
-            const indexedAverageCost = Number(position?.avg_cost_usdc);
             return {
               symbol: symbolKey,
               name: knownMeta?.name || symbolKey,
@@ -118,7 +115,6 @@ export function OverviewDashboard() {
               value: val,
               color: knownMeta?.color || "#8aa4ff",
               address: knownMeta?.address || rawAddr,
-              avgCost: indexedAverageCost > 0 ? indexedAverageCost : undefined,
             };
           })
         : [];
@@ -348,12 +344,12 @@ export function OverviewDashboard() {
 
       {/* 0. Asset & Portfolio Performance Interactive Graph */}
       <PortfolioPerformanceGraph
-        totalNAV={totalNAV}
+        points={valuationHistory?.data.points || []}
+        isLoading={isValuationHistoryLoading}
         topGainers={topGainers}
         lowestPerformers={lowestPerformers}
         timeframe={timeframe}
         onTimeframeChange={setTimeframe}
-        activities={recentActivities}
       />
 
       {/* 1. Portfolio Summary Hero Bar Chart Card */}
@@ -604,7 +600,9 @@ export function OverviewDashboard() {
           <div style={{ display: "flex", flexDirection: "column" }}>
             {aggregatedHoldings.length === 0 ? (
               <div style={{ padding: "36px 24px", textAlign: "center", color: "var(--ink-3)", fontSize: "13px" }}>
-                {!isConnected
+                {isWalletRestoring
+                  ? "Restoring your wallet…"
+                  : !isConnected
                   ? "No wallet connected. Connect your wallet to view active positions."
                   : "No active basket holdings found for your connected wallet."}
               </div>

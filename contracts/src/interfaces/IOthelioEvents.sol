@@ -19,7 +19,7 @@ interface IOthelioEvents {
         uint256 inputAmount,         // Amount of input asset spent
         address[] acquiredAssets,    // Constituents acquired
         uint256[] acquiredAmounts,   // Quantities deposited into Safe (measured via pre/post delta)
-        uint256 totalNAVAfter        // Aggregate Basket NAV in USDC immediately after deposit
+        uint256 acquiredOutputNavUsdc // Oracle value of only this funding operation's acquired outputs; not whole-basket NAV
     );
 
     /// @notice Emitted when capital is withdrawn from the basket
@@ -30,7 +30,7 @@ interface IOthelioEvents {
         uint256 navRedeemed,         // Total USD value of redeemed assets
         address[] withdrawnAssets,   // Constituents transferred out
         uint256[] withdrawnAmounts,  // Quantities transferred out
-        uint256 remainingNAV         // Remaining Basket NAV in USDC
+        uint256 remainingListedAssetsNavUsdc // Oracle value of caller-supplied remaining assets only; not whole-basket NAV
     );
 
     /// @notice Emitted when basket constituents are swapped into one output asset and paid to the recipient.
@@ -42,7 +42,7 @@ interface IOthelioEvents {
         uint256 outputAmount,
         address[] soldAssets,
         uint256[] soldAmounts,
-        uint256 remainingNAV
+        uint256 remainingListedAssetsNavUsdc // Execution-scoped value only; not whole-basket NAV
     );
 
     /// @notice Emitted when internal holdings are rebalanced via external DEX swaps
@@ -53,7 +53,7 @@ interface IOthelioEvents {
         uint256[] soldAmounts,       // Actual quantities sold
         address[] boughtAssets,      // Assets bought during rebalance (e.g. GOOGc)
         uint256[] boughtAmounts,     // Actual quantities bought (after DEX fee/slippage)
-        uint256 totalNAV             // Aggregate Basket NAV in USDC post-rebalance
+        uint256 tradedOutputNavUsdc  // Oracle value of assets bought by these route legs only; not basket NAV
     );
 
     /// @notice Emitted for each route leg executed within a portfolio funding or rebalancing operation

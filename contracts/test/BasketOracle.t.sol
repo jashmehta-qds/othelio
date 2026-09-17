@@ -61,7 +61,7 @@ contract BasketOracleTest is Test {
         feedUSDC = new MockV3Aggregator(8, 1 * 1e8);   // $1.00
 
         vm.startPrank(owner);
-        registry.configure(block.chainid, tokenNVDA, address(feedNVDA), true, 18, 8, true);
+        registry.configure(block.chainid, tokenNVDA, address(feedNVDA), true, 18, 8, false);
         registry.configure(block.chainid, tokenUSDC, address(feedUSDC), true, 6, 8, false);
         vm.stopPrank();
     }

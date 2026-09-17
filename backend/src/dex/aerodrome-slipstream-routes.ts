@@ -3,7 +3,7 @@ import { isAddress } from 'viem';
 
 export const BASE_AERODROME_SLIPSTREAM_ROUTER = '0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5';
 export const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-/** Local-only MockDEXRouter installed by DeployOthelio when chainId is 31337. */
+/** Local-only MockDEXRouter installed by the Anvil fixture process when chainId is 31337. */
 export const LOCAL_AERODROME_SLIPSTREAM_ROUTER = '0xBD606f1dAE0285D55113eFC11501677B2221A4dd';
 
 export const CANDIDATE_TICK_SPACINGS = [100, 200, 500, 2000] as const;

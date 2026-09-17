@@ -6,6 +6,7 @@ import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {OthelioAssetRegistry} from "../src/registry/OthelioAssetRegistry.sol";
 import {BasketOracle} from "../src/oracle/BasketOracle.sol";
 import {OthelioBasketAccount} from "../src/safe/OthelioBasketAccount.sol";
+import {OthelioSafeFactory} from "../src/factory/OthelioSafeFactory.sol";
 import {OthelioPortfolioModule} from "../src/safe/OthelioPortfolioModule.sol";
 import {OthelioAaveV3Adapter} from "../src/lending/OthelioAaveV3Adapter.sol";
 import {MockAavePool} from "../src/mock/MockAavePool.sol";
@@ -37,6 +38,7 @@ contract OthelioConstrainedRoutingTest is Test {
     OthelioAerodromeSlipstreamAdapter private dexAdapter;
     OthelioPortfolioModule private portfolio;
     OthelioBasketAccount private basket;
+    OthelioSafeFactory private basketFactory;
     MockDEXRouter private router;
     MockFactory private factory;
 
@@ -51,9 +53,9 @@ contract OthelioConstrainedRoutingTest is Test {
         MockAavePool pool = new MockAavePool();
         aaveAdapter = new OthelioAaveV3Adapter(address(pool));
 
-        router = new MockDEXRouter();
-        routeRegistry = new OthelioAerodromeRouteRegistry(owner);
         factory = new MockFactory();
+        router = new MockDEXRouter();
+        routeRegistry = new OthelioAerodromeRouteRegistry(owner, address(factory));
 
         usdc = new TestToken("USDC", "USDC");
         nvda = new TestToken("NVIDIA", "NVDAc");
@@ -73,7 +75,9 @@ contract OthelioConstrainedRoutingTest is Test {
             1.25e18
         );
 
-        basket = new OthelioBasketAccount(owner, address(portfolio), address(registry));
+        basketFactory = new OthelioSafeFactory(address(portfolio), address(registry));
+        portfolio.setFactory(address(basketFactory));
+        basket = OthelioBasketAccount(payable(basketFactory.createBasket("Test basket")));
 
         // Configure oracle feeds: USDC = $1, NVDA = $100, GOOG = $100
         registry.configure(block.chainid, address(usdc), address(new MockPriceFeed(1e8)), true, 18, 8, false);

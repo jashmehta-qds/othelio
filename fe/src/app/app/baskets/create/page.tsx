@@ -3,13 +3,13 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAccount, usePublicClient, useSendTransaction, useWriteContract } from "wagmi";
-import { parseUnits } from "viem";
+import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets } from "@/lib/baskets";
 import { extractCreatedBasketAddress, registerConfirmedBasket } from "@/lib/createSeed";
+import { WALLET_REQUEST_REJECTED_MESSAGE, walletActionError } from "@/lib/walletErrors";
 import { useSupportedAssets } from "@/hooks/useBaskets";
 import { useHydrated } from "@/hooks/useHydrated";
 
@@ -20,8 +20,6 @@ export default function CreateBasketPage() {
 
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
-  const [subdomain, setSubdomain] = useState("");
-  const [depositAmount, setDepositAmount] = useState("");
 
   // Search & add tokens
   const [searchQuery, setSearchQuery] = useState("");
@@ -68,9 +66,7 @@ export default function CreateBasketPage() {
 
   const publicClient = usePublicClient();
   const { isPending: isApproving, writeContractAsync } = useWriteContract();
-  const { isPending: isSending, sendTransactionAsync } = useSendTransaction();
-  const isPending = isApproving || isSending;
-  const hasValidDeposit = Number.isFinite(Number(depositAmount)) && Number(depositAmount) > 0;
+  const isPending = isApproving;
   const hasConnectedWallet = isHydrated && isConnected && Boolean(address);
 
   const addToken = (tokenSymbol: string) => {
@@ -117,7 +113,7 @@ export default function CreateBasketPage() {
 
   const handleExecute = async () => {
     if (!hasConnectedWallet || !address) {
-      setTransactionError("Connect your wallet before creating and funding a basket.");
+      setTransactionError("Connect your wallet before creating a basket.");
       return;
     }
 
@@ -126,7 +122,6 @@ export default function CreateBasketPage() {
       const cleanName = name.trim() || "Custom Basket";
       const chainId = 31337;
       const config = CONTRACT_ADDRESSES[chainId];
-      const inputAmount = parseUnits(depositAmount, 6);
       if (!publicClient) throw new Error("Wallet client is unavailable on this network.");
 
       const createTxHash = await writeContractAsync({
@@ -162,7 +157,7 @@ export default function CreateBasketPage() {
       });
       router.push(`/app/baskets/${basketAddress}`);
     } catch (error) {
-      setTransactionError(error instanceof Error ? error.message : "Unable to create and fund the basket.");
+      setTransactionError(walletActionError(error, "Unable to create the basket."));
     }
   };
 
@@ -191,14 +186,14 @@ export default function CreateBasketPage() {
           Create New Basket
         </h1>
         <p className="page-description">
-          Define basket identity, ENS subdomain, seed capital, and target asset weights on-chain.
+          Define basket identity and target asset weights on-chain.
         </p>
       </header>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "32px", alignItems: "start" }}>
         {/* Main Creation Form Area */}
         <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
-          {/* Section 1: Basket Identity & ENS */}
+          {/* Section 1: Basket identity */}
           <div
             style={{
               padding: "24px",
@@ -207,7 +202,7 @@ export default function CreateBasketPage() {
               border: "1px solid var(--line)",
             }}
           >
-            <h3 style={{ fontSize: "15px", fontWeight: 700, marginBottom: "16px" }}>1. Identity & ENS Subdomain</h3>
+            <h3 style={{ fontSize: "15px", fontWeight: 700, marginBottom: "16px" }}>1. Basket identity</h3>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: "14px" }}>
@@ -251,57 +246,6 @@ export default function CreateBasketPage() {
                 </label>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted-ink)", textTransform: "uppercase", letterSpacing: "0.05em" }}>ENS Subdomain</span>
-                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                    <input
-                      type="text"
-                      value={subdomain}
-                      onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                      placeholder="mcore"
-                      style={{
-                        width: "100%",
-                        padding: "11px 14px",
-                        paddingRight: "105px",
-                        background: "var(--panel-2)",
-                        border: "1px solid var(--panel-border)",
-                        borderRadius: "10px",
-                        color: "var(--ink)",
-                        fontSize: "14px",
-                        outline: "none",
-                        fontWeight: 600,
-                      }}
-                    />
-                    <span style={{ position: "absolute", right: "14px", fontSize: "12px", fontWeight: 700, color: "var(--muted-ink)", pointerEvents: "none" }}>.othelio.eth</span>
-                  </div>
-                </label>
-
-                <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted-ink)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Initial Seed Capital</span>
-                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                    <input
-                      type="number"
-                      value={depositAmount}
-                      onChange={(e) => setDepositAmount(e.target.value)}
-                      placeholder="1000"
-                      style={{
-                        width: "100%",
-                        padding: "11px 14px",
-                        paddingRight: "65px",
-                        background: "var(--panel-2)",
-                        border: "1px solid var(--panel-border)",
-                        borderRadius: "10px",
-                        color: "var(--ink)",
-                        fontSize: "14px",
-                        outline: "none",
-                        fontWeight: 700,
-                      }}
-                    />
-                    <span style={{ position: "absolute", right: "14px", fontSize: "12px", fontWeight: 700, color: "var(--accent)", pointerEvents: "none" }}>USDC</span>
-                  </div>
-                </label>
-              </div>
             </div>
           </div>
 
@@ -506,12 +450,8 @@ export default function CreateBasketPage() {
                 <strong>{symbol || "—"}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--muted-ink)" }}>ENS Handle</span>
-                <strong style={{ color: "var(--accent)" }}>{subdomain ? `${subdomain}.othelio.eth` : "—"}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--muted-ink)" }}>Seed Deposit</span>
-                <strong>${Number(depositAmount || 0).toLocaleString()} USDC</strong>
+                <span style={{ color: "var(--muted-ink)" }}>Funding</span>
+                <strong>Add USDC after creation</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "var(--muted-ink)" }}>Composition</span>
@@ -537,7 +477,7 @@ export default function CreateBasketPage() {
 
             <button
               className="primary"
-              disabled={!hasConnectedWallet || total !== 100 || selectedAssets.length === 0 || !hasValidDeposit || isPending}
+              disabled={!hasConnectedWallet || total !== 100 || selectedAssets.length === 0 || isPending}
               onClick={handleExecute}
               style={{
                 width: "100%",
@@ -551,14 +491,20 @@ export default function CreateBasketPage() {
                 gap: "8px",
               }}
             >
-              {isPending ? "Waiting Wallet..." : !hasConnectedWallet ? "Connect wallet first" : "Create & Fund Basket"}
+              {isPending ? "Waiting Wallet..." : !hasConnectedWallet ? "Connect wallet first" : "Create basket"}
               <AppIcon type="arrow" />
             </button>
 
             {transactionError && (
-              <p style={{ color: "#ef4444", fontSize: "12px", marginTop: "12px", textAlign: "center" }}>
-                {transactionError}
-              </p>
+              <div
+                role={transactionError === WALLET_REQUEST_REJECTED_MESSAGE ? "status" : "alert"}
+                style={{ color: transactionError === WALLET_REQUEST_REJECTED_MESSAGE ? "var(--muted-ink)" : "#ef4444", fontSize: "12px", marginTop: "12px", textAlign: "center" }}
+              >
+                <strong style={{ display: "block", marginBottom: "3px" }}>
+                  {transactionError === WALLET_REQUEST_REJECTED_MESSAGE ? "Transaction cancelled" : "Could not create basket"}
+                </strong>
+                <span>{transactionError}</span>
+              </div>
             )}
           </div>
         </div>

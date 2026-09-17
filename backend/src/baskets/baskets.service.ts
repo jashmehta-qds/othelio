@@ -1,6 +1,6 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { addressSchema, chainIdSchema } from '@othelio/shared';
-import { createPublicClient, decodeEventLog, formatUnits, http, isHash, parseAbi } from 'viem';
+import { createPublicClient, decodeEventLog, http, isHash, parseAbi } from 'viem';
 import { DatabaseService } from '../database/database.service';
 import { BasketQuotePlannerService, BasketQuoteRequest } from './basket-quote-planner.service';
 import { LendingEventRequest, LendingEventService } from './lending-event.service';
@@ -15,71 +15,6 @@ export class BasketsService {
     @Inject(LendingEventService)
     private readonly lendingEvents: LendingEventService,
   ) {}
-
-  async computeLiveBasketSnapshot(basketAddress: string, chainId: number = 31337) {
-    try {
-      const rpcUrl = process.env.ANVIL_RPC_URL || 'http://127.0.0.1:8545';
-      const client = createPublicClient({ transport: http(rpcUrl) });
-
-      const safe = basketAddress.toLowerCase() as `0x${string}`;
-      const abi = parseAbi(['function balanceOf(address) view returns (uint256)']);
-
-      const assetList = [
-        { symbol: 'NVDAc', address: '0xb20000000000000000000078ee7ce2fE4908108C', price: 125.40, decimals: 18 },
-        { symbol: 'AAPLc', address: '0xb200000000000000000000C2e324d24d7eEcd1fb', price: 224.50, decimals: 18 },
-        { symbol: 'MSFTc', address: '0xB200000000000000000000Ab99cFa739E253872B', price: 415.20, decimals: 18 },
-        { symbol: 'GOOGLc', address: '0xb2000000000000000000002D0BA3164cc74f58B7', price: 175.00, decimals: 18 },
-        { symbol: 'AMZNc', address: '0xb200000000000000000000d9192b6B456483C2E8', price: 180.00, decimals: 18 },
-        { symbol: 'METAc', address: '0xb2000000000000000000008bC8786B856E61707C', price: 500.00, decimals: 18 },
-        { symbol: 'TSLAc', address: '0xb2000000000000000000001e800a7f5189430cD0', price: 250.00, decimals: 18 },
-        { symbol: 'COINc', address: '0xb200000000000000000000c85a31389D71F3ecfb', price: 200.00, decimals: 18 },
-        { symbol: 'MSTRc', address: '0xb2000000000000000000004884b426556b92883d', price: 135.00, decimals: 18 },
-        { symbol: 'CRCLc', address: '0xB20000000000000000000019f6E7C675b73C2e4D', price: 28.50, decimals: 18 },
-        { symbol: 'INTCc', address: '0xB2000000000000000000004AFF16039bA04bdFBc', price: 31.20, decimals: 18 },
-        { symbol: 'SNDKc', address: '0xb200000000000000000000397293Cb8cda9a10c5', price: 65.00, decimals: 18 },
-        { symbol: 'SPCXc', address: '0xb2000000000000000000007b9fcbd005511aCBd5', price: 42.00, decimals: 18 },
-        { symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', price: 1.00, decimals: 6 },
-      ];
-
-      let totalNav = 0;
-      const holdings: Record<string, any> = {};
-
-      for (const ast of assetList) {
-        try {
-          const bal = await client.readContract({
-            address: ast.address as `0x${string}`,
-            abi,
-            functionName: 'balanceOf',
-            args: [safe],
-          });
-          if (bal > 0n) {
-            const units = parseFloat(formatUnits(bal, ast.decimals));
-            const val = units * ast.price;
-            totalNav += val;
-            holdings[ast.symbol] = { units, val, price: ast.price };
-          }
-        } catch (_) {}
-      }
-
-      const blockNumber = await client.getBlockNumber().then((b) => Number(b)).catch(() => 1);
-      const snapshotObj = {
-        total_nav_usdc: Number(totalNav.toFixed(6)),
-        block_number: blockNumber,
-        holdings,
-      };
-
-      await this.db.query(
-        `INSERT INTO basket_snapshots (chain_id, basket_address, block_number, block_hash, total_nav_usdc, shares_outstanding, holdings, prices, priced_at)
-         VALUES ($1, $2, $3, '0x0', $4, 0, $5, '{}', NOW())
-         ON CONFLICT (chain_id, basket_address, block_number) DO UPDATE SET total_nav_usdc = EXCLUDED.total_nav_usdc`,
-        [chainId, safe, blockNumber, snapshotObj.total_nav_usdc, JSON.stringify(holdings)],
-      ).catch(() => null);
-
-      return snapshotObj;
-    } catch (e) {
-      return null;
-    }
-  }
 
   async confirmRebalance(basketAddressInput: string, body: {
     chainId?: number;
@@ -118,7 +53,7 @@ export class BasketsService {
     }
 
     const eventAbi = parseAbi([
-      'event BasketRebalanced(address indexed safe,address indexed controller,address[] soldAssets,uint256[] soldAmounts,address[] boughtAssets,uint256[] boughtAmounts,uint256 totalNAV)',
+      'event BasketRebalanced(address indexed safe,address indexed controller,address[] soldAssets,uint256[] soldAmounts,address[] boughtAssets,uint256[] boughtAmounts,uint256 tradedOutputNavUsdc)',
     ]);
     let matchingEvent: { boughtAssets: readonly `0x${string}`[] } | null = null;
     receipt.logs.some((log) => {
@@ -168,29 +103,16 @@ export class BasketsService {
 
       let sql = `
         SELECT b.*,
-          COALESCE(
-            (SELECT json_build_object(
-                      'total_nav_usdc', CASE 
-                        WHEN bs.total_nav_usdc > 0 THEN bs.total_nav_usdc
-                        ELSE COALESCE((be.payload->>'inputAmount')::numeric / 1000000.0, 0)
-                      END,
-                      'block_number', bs.block_number
-                    )
-             FROM basket_snapshots bs
-             LEFT JOIN basket_events be ON be.chain_id = bs.chain_id AND be.basket_address = bs.basket_address AND be.event_type = 'FUNDED'
-             WHERE bs.chain_id = b.chain_id AND bs.basket_address = b.address
-             ORDER BY bs.block_number DESC LIMIT 1),
-            COALESCE(
-              (SELECT json_build_object(
-                        'total_nav_usdc', COALESCE((be.payload->>'inputAmount')::numeric / 1000000.0, 0),
-                        'block_number', be.block_number
-                      )
-               FROM basket_events be
-               WHERE be.chain_id = b.chain_id AND be.basket_address = b.address AND be.event_type = 'FUNDED'
-               ORDER BY be.block_number DESC LIMIT 1),
-              NULL
-            )
-          ) as snapshot,
+          (SELECT json_build_object(
+                    'total_nav_usdc', bno.nav_usdc,
+                    'block_number', bno.block_number,
+                    'block_hash', bno.block_hash,
+                    'valuation_status', bno.valuation_status
+                  )
+           FROM basket_nav_observations bno
+           WHERE bno.chain_id = b.chain_id AND bno.basket_address = b.address
+             AND bno.valuation_status = 'COMPLETE'
+           ORDER BY bno.block_number DESC LIMIT 1) as snapshot,
           COALESCE(
             (SELECT json_agg(ba.*) 
              FROM basket_assets ba 
@@ -209,18 +131,224 @@ export class BasketsService {
 
       const result = await this.db.query(sql, params);
 
-      for (const row of result.rows) {
-        const liveSnap = await this.computeLiveBasketSnapshot(row.address, chainId);
-        if (liveSnap) {
-          row.snapshot = liveSnap;
-        }
-      }
-
       return { data: result.rows };
     } catch (err) {
       console.error('ERROR IN GET_BASKETS:', err);
       throw err;
     }
+  }
+
+  /**
+   * Returns only canonical, indexer-pinned valuation observations from basket_nav_observations.
+   * At each observation time we use the latest known observation for every basket owned by the
+   * controller, which prevents an inactive basket being counted as $0.
+   */
+  async getValuationHistory(chainIdInput?: string, controllerInput?: string, timeframeInput?: string) {
+    const chainId = chainIdSchema.parse(chainIdInput || '31337');
+    const controller = addressSchema.parse(controllerInput).toLowerCase();
+    const timeframe = timeframeInput || '30D';
+    const timeframeConfig = {
+      '1D': { milliseconds: 24 * 60 * 60 * 1000 },
+      '7D': { milliseconds: 7 * 24 * 60 * 60 * 1000 },
+      '30D': { milliseconds: 30 * 24 * 60 * 60 * 1000 },
+    } as const;
+
+    if (!(timeframe in timeframeConfig)) {
+      throw new BadRequestException({ error: 'INVALID_VALUATION_TIMEFRAME' });
+    }
+
+    const cutoff = new Date(Date.now() - timeframeConfig[timeframe as keyof typeof timeframeConfig].milliseconds);
+    const result = await this.db.query(
+      `WITH owner_baskets AS (
+         SELECT address
+         FROM baskets
+         WHERE chain_id = $1 AND controller = $2
+       ),
+       eligible_observations AS (
+         SELECT bno.basket_address, bno.block_number, bno.block_timestamp AS observed_at, bno.nav_usdc
+         FROM basket_nav_observations bno
+         JOIN owner_baskets ob ON ob.address = bno.basket_address
+         WHERE bno.chain_id = $1
+           AND bno.valuation_status = 'COMPLETE'
+           AND bno.nav_usdc IS NOT NULL
+           AND bno.block_timestamp <= NOW()
+       ),
+       latest_before_window AS (
+         SELECT DISTINCT ON (basket_address)
+           basket_address, block_number, observed_at, nav_usdc
+         FROM eligible_observations
+         WHERE observed_at < $3
+         ORDER BY basket_address, observed_at DESC, block_number DESC
+       ),
+       observation_candidates AS (
+         SELECT basket_address, block_number, observed_at, nav_usdc
+         FROM eligible_observations
+         WHERE observed_at >= $3
+         UNION ALL
+         SELECT basket_address, block_number, observed_at, nav_usdc
+         FROM latest_before_window
+       ),
+       timeline AS (
+         SELECT DISTINCT observed_at
+         FROM observation_candidates
+       )
+       SELECT timeline.observed_at,
+              SUM(latest.nav_usdc)::float8 AS total_nav_usdc,
+              MAX(latest.block_number)::text AS block_number,
+              COUNT(*)::int AS basket_count
+       FROM timeline
+       JOIN owner_baskets ob ON TRUE
+       JOIN LATERAL (
+         SELECT eo.nav_usdc, eo.block_number
+         FROM eligible_observations eo
+         WHERE eo.basket_address = ob.address
+           AND eo.observed_at <= timeline.observed_at
+         ORDER BY eo.observed_at DESC, eo.block_number DESC
+         LIMIT 1
+       ) latest ON TRUE
+       GROUP BY timeline.observed_at
+       ORDER BY timeline.observed_at ASC`,
+      [chainId, controller, cutoff],
+    );
+
+    return {
+      data: {
+        timeframe,
+        points: result.rows.map((row) => ({
+          observedAt: new Date(row.observed_at).toISOString(),
+          totalNavUsdc: Number(row.total_nav_usdc),
+          blockNumber: String(row.block_number),
+          basketCount: Number(row.basket_count),
+        })),
+      },
+    };
+  }
+
+  /**
+   * Current weighted-average accounting view. Monetary and token quantities stay
+   * decimal strings end-to-end: accounting must never depend on JS float math.
+   */
+  async getAccountingSummary(addressInput: string, chainIdInput?: string, controllerInput?: string) {
+    const { chainId, address, controller } = await this.requireBasketController(addressInput, chainIdInput, controllerInput);
+    const result = await this.db.query(
+      `SELECT acb.asset_address,
+              acb.quantity_base_units::text,
+              acb.decimals,
+              acb.open_basis_usdc_micro::text,
+              acb.accounting_status,
+              acb.issue,
+              acb.updated_at,
+              spot.price_usd_e8::text AS spot_price_usd_e8,
+              CASE WHEN spot.price_usd_e8 IS NULL THEN NULL
+                   ELSE ((acb.quantity_base_units * spot.price_usd_e8 * 1000000)
+                         / (power(10::numeric, acb.decimals) * 100000000))::text END AS spot_value_usdc_micro,
+              CASE WHEN acb.quantity_base_units = 0 THEN NULL
+                   ELSE (acb.open_basis_usdc_micro / acb.quantity_base_units)::text END AS weighted_average_cost_usdc_micro_per_base_unit,
+              CASE WHEN spot.price_usd_e8 IS NULL OR acb.accounting_status <> 'COMPLETE' THEN NULL
+                   ELSE (((acb.quantity_base_units * spot.price_usd_e8 * 1000000)
+                         / (power(10::numeric, acb.decimals) * 100000000)) - acb.open_basis_usdc_micro)::text END AS unrealised_pnl_usdc_micro
+       FROM asset_cost_basis acb
+       LEFT JOIN LATERAL (
+         SELECT price_usd_e8
+         FROM asset_price_observations apo
+         WHERE apo.chain_id=acb.chain_id AND apo.asset_address=acb.asset_address
+         ORDER BY apo.block_number DESC LIMIT 1
+       ) spot ON TRUE
+       WHERE acb.chain_id=$1 AND acb.basket_address=$2
+       ORDER BY acb.asset_address`,
+      [chainId, address],
+    );
+    return {
+      data: {
+        chainId,
+        basketAddress: address,
+        controller,
+        accountingPolicy: 'WEIGHTED_AVERAGE_PORTFOLIO_ACCOUNTING_NOT_TAX_ADVICE',
+        assets: result.rows.map((row) => ({
+          assetAddress: row.asset_address,
+          quantityBaseUnits: String(row.quantity_base_units),
+          decimals: Number(row.decimals),
+          openBasisUsdcMicro: String(row.open_basis_usdc_micro),
+          weightedAverageCostUsdcMicroPerBaseUnit: row.accounting_status === 'COMPLETE'
+            ? row.weighted_average_cost_usdc_micro_per_base_unit : null,
+          spotPriceUsdE8: row.spot_price_usd_e8 ?? null,
+          spotValueUsdcMicro: row.accounting_status === 'COMPLETE' ? row.spot_value_usdc_micro : null,
+          unrealisedPnlUsdcMicro: row.accounting_status === 'COMPLETE' ? row.unrealised_pnl_usdc_micro : null,
+          accountingStatus: row.accounting_status,
+          issue: row.issue ?? null,
+          updatedAt: new Date(row.updated_at).toISOString(),
+        })),
+      },
+    };
+  }
+
+  async getAccountingEvents(addressInput: string, chainIdInput?: string, controllerInput?: string, cursorInput?: string, limitInput?: string) {
+    const { chainId, address } = await this.requireBasketController(addressInput, chainIdInput, controllerInput);
+    const limit = Math.min(Math.max(Number(limitInput ?? 50), 1), 100);
+    if (!Number.isInteger(limit)) throw new BadRequestException({ error: 'INVALID_ACCOUNTING_EVENT_LIMIT' });
+    const cursor = cursorInput ? Number(cursorInput) : null;
+    if (cursor !== null && (!Number.isSafeInteger(cursor) || cursor < 0)) {
+      throw new BadRequestException({ error: 'INVALID_ACCOUNTING_EVENT_CURSOR' });
+    }
+    const result = await this.db.query(
+      `SELECT id::text, tx_hash, log_index, block_number, block_hash, occurred_at, kind, asset_address,
+              quantity_base_units::text, decimals, basis_delta_usdc_micro::text, valuation_source, status, issue
+       FROM accounting_events
+       WHERE chain_id=$1 AND basket_address=$2 AND ($3::bigint IS NULL OR block_number < $3)
+       ORDER BY block_number DESC, log_index DESC, created_at DESC
+       LIMIT $4`,
+      [chainId, address, cursor, limit + 1],
+    );
+    const rows = result.rows.slice(0, limit);
+    return {
+      data: {
+        events: rows.map((row) => this.serializeAccountingEvent(row)),
+        nextCursor: result.rows.length > limit ? String(rows[rows.length - 1].block_number) : null,
+      },
+    };
+  }
+
+  async getAccountingCsv(addressInput: string, chainIdInput?: string, controllerInput?: string) {
+    const { chainId, address } = await this.requireBasketController(addressInput, chainIdInput, controllerInput);
+    const result = await this.db.query(
+      `SELECT tx_hash, log_index, block_number, block_hash, occurred_at, kind, asset_address,
+              quantity_base_units::text, decimals, basis_delta_usdc_micro::text, valuation_source, status, issue
+       FROM accounting_events WHERE chain_id=$1 AND basket_address=$2
+       ORDER BY block_number ASC, log_index ASC, created_at ASC`,
+      [chainId, address],
+    );
+    const headers = ['txHash', 'logIndex', 'blockNumber', 'blockHash', 'occurredAt', 'kind', 'assetAddress', 'quantityBaseUnits', 'decimals', 'basisDeltaUsdcMicro', 'valuationSource', 'status', 'issue'];
+    const quote = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    return [
+      '# Weighted-average portfolio accounting — not tax advice',
+      headers.join(','),
+      ...result.rows.map((row) => headers.map((header) => quote(row[this.camelToSnake(header)])).join(',')),
+    ].join('\n');
+  }
+
+  private async requireBasketController(addressInput: string, chainIdInput?: string, controllerInput?: string) {
+    const chainId = chainIdSchema.parse(chainIdInput || '31337');
+    const address = addressSchema.parse(addressInput).toLowerCase();
+    const controller = addressSchema.parse(controllerInput).toLowerCase();
+    const basket = await this.db.query(
+      'SELECT 1 FROM baskets WHERE chain_id=$1 AND address=$2 AND controller=$3 LIMIT 1',
+      [chainId, address, controller],
+    );
+    if (basket.rows.length === 0) throw new NotFoundException({ error: 'BASKET_NOT_FOUND_OR_NOT_CONTROLLED' });
+    return { chainId, address, controller };
+  }
+
+  private serializeAccountingEvent(row: Record<string, unknown>) {
+    return {
+      id: String(row.id), txHash: String(row.tx_hash), logIndex: Number(row.log_index), blockNumber: String(row.block_number),
+      blockHash: String(row.block_hash), occurredAt: new Date(String(row.occurred_at)).toISOString(), kind: String(row.kind),
+      assetAddress: String(row.asset_address), quantityBaseUnits: String(row.quantity_base_units), decimals: Number(row.decimals),
+      basisDeltaUsdcMicro: String(row.basis_delta_usdc_micro), valuationSource: String(row.valuation_source), status: String(row.status), issue: row.issue ?? null,
+    };
+  }
+
+  private camelToSnake(value: string) {
+    return value.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
   }
 
   async createBasket(body: {
@@ -334,11 +462,11 @@ export class BasketsService {
         [chainId, address],
       ),
       this.db.query(
-        'SELECT * FROM basket_snapshots WHERE chain_id=$1 AND basket_address=$2 ORDER BY block_number DESC LIMIT 1',
+        "SELECT * FROM basket_nav_observations WHERE chain_id=$1 AND basket_address=$2 AND valuation_status='COMPLETE' ORDER BY block_number DESC LIMIT 1",
         [chainId, address],
       ),
       this.db.query(
-        'SELECT * FROM basket_positions WHERE chain_id=$1 AND basket_address=$2 ORDER BY asset_address',
+        'SELECT DISTINCT ON (asset_address) * FROM basket_positions WHERE chain_id=$1 AND basket_address=$2 ORDER BY asset_address, block_number DESC',
         [chainId, address],
       ).catch(() => ({ rows: [] })),
       this.db.query(
@@ -421,13 +549,11 @@ export class BasketsService {
       }
     }
 
-    const liveSnap = await this.computeLiveBasketSnapshot(address, chainId);
-
     return {
       data: {
         ...basketRow,
         assets: finalAssets,
-        snapshot: liveSnap ?? snapshot.rows[0] ?? null,
+        snapshot: snapshot.rows[0] ?? null,
         positions: positions.rows ?? [],
       },
     };
@@ -503,6 +629,11 @@ export class BasketsService {
   async clearAllBaskets() {
     try {
       await this.db.query('DELETE FROM lending_market_logs').catch(() => null);
+      await this.db.query('DELETE FROM asset_cost_basis').catch(() => null);
+      await this.db.query('DELETE FROM accounting_events').catch(() => null);
+      await this.db.query('DELETE FROM basket_nav_observations');
+      await this.db.query('DELETE FROM basket_positions');
+      await this.db.query('DELETE FROM asset_price_observations');
       await this.db.query('DELETE FROM basket_events');
       await this.db.query('DELETE FROM basket_assets');
       await this.db.query('DELETE FROM baskets');

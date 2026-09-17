@@ -37,7 +37,7 @@ const TYPED_SWAP_ABI = parseAbi([
   'struct AerodromeRoute { uint8 kind; address tokenIn; address tokenOut; int24 firstTickSpacing; int24 secondTickSpacing; uint256 amountIn; uint256 minimumAmountOut; }',
   'function rebalanceAerodromePortfolio(address safe,AerodromeRoute[] routes,uint256 deadline) external',
 ]);
-const WITHDRAW_IN_KIND_ABI = parseAbi(['function withdrawInKind(address safe,address recipient,address[] tokens,uint256[] amounts,address[] remainingTokens) external returns (uint256 remainingNAV)']);
+const WITHDRAW_IN_KIND_ABI = parseAbi(['function withdrawInKind(address safe,address recipient,address[] tokens,uint256[] amounts,address[] remainingTokens) external returns (uint256 remainingListedAssetsNavUsdc)']);
 
 function snapshot(amounts: Array<[string, string]>): PositionSnapshot {
   return {

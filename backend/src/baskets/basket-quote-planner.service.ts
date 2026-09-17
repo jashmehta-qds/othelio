@@ -37,7 +37,7 @@ const PORTFOLIO_AERODROME_REBALANCE_ABI = parseAbi([
   'function rebalanceAerodromePortfolio(address safe,AerodromeRoute[] routes,uint256 deadline) external',
 ]);
 const BASKET_WITHDRAW_IN_KIND_V3_ABI = parseAbi([
-  'function withdrawInKind(address safe,address recipient,address[] tokens,uint256[] amounts,address[] remainingTokens) external returns (uint256 remainingNAV)',
+  'function withdrawInKind(address safe,address recipient,address[] tokens,uint256[] amounts,address[] remainingTokens) external returns (uint256 remainingListedAssetsNavUsdc)',
 ]);
 const RPC_URLS: Record<number, string | undefined> = {
   1: process.env.ETHEREUM_RPC_URL,

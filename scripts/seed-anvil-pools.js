@@ -7,6 +7,7 @@ const LOCAL_DEPLOYER = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
 const LOCAL_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const ROUTER_LIQUIDITY = 1_000_000n * 10n ** 18n;
 const ROUTER_USDC_LIQUIDITY = 1_000_000n * 10n ** 6n;
+const DEFAULT_WALLET_USDC = 100_000n * 10n ** 6n;
 
 async function rpc(method, params) {
   const response = await fetch(RPC_URL, {
@@ -65,7 +66,7 @@ async function seedAnvilPools() {
   // 2. Install six-decimal USDC, the router, and B20 tokens. Deployment may
   // already have installed some of this code; liquidity must still be seeded.
   const usdcArtifactPath = path.join(__dirname, "../contracts/out/MockUSDC.sol/MockUSDC.json");
-  const erc20ArtifactPath = path.join(__dirname, "../contracts/out/DeployOthelio.s.sol/DeployMockERC20.json");
+  const erc20ArtifactPath = path.join(__dirname, "../contracts/out/DeployLocalOthelio.s.sol/DeployMockERC20.json");
   const routerArtifactPath = path.join(__dirname, "../contracts/out/MockDEXRouter.sol/MockDEXRouter.json");
   if (!fs.existsSync(usdcArtifactPath) || !fs.existsSync(routerArtifactPath)) {
     throw new Error("Mock USDC/router artifacts are missing; run forge build first.");
@@ -84,6 +85,13 @@ async function seedAnvilPools() {
     to: LOCAL_USDC,
     data: `0x40c10f19${routerRecipient}${usdcAmount}`,
   }]);
+  const walletRecipient = LOCAL_DEPLOYER.slice(2).toLowerCase().padStart(64, "0");
+  const walletUsdcAmount = DEFAULT_WALLET_USDC.toString(16).padStart(64, "0");
+  await rpc("eth_sendTransaction", [{
+    from: LOCAL_DEPLOYER,
+    to: LOCAL_USDC,
+    data: `0x40c10f19${walletRecipient}${walletUsdcAmount}`,
+  }]);
 
   if (fs.existsSync(erc20ArtifactPath)) {
     const erc20Json = JSON.parse(fs.readFileSync(erc20ArtifactPath, "utf8"));
@@ -98,7 +106,7 @@ async function seedAnvilPools() {
         data: `0x40c10f19${routerRecipient}${amount}`,
       }]);
     }
-    console.log(`[seed-anvil-pools] Seeded ${TOKEN_ADDRESSES.length} B20 assets and USDC liquidity for the local router.`);
+    console.log(`[seed-anvil-pools] Seeded ${TOKEN_ADDRESSES.length} B20 assets, router liquidity, and ${DEFAULT_WALLET_USDC / 10n ** 6n} USDC for the default Anvil wallet.`);
   } else throw new Error("DeployMockERC20 artifact is missing; run forge build first.");
 }
 

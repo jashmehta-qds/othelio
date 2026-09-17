@@ -30,23 +30,6 @@ contract OthelioSafeFactory is IOthelioEvents {
         emit BasketCreated(basket, msg.sender, name, block.timestamp);
     }
 
-    function registerBasket(address safe, address owner, string calldata name) external {
-        require(bytes(name).length > 0 && bytes(name).length <= 128, "INVALID_NAME");
-        require(OthelioBaseModule(payable(module)).enforcesPortfolioOnly(), "UNSUPPORTED_MODULE_ARCHITECTURE");
-        require(!isOthelioBasket[safe], "ALREADY_REGISTERED");
-        require(safe != address(0) && owner != address(0), "ZERO_ADDRESS");
-        require(safe.code.length > 0, "SAFE_NOT_CONTRACT");
-        require(msg.sender == owner, "OWNER_MUST_REGISTER");
-        require(OthelioBasketAccount(payable(safe)).isOwner(owner), "OWNER_MISMATCH");
-        require(OthelioBasketAccount(payable(safe)).module() == module, "MODULE_MISMATCH");
-        require(OthelioBasketAccount(payable(safe)).registry() == registry, "REGISTRY_MISMATCH");
-
-        isOthelioBasket[safe] = true;
-        _userBaskets[owner].push(safe);
-
-        emit BasketCreated(safe, owner, name, block.timestamp);
-    }
-
     function basketsOf(address owner) external view returns (address[] memory) {
         return _userBaskets[owner];
     }

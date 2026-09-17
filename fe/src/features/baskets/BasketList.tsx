@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useAccount, useChainId } from "wagmi";
 import { useBasketsList } from "@/hooks/useBaskets";
 import { useHydrated } from "@/hooks/useHydrated";
+import { useWalletRestoring } from "@/hooks/useWalletRestoring";
 import { formatCompactNumber } from "@/lib/baskets";
+import { canonicalSpotNav } from "@/lib/valuation";
 import { BasketLogo } from "./BasketLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { CreateBasketModal } from "@/components/CreateBasketModal";
@@ -14,6 +16,7 @@ export function BasketList() {
   const chainId = useChainId() || 31337;
   const { address, isConnected } = useAccount();
   const isHydrated = useHydrated();
+  const isWalletRestoring = useWalletRestoring();
   const hasConnectedWallet = isHydrated && isConnected && Boolean(address);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   
@@ -25,7 +28,7 @@ export function BasketList() {
     return (apiResponse?.data ?? []).map((ib) => ({
       name: ib.name,
       symbol: ib.symbol || 'OTH',
-      value: ib.snapshot?.total_nav_usdc ? Number(ib.snapshot.total_nav_usdc) : Number(ib.seed_amount || 0),
+      value: canonicalSpotNav(ib.snapshot) ?? 0,
       change: 0,
       updated: "Just now",
       address: ib.address,
@@ -83,9 +86,9 @@ export function BasketList() {
       </div>
 
       <div className="basket-list">
-        {hasConnectedWallet && isLoading && displayBaskets.length === 0 ? (
+        {isWalletRestoring || (hasConnectedWallet && isLoading && displayBaskets.length === 0) ? (
           <div style={{ padding: '36px 20px', textAlign: 'center', opacity: 0.6, fontSize: '13px' }}>
-            Loading your created baskets...
+            {isWalletRestoring ? 'Restoring your wallet…' : 'Loading your created baskets...'}
           </div>
         ) : displayBaskets.length === 0 ? (
           <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--muted-ink)' }}>

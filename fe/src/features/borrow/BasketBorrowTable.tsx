@@ -49,9 +49,6 @@ export function BasketBorrowTable({ baskets, riskPref, onOpenActionModal }: Bask
                         <BasketLogo name={b.name} />
                         <div>
                           <strong style={{ fontSize: "14px", display: "block", color: "var(--ink)" }}>{b.name}</strong>
-                          <small style={{ color: "var(--accent)", fontFamily: "monospace", fontSize: "11px" }}>
-                            {b.ensDomain || `${b.name.toLowerCase().replace(/[^a-z0-9]/g, "")}.othelio.eth`}
-                          </small>
                         </div>
                       </div>
                     </td>

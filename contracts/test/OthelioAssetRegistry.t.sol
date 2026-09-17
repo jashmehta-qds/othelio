@@ -51,6 +51,20 @@ contract OthelioAssetRegistryTest is Test {
         registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 18, 8, true);
     }
 
+    function testRejectsUnregisteredCoinbaseB20() public {
+        address unregistered = address(0x999);
+        vm.prank(owner);
+        vm.expectRevert("UNREGISTERED_COINBASE_B20");
+        registry.configure(block.chainid, unregistered, feedNVDA, true, 18, 8, true);
+    }
+
+    function testRejectsCoinbaseB20WhenRegistryIsMissing() public {
+        OthelioAssetRegistry missingRegistry = new OthelioAssetRegistry(owner, address(0));
+        vm.prank(owner);
+        vm.expectRevert("INVALID_COINBASE_REGISTRY");
+        missingRegistry.configure(block.chainid, tokenNVDA, feedNVDA, true, 18, 8, true);
+    }
+
     function testDisableAsset() public {
         vm.startPrank(owner);
         registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 18, 8, true);
@@ -74,6 +88,7 @@ contract OthelioAssetRegistryTest is Test {
         address feedUSDC = address(0x888);
 
         vm.startPrank(owner);
+        mockCoinbaseRegistry.setRegistered(tokenAAPL, true);
         // Configure NVDA (B20)
         registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 18, 8, true);
         // Configure AAPL (B20)
@@ -108,4 +123,3 @@ contract OthelioAssetRegistryTest is Test {
         vm.stopPrank();
     }
 }
-

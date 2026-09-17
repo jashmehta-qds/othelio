@@ -10,7 +10,9 @@ import { AppIcon, type AppNavId } from "./AppIcon";
 import { useBasketsList } from "@/hooks/useBaskets";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatAddress, formatCompactNumber, type Basket } from "@/lib/baskets";
+import { canonicalSpotNav } from "@/lib/valuation";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { useWalletRestoring } from "@/hooks/useWalletRestoring";
 
 const navigation: { id: AppNavId; label: string; href: string }[] = [
   { id: "overview", label: "Overview", href: "/app/overview" },
@@ -34,9 +36,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Web3 Wallet & Network Hooks
   const { address, isConnected, isConnecting, chain, chainId: activeChainId } = useAccount();
+  const isWalletRestoring = useWalletRestoring();
   const { connect, connectors, isPending: isConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
-  const { isAuthenticated, isAuthenticating, authError, logout } = useAuth();
+  const { isAuthenticated, isAuthenticating, authError, login, logout } = useAuth();
   const queryClient = useQueryClient();
   const { switchChain } = useSwitchChain();
   const targetChainId = process.env.NEXT_PUBLIC_CHAIN_ID ? Number(process.env.NEXT_PUBLIC_CHAIN_ID) : 31337;
@@ -227,8 +230,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (ib.controller && ib.controller.toLowerCase() !== address.toLowerCase()) {
           return;
         }
-        const val = ib.snapshot?.total_nav_usdc ? Number(ib.snapshot.total_nav_usdc) : Number(ib.seed_amount || 0);
-        total += val;
+        total += canonicalSpotNav(ib.snapshot) ?? 0;
       });
     }
 
@@ -333,14 +335,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="sidebar-lower">
           <section
             className="account-module"
-            style={!(mounted && isConnected && address) ? {
+            style={(isWalletRestoring || !(mounted && isConnected && address)) ? {
               background: "linear-gradient(135deg, rgba(219, 255, 117, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)",
               border: "1px solid rgba(219, 255, 117, 0.25)",
               borderRadius: "16px",
               padding: "16px",
             } : undefined}
           >
-            {mounted && isConnected && address && isAuthenticated ? (
+            {isWalletRestoring ? (
+              <div aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "4px 0" }}>
+                <div style={{ height: "14px", width: "58%", borderRadius: "4px", background: "var(--panel-2)" }} />
+                <div style={{ height: "11px", width: "78%", borderRadius: "4px", background: "var(--panel-2)" }} />
+                <span style={{ color: "var(--muted-ink)", fontSize: "12px" }}>Restoring wallet…</span>
+              </div>
+            ) : mounted && isConnected && address ? (
               <>
                 <header>
                   <span className="avatar">{userInitials}</span>
@@ -358,6 +366,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </svg>
                   </button>
                 </header>
+
+                {!isAuthenticated && (
+                  <div className="account-available" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '8px', marginTop: '12px' }}>
+                    <span style={{ color: 'var(--muted-ink)', fontSize: '12px' }}>Wallet connected. Sign in to use Othelio.</span>
+                    {authError && (
+                      <span role="status" style={{ color: '#ef4444', fontSize: '11px', lineHeight: 1.4 }}>{authError}</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void login()}
+                      disabled={isAuthenticating}
+                      className="primary"
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '12px', justifyContent: 'center' }}
+                    >
+                      {isAuthenticating ? 'Waiting for signature...' : 'Sign in'}
+                    </button>
+                  </div>
+                )}
 
                 <div className="account-balance">
                   <span>Total portfolio</span>
@@ -465,7 +491,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <OthelioLogo size={26} />
             <span>Othelio</span>
           </Link>
-          {mounted && isConnected && address ? (
+          {isWalletRestoring ? (
+            <span style={{ color: "var(--muted-ink)", fontSize: "12px" }}>Restoring…</span>
+          ) : mounted && isConnected && address ? (
             <button onClick={handleDisconnect} className="theme-toggle" style={{ fontSize: '11px' }}>
               {formatAddress(address)} (Disconnect)
             </button>

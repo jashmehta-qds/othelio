@@ -56,7 +56,7 @@ npm run dev:services
 ./scripts/fund-local-wallet.sh <wallet-address> 100000
 ```
 
-The reset path deploys the registry, oracle, route registry, adapters, portfolio module, and Safe factory; installs mock USDC/B20 code; and seeds router B20 plus USDC liquidity. `scripts/fund-local-wallet.sh` only funds a wallet. `contracts/script/bootstrap-local-anvil.sh` is a standalone alternative that resets Anvil, so do not run it after `dev:reset`.
+The reset path deploys the registry, oracle, route registry, adapters, portfolio module, and Safe factory; installs mock USDC/B20 code; seeds router B20 plus USDC liquidity; and funds the default Anvil wallet (`0xf39F…2266`) with 100,000 USDC. `scripts/fund-local-wallet.sh` only funds an additional wallet. `contracts/script/bootstrap-local-anvil.sh` is a standalone alternative that resets Anvil, so do not run it after `dev:reset`.
 
 Local addresses may change after a reset because the fork state and deployment sequence affect deployer nonces. After every deployment, confirm the broadcast output and update every consumer before starting services:
 
@@ -70,7 +70,37 @@ Local addresses may change after a reset because the fork state and deployment s
 
 The local indexer must start at the configured Anvil fork block, not block `0`; otherwise it attempts to replay Base mainnet history through the fork provider. `docker-compose.yml` sets this automatically for the bundled fork.
 
+### After an indexer projection or migration change
+
+When changing a derived indexer projection (positions, price observations, NAV, or weighted-average accounting), a cursor reset alone is not enough: future derived rows would make an earlier replay look inconsistent. Keep `baskets` and `basket_events`, but rebuild every dependent projection from the chain:
+
+```bash
+# Stop the indexer, clear only derived projections and its cursor, then restart it.
+docker compose stop indexer
+docker compose exec -T postgres psql -U othelio -d othelio -c \
+  "DELETE FROM asset_cost_basis; DELETE FROM accounting_events; DELETE FROM basket_nav_observations; DELETE FROM basket_positions; DELETE FROM asset_price_observations; DELETE FROM indexer_state WHERE chain_id = 31337;"
+docker compose up -d --no-deps indexer
+```
+
+Run the migration service first when a new migration exists. This sequence is for the local Anvil environment; production needs a reviewed backup, migration, and replay runbook.
+
+### Valuation snapshots
+
+For funding, rebalances, and withdrawals, the indexer records an `END_OF_BLOCK_SPOT` snapshot from the configured asset registry, balances, and oracle prices at the finalized event block. `ASSET_REGISTRY_ADDRESS` must therefore be updated alongside the deployed contract addresses. The event's route amounts remain the execution receipt; basket value is never inferred from a funding amount or route output alone. A snapshot marked `UNAVAILABLE` must not be displayed as a dollar NAV.
+
+Solidity event value fields are execution-scoped receipts, not authoritative portfolio NAV: funding reports only newly acquired route outputs, rebalance reports only its route outputs, and in-kind withdrawal reports only caller-listed remaining assets. Use indexer `INDEXER_BLOCK_PINNED` snapshots for every product or external-consumer basket-value display.
+
 Do not copy any `31337` address to Base mainnet. Production deployments require their own broadcast review, governance owner, pinned-route verification, and Base fork tests.
+
+### Production deployment safety gates
+
+`DeployBaseOthelio.s.sol` is the only production deployer. It imports no mocks and only runs on Base after validating the pinned Coinbase registry, USDC, Aerodrome router/factory, Aave pool, feeds, and one live USDC route per configured launch asset. `DeployLocalOthelio.s.sol` is Anvil-only; its separate fixture process owns all local mock bytecode injection.
+
+The route registry is permanently bound to that canonical factory because Aerodrome's packed swap path does not include a factory address. Do not use `ADDITIONAL_AERODROME_FACTORY` for a launch deployment.
+
+Deployment only creates a pending two-step ownership transfer. After independently reviewing the manifest, an EOA governance owner may run `contracts/script/AcceptOthelioGovernance.s.sol` with `ASSET_REGISTRY_ADDRESS`, `AERODROME_ROUTE_REGISTRY_ADDRESS`, and `GOVERNANCE_PRIVATE_KEY`; it verifies ownership was actually accepted. For a Safe multisig or timelock, execute `acceptOwnership()` on both registries through that governance contract, then verify both `owner()` values on-chain. Do not consider governance handoff complete before acceptance is confirmed.
+
+Before any Base release, run `contracts/script/verify-base-release.sh` with an archival `BASE_RPC_URL`. It requires the exact pinned Base block, deploys through `DeployBaseOthelio`, checks all B20/feed/route manifest entries, and executes direct plus via-USDC B20 swaps. It intentionally fails when the RPC is unavailable; this is a release gate, not an everyday local test.
 
 ---
 

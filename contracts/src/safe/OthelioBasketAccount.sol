@@ -102,13 +102,19 @@ contract OthelioBasketAccount is ISafeAccount {
         owner = newOwner;
     }
 
-    /// @notice Recover an ERC-20 that is not a configured basket asset.
+    /// @notice Recover an asset that is not a configured basket asset.
     /// @dev Supported assets must leave through reviewed portfolio operations on the immutable module.
+    /// Native/precompile-backed Coinbase B20s are accepted only when they remain
+    /// authenticated by the asset registry, even if governance has delisted them.
     function recoverUntrackedToken(address token, address recipient, uint256 amount) external onlyOwner {
-        require(token != address(0) && token.code.length > 0, "INVALID_TOKEN");
+        require(token != address(0), "INVALID_TOKEN");
         require(recipient != address(0), "ZERO_RECIPIENT");
         require(amount > 0, "ZERO_AMOUNT");
         require(!OthelioAssetRegistry(registry).isSupported(block.chainid, token), "TRACKED_ASSET");
+        require(
+            token.code.length > 0 || OthelioAssetRegistry(registry).isVerifiedCoinbaseB20(block.chainid, token),
+            "INVALID_TOKEN"
+        );
 
         IERC20(token).safeTransfer(recipient, amount);
         emit UntrackedTokenRecovered(token, recipient, amount);

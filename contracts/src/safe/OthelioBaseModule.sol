@@ -19,6 +19,10 @@ interface ISafe {
     function isOwner(address owner) external view returns (bool);
 }
 
+interface IOthelioBasketFactory {
+    function isOthelioBasket(address basket) external view returns (bool);
+}
+
 /// @notice Abstract base module providing Safe authorization, oracle integration, and shared execution primitives.
 abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabilities, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -28,7 +32,10 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
     address public factory;
 
     modifier onlySafeOwner(address safe) {
+        require(safe != address(this) && safe != address(oracle), "INVALID_SAFE");
         require(safe.code.length > 0, "INVALID_SAFE");
+        require(factory != address(0), "FACTORY_NOT_SET");
+        require(IOthelioBasketFactory(factory).isOthelioBasket(safe), "UNREGISTERED_BASKET");
         require(ISafe(safe).isOwner(msg.sender), "NOT_SAFE_OWNER");
         _;
     }
@@ -98,7 +105,7 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
         address[] calldata tokens,
         uint256[] calldata amounts,
         address[] calldata remainingTokens
-    ) external nonReentrant onlySafeOwner(safe) returns (uint256 remainingNAV) {
+    ) external nonReentrant onlySafeOwner(safe) returns (uint256 remainingListedAssetsNavUsdc) {
         uint256 tokensLen = tokens.length;
         require(tokensLen == amounts.length, "LENGTH_MISMATCH");
         require(tokensLen > 0, "EMPTY_TOKENS");
@@ -122,9 +129,11 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
         for (uint256 i = 0; i < remLen; ++i) {
             remainingBalances[i] = IERC20(remainingTokens[i]).balanceOf(safe);
         }
-        remainingNAV = oracle.calculateNAV(remainingTokens, remainingBalances);
+        // This is intentionally limited to caller-supplied remaining tokens. The
+        // indexer block snapshot, rather than this event field, is authoritative NAV.
+        remainingListedAssetsNavUsdc = oracle.calculateNAV(remainingTokens, remainingBalances);
 
-        emit BasketWithdrawn(safe, msg.sender, address(0), redeemedNAV, tokens, amounts, remainingNAV);
+        emit BasketWithdrawn(safe, msg.sender, address(0), redeemedNAV, tokens, amounts, remainingListedAssetsNavUsdc);
     }
 
     receive() external payable virtual {}

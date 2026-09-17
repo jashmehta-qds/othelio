@@ -58,6 +58,80 @@ describe('portfolio foundation contracts', () => {
 });
 
 describe('BasketsService extraction boundary', () => {
+  it('returns weighted-average accounting as exact strings only after controller ownership verification', async () => {
+    const db = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+        .mockResolvedValueOnce({ rows: [{
+          asset_address: '0x2222222222222222222222222222222222222222',
+          quantity_base_units: '2000000000000000000', decimals: 18,
+          open_basis_usdc_micro: '300000000', accounting_status: 'COMPLETE', issue: null,
+          spot_price_usd_e8: '17500000000', spot_value_usdc_micro: '350000000',
+          weighted_average_cost_usdc_micro_per_base_unit: '0.00000000015', unrealised_pnl_usdc_micro: '50000000', updated_at: '2026-09-17T12:00:00.000Z',
+        }] }),
+    };
+    const service = new BasketsService(db as never, {} as never, {} as never);
+    const result = await service.getAccountingSummary(basketAddress, '31337', basketAddress);
+    expect(result.data.assets[0]).toMatchObject({
+      quantityBaseUnits: '2000000000000000000', openBasisUsdcMicro: '300000000',
+      spotValueUsdcMicro: '350000000', unrealisedPnlUsdcMicro: '50000000', accountingStatus: 'COMPLETE',
+    });
+    expect(db.query.mock.calls[1][0]).toContain('asset_cost_basis');
+    expect(db.query.mock.calls[1][0]).toContain('price_usd_e8');
+  });
+
+  it('does not manufacture accounting values for incomplete assets', async () => {
+    const db = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+        .mockResolvedValueOnce({ rows: [{
+          asset_address: '0x2222222222222222222222222222222222222222', quantity_base_units: '1', decimals: 18,
+          open_basis_usdc_micro: '0', accounting_status: 'INCOMPLETE', issue: 'missing receipt-derived acquisition basis',
+          spot_price_usd_e8: '1', spot_value_usdc_micro: '1', weighted_average_cost_usdc_micro_per_base_unit: '0', unrealised_pnl_usdc_micro: '1', updated_at: '2026-09-17T12:00:00.000Z',
+        }] }),
+    };
+    const service = new BasketsService(db as never, {} as never, {} as never);
+    const result = await service.getAccountingSummary(basketAddress, '31337', basketAddress);
+    expect(result.data.assets[0].weightedAverageCostUsdcMicroPerBaseUnit).toBeNull();
+    expect(result.data.assets[0].unrealisedPnlUsdcMicro).toBeNull();
+  });
+
+  it('returns canonical as-of valuation observations without inventing missing points', async () => {
+    const db = {
+      query: vi.fn().mockResolvedValue({
+        rows: [{
+          observed_at: '2026-09-17T12:00:00.000Z',
+          total_nav_usdc: '218.75',
+          block_number: '42',
+          basket_count: '2',
+        }],
+      }),
+    };
+    const service = new BasketsService(db as never, {} as never, {} as never);
+
+    await expect(service.getValuationHistory('31337', basketAddress, '7D')).resolves.toEqual({
+      data: {
+        timeframe: '7D',
+        points: [{
+          observedAt: '2026-09-17T12:00:00.000Z',
+          totalNavUsdc: 218.75,
+          blockNumber: '42',
+          basketCount: 2,
+        }],
+      },
+    });
+    expect(db.query).toHaveBeenCalledOnce();
+    expect(db.query.mock.calls[0][0]).toContain("bno.valuation_status = 'COMPLETE'");
+    expect(db.query.mock.calls[0][0]).toContain('JOIN LATERAL');
+  });
+
+  it('rejects unsupported valuation timeframes', async () => {
+    const service = new BasketsService({ query: vi.fn() } as never, {} as never, {} as never);
+    await expect(service.getValuationHistory('31337', basketAddress, 'forever')).rejects.toMatchObject({
+      response: { error: 'INVALID_VALUATION_TIMEFRAME' },
+    });
+  });
+
   it('delegates quote and lending-event calls without changing their arguments', async () => {
     const quoteResponse = { success: true, data: { marker: 'quote' } };
     const eventResponse = { success: true };

@@ -3,10 +3,12 @@
 import { useAccount, useChainId } from "wagmi";
 import { useAllActivity, useBasketsList } from "@/hooks/useBaskets";
 import { ActivityEventRow } from "@/features/baskets/ActivityEventRow";
+import { useWalletRestoring } from "@/hooks/useWalletRestoring";
 
 export default function ActivityPage() {
   const chainId = useChainId() || 31337;
   const { address, isConnected } = useAccount();
+  const isWalletRestoring = useWalletRestoring();
   const { data: activityRes, isLoading } = useAllActivity(chainId, Boolean(isConnected && address));
   const { data: basketsRes } = useBasketsList(chainId, isConnected ? address : undefined);
   const rawEvents = !isConnected || !address ? [] : activityRes?.data ?? [];
@@ -28,7 +30,7 @@ export default function ActivityPage() {
   return <div className="app-page-frame activity-page">
     <header><h1 className="page-title">Activity log</h1><p className="page-description">Confirmed onchain operations across your baskets.</p></header>
     <section className="activity-page-list" aria-label="Confirmed basket activity">
-      {isLoading ? <p className="activity-empty">Loading confirmed operations…</p> : events.length > 0 ? events.map((event, index) => (
+      {isWalletRestoring || isLoading ? <p className="activity-empty">{isWalletRestoring ? "Restoring your wallet…" : "Loading confirmed operations…"}</p> : events.length > 0 ? events.map((event, index) => (
         <ActivityEventRow
           key={`${event.tx_hash}-${event.log_index ?? index}`}
           event={event}

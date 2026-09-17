@@ -7,16 +7,56 @@ import { useAccount, useChainId } from "wagmi";
 import AllocationSankey from "@/components/AllocationSankey";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { assetPrices, asset30dChanges, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, isUserFacingActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
-import { useBasketDetails, useBasketActivity, useBasketsList, useAssetPrices, usePortfolioPositions } from "@/hooks/useBaskets";
+import { assetPrices, asset30dChanges, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
+import { useAccountingSummary, useBasketDetails, useBasketActivity, useBasketsList, useAssetPrices, usePortfolioPositions } from "@/hooks/useBaskets";
+import { canonicalSpotNav } from "@/lib/valuation";
 import { BasketDrawer, type BasketAction } from "./BasketDrawer";
 import { BasketLogo } from "./BasketLogo";
 import { PortfolioDrift } from "./PortfolioDrift";
 import { ActivityEventRow } from "./ActivityEventRow";
+import { useWalletRestoring } from "@/hooks/useWalletRestoring";
+
+const USDC_MICRO_DECIMALS = 6;
+
+function decimalStringParts(rawAmount: string): { value: bigint; fractionalDigits: number } | null {
+  const normalized = rawAmount.trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(normalized)) return null;
+  const negative = normalized.startsWith('-');
+  const unsigned = negative ? normalized.slice(1) : normalized;
+  const [whole, fractional = ''] = unsigned.split('.');
+  const digits = `${whole}${fractional}`.replace(/^0+(?=\d)/, '');
+  const value = BigInt(digits || '0');
+  return { value: negative ? -value : value, fractionalDigits: fractional.length };
+}
+
+function displayBaseUnits(rawAmount: string, decimals: number): number | null {
+  try {
+    return Number(formatUnits(BigInt(rawAmount), decimals));
+  } catch {
+    return null;
+  }
+}
+
+function displayUsdcMicro(rawAmount: string | null): number | null {
+  if (rawAmount === null) return null;
+  const parsed = decimalStringParts(rawAmount);
+  return parsed
+    ? Number(formatUnits(parsed.value, USDC_MICRO_DECIMALS + parsed.fractionalDigits))
+    : null;
+}
+
+function displayAverageCost(rawMicroPerBaseUnit: string | null, decimals: number): number | null {
+  if (rawMicroPerBaseUnit === null) return null;
+  const parsed = decimalStringParts(rawMicroPerBaseUnit);
+  if (!parsed) return null;
+  const perWholeTokenMicro = parsed.value * (BigInt(10) ** BigInt(decimals));
+  return Number(formatUnits(perWholeTokenMicro, USDC_MICRO_DECIMALS + parsed.fractionalDigits));
+}
 
 export function BasketDetail({ basket: fallbackBasket, initialAction = null }: { basket: Basket; initialAction?: BasketAction }) {
   const chainId = useChainId() || 31337;
   const { address, isConnected } = useAccount();
+  const isWalletRestoring = useWalletRestoring();
   const [action, setAction] = useState<BasketAction>(initialAction);
   const [localBasket, setLocalBasket] = useState<Basket | null>(null);
 
@@ -27,19 +67,20 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     && candidate.controller.toLowerCase() === address?.toLowerCase(),
   );
   const canManageBasket = Boolean(ownedBasket);
-  // A basket address is the public, shareable read surface. Activity and
-  // browser-local drafts are controller-session data and remain private.
-  const { data: apiDetails } = useBasketDetails(fallbackBasket.address, chainId);
+  const { data: apiDetails, isLoading: isBasketDetailsLoading } = useBasketDetails(fallbackBasket.address, chainId);
   const { data: fetchedActivity } = useBasketActivity(fallbackBasket.address, chainId, canManageBasket);
   const { data: priceMap } = useAssetPrices();
   const { data: portfolioResponse } = usePortfolioPositions(fallbackBasket.address, chainId);
+  const { data: accountingResponse } = useAccountingSummary(
+    fallbackBasket.address,
+    chainId,
+    canManageBasket ? address : undefined,
+  );
   const apiActivity = canManageBasket ? fetchedActivity : undefined;
   const portfolioSnapshot = portfolioResponse?.data;
 
   useEffect(() => {
     const loadBasket = () => {
-      // Browser-stored drafts belong to the connected owner session and are
-      // never part of the public basket view.
       if (typeof window !== "undefined" && canManageBasket) {
         const created = getCreatedBaskets();
         const found = created.find(
@@ -63,6 +104,8 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const shouldShowIndexingStatus = mounted && !isWalletRestoring && !isBasketDetailsLoading && !isBasketIndexed;
 
   const localEvents = mounted && canManageBasket ? getLocalActivity(fallbackBasket.address) : [];
   const apiEvents: BasketActivity[] = (apiActivity?.data ?? []).map((evt) => ({
@@ -98,27 +141,18 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     return new Date(b.occurred_at || 0).getTime() - new Date(a.occurred_at || 0).getTime();
   });
 
-  const apiPositions: any[] = (indexedBasket as any)?.positions ?? [];
-  const totalIndexedRealizedPnl = apiPositions.reduce((acc: number, pos: any) => acc + Number(pos.realized_pnl_usdc || 0), 0);
-
-  const eventInputAmount = (indexedBasket as any)?.snapshot?.holdings?.inputAmount
-    ? Number((indexedBasket as any).snapshot.holdings.inputAmount) / 1e6
-    : (indexedBasket as any)?.snapshot?.total_nav_usdc
-      ? Number((indexedBasket as any).snapshot.total_nav_usdc)
-      : 0;
+  const indexedSpotNav = canonicalSpotNav((indexedBasket as any)?.snapshot);
 
   const canonicalEquity = portfolioSnapshot?.equityUsdE8 === null || portfolioSnapshot?.equityUsdE8 === undefined
     ? null
     : Number(formatUnits(BigInt(portfolioSnapshot.equityUsdE8), 8));
   const activeBasketValue = canonicalEquity !== null
     ? canonicalEquity
-    : (indexedBasket && 'snapshot' in indexedBasket && Number((indexedBasket as any).snapshot?.total_nav_usdc) > 0)
-    ? Number((indexedBasket as any).snapshot.total_nav_usdc)
+    : indexedSpotNav !== null
+    ? indexedSpotNav
     : (localBasket && localBasket.value > 0)
       ? localBasket.value
-      : (eventInputAmount > 0)
-        ? eventInputAmount
-        : (fallbackBasket.value || 0);
+      : (fallbackBasket.value || 0);
 
   const indexedAssets = (indexedBasket as any)?.assets;
   const mappedIndexedHoldings: Holding[] = indexedAssets && Array.isArray(indexedAssets) && indexedAssets.length > 0
@@ -136,6 +170,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
       return {
         symbol: symbolStr,
         name: knownMeta?.name || symbolStr,
+        address: rawAddr || knownMeta?.address,
         target: targetWeight,
         current: targetWeight,
         quantity: qty,
@@ -145,11 +180,9 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     })
     : [];
 
-  // Active basket properties with fallback
   const basket: Basket = {
     name: localBasket?.name ?? indexedBasket?.name ?? fallbackBasket.name,
     symbol: localBasket?.symbol ?? indexedBasket?.symbol ?? fallbackBasket.symbol,
-    ensDomain: localBasket?.ensDomain ?? `${(localBasket?.name ?? indexedBasket?.name ?? fallbackBasket.name).toLowerCase().replace(/[^a-z0-9]/g, '')}.othelio.eth`,
     value: activeBasketValue,
     change: localBasket?.change ?? fallbackBasket.change,
     updated: localBasket?.updated ?? fallbackBasket.updated,
@@ -159,62 +192,58 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
       : (localBasket && localBasket.holdings && localBasket.holdings.length > 0)
         ? localBasket.holdings
         : (fallbackBasket.holdings || []),
-    realizedGains: localBasket?.realizedGains ?? (totalIndexedRealizedPnl > 0 ? totalIndexedRealizedPnl : fallbackBasket.realizedGains ?? 0),
   };
 
-  // Pre-calculate holdings math for balance card and holdings table
   let calculatedTotalValue = 0;
-  let calculatedCostBasis = 0;
+  const accountingByAsset = new Map(
+    (accountingResponse?.data.assets ?? []).map((asset) => [asset.assetAddress.toLowerCase(), asset]),
+  );
 
   const holdingsCalculated = basket.holdings.map((h) => {
+    const accounting = h.address ? accountingByAsset.get(h.address.toLowerCase()) : undefined;
     const tokenPrice = priceMap?.[h.symbol] ?? assetPrices[h.symbol] ?? 100;
-    const matchedPos = apiPositions.find((p: any) => p.symbol?.toLowerCase() === h.symbol?.toLowerCase() || (h.address && p.asset_address?.toLowerCase() === h.address.toLowerCase()));
-
-    // Derive exact units held from asset value / price if quantity is zero or mismatched
-    const realQuantity = (h.quantity > 0 && Math.abs(h.quantity * tokenPrice - h.value) < 1.0)
+    const indexedQuantity = accounting ? displayBaseUnits(accounting.quantityBaseUnits, accounting.decimals) : null;
+    const indexedValue = accounting?.accountingStatus === 'COMPLETE'
+      ? displayUsdcMicro(accounting.spotValueUsdcMicro)
+      : null;
+    const realQuantity = indexedQuantity ?? ((h.quantity > 0 && Math.abs(h.quantity * tokenPrice - h.value) < 1.0)
       ? h.quantity
-      : (tokenPrice > 0 ? Number((h.value / tokenPrice).toFixed(4)) : 0);
-
-    const effectiveInputUsdc = eventInputAmount > 0 ? eventInputAmount : (fallbackBasket.value || activeBasketValue);
-    const targetWeightFrac = (h.target || 0) / 100;
-    const allocatedInputUsdc = effectiveInputUsdc * targetWeightFrac;
-    const fallbackAvgCost = realQuantity > 0 && allocatedInputUsdc > 0
-      ? Number((allocatedInputUsdc / realQuantity).toFixed(4))
-      : (h.symbol === "USDC" ? 1.0 : tokenPrice);
-
-    const avgCost = matchedPos?.avg_cost_usdc && Number(matchedPos.avg_cost_usdc) > 0
-      ? Number(matchedPos.avg_cost_usdc)
-      : (h.avgCost ?? fallbackAvgCost);
-    const assetValue = h.value;
-    const costBasis = realQuantity * avgCost;
-    const gainUsd = assetValue - costBasis;
-    const gainPct = costBasis > 0 ? (gainUsd / costBasis) * 100 : 0;
-
+      : (tokenPrice > 0 ? Number((h.value / tokenPrice).toFixed(4)) : 0));
+    const assetValue = indexedValue ?? h.value;
+    const averageCost = accounting?.accountingStatus === 'COMPLETE'
+      ? displayAverageCost(accounting.weightedAverageCostUsdcMicroPerBaseUnit, accounting.decimals)
+      : null;
+    const unrealisedPnl = accounting?.accountingStatus === 'COMPLETE'
+      ? displayUsdcMicro(accounting.unrealisedPnlUsdcMicro)
+      : null;
     calculatedTotalValue += assetValue;
-    calculatedCostBasis += costBasis;
 
     return {
       ...h,
       quantity: realQuantity,
       tokenPrice,
-      avgCost,
       assetValue,
-      costBasis,
-      gainUsd,
-      gainPct,
+      averageCost,
+      unrealisedPnl,
+      accountingIssue: accounting?.issue ?? null,
     };
   });
 
-  const totalGainUsd = calculatedTotalValue - calculatedCostBasis;
-  const totalGainPct = calculatedCostBasis > 0 ? (totalGainUsd / calculatedCostBasis) * 100 : 0;
+  // A partial total would look authoritative while omitting assets whose accounting
+  // reconciliation is incomplete. Keep the aggregate unavailable until all displayed
+  // holdings have a complete weighted-average basis.
+  const totalUnrealisedPnl = holdingsCalculated.length > 0 && holdingsCalculated.every(
+    (holding) => holding.unrealisedPnl !== null,
+  )
+    ? holdingsCalculated.reduce((total, holding) => total + (holding.unrealisedPnl ?? 0), 0)
+    : null;
 
-  // Compute 30-day weighted market index change from target weights
   const targetWeightSum = basket.holdings.reduce((sum, h) => sum + (h.target || 0), 0);
   const weighted30dChange = targetWeightSum > 0
     ? basket.holdings.reduce((sum, h) => sum + ((h.target || 0) / targetWeightSum) * (asset30dChanges[h.symbol] ?? 0), 0)
     : 0;
 
-  const displayChangePct = calculatedCostBasis > 0 ? totalGainPct : (basket.change !== 0 ? basket.change : weighted30dChange);
+  const displayChangePct = basket.change !== 0 ? basket.change : weighted30dChange;
   const isChangePositive = displayChangePct >= 0;
 
   return (
@@ -227,7 +256,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         </div>
       </div>
 
-      {!isBasketIndexed && (
+      {shouldShowIndexingStatus && (
         <div
           style={{
             padding: "12px 16px",
@@ -262,7 +291,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
               <div>
                 <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   {basket.name}
-                  {!isBasketIndexed && (
+                  {shouldShowIndexingStatus && (
                     <span
                       style={{
                         fontSize: "11px",
@@ -285,10 +314,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                   )}
                 </h1>
                 <p>
-                  <span style={{ color: "#d7ff46", fontWeight: 700, fontFamily: "monospace" }}>
-                    {basket.ensDomain || `${basket.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.othelio.eth`}
-                  </span>{" "}
-                  <i /> Base Local <i /> {formatAddress(basket.address)}
+                  Base Local <i /> {formatAddress(basket.address)}
                 </p>
               </div>
             </div>
@@ -303,12 +329,6 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                   </b>
                   <span>this month</span>
                 </p>
-              </div>
-              <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
-                <span style={{ color: "var(--ink-3)", fontWeight: 500 }}>Realized P&L:</span>
-                <strong style={{ color: (basket.realizedGains ?? 0) >= 0 ? "#10b981" : "#ef4444", fontWeight: 600, fontSize: "13px" }}>
-                  {(basket.realizedGains ?? 0) >= 0 ? "+" : "-"}${Math.abs(basket.realizedGains ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </strong>
               </div>
             </div>
           </div>
@@ -332,7 +352,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         <div className="section-title">
           <div>
             <h2>Basket Holdings</h2>
-            <p>Detailed asset quantities, cost basis, unrealized P&L, and portfolio valuation</p>
+            <p>Detailed asset quantities, spot valuation, and weighted-average portfolio accounting</p>
           </div>
         </div>
         <div style={{ overflowX: "auto" }}>
@@ -349,8 +369,6 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
             </thead>
             <tbody>
               {holdingsCalculated.map((h) => {
-                const isPositive = h.gainUsd >= 0;
-                const hasQuantity = h.quantity > 0;
                 return (
                   <tr key={h.symbol} style={{ borderBottom: "1px solid var(--line)" }}>
                     <td style={{ padding: "12px 16px", fontWeight: 600, display: "flex", alignItems: "center", gap: "10px" }}>
@@ -363,8 +381,8 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                     <td style={{ padding: "12px 16px", fontWeight: 600 }}>
                       ${h.tokenPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td style={{ padding: "12px 16px", fontWeight: 500, color: hasQuantity ? "var(--ink-2)" : "var(--ink-3)" }}>
-                      {hasQuantity ? `$${h.avgCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+                    <td style={{ padding: "12px 16px", color: h.averageCost === null ? "var(--ink-3)" : "var(--ink-1)" }}>
+                      {h.averageCost === null ? "—" : `$${h.averageCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                     </td>
                     <td style={{ padding: "12px 16px", fontWeight: 600 }}>
                       {h.quantity.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {h.symbol}
@@ -372,19 +390,8 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                     <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600 }}>
                       ${h.assetValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
-                    <td style={{ padding: "12px 16px", textAlign: "right" }}>
-                      {hasQuantity ? (
-                        <>
-                          <div style={{ fontWeight: 600, color: isPositive ? "#10b981" : "#ef4444" }}>
-                            {isPositive ? "+" : "-"}${Math.abs(h.gainUsd).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                          <small style={{ display: "block", color: isPositive ? "#10b981" : "#ef4444", fontSize: "11px", fontWeight: 500 }}>
-                            {isPositive ? "+" : ""}{h.gainPct.toFixed(2)}%
-                          </small>
-                        </>
-                      ) : (
-                        <span style={{ color: "var(--ink-3)" }}>—</span>
-                      )}
+                    <td style={{ padding: "12px 16px", textAlign: "right", color: h.unrealisedPnl === null ? "var(--ink-3)" : h.unrealisedPnl >= 0 ? "#10b981" : "#ef4444" }}>
+                      {h.unrealisedPnl === null ? "—" : `${h.unrealisedPnl >= 0 ? "+" : "-"}$${Math.abs(h.unrealisedPnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                     </td>
                   </tr>
                 );
@@ -399,19 +406,8 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                 <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 700, fontSize: "14px", color: "var(--ink)" }}>
                   ${calculatedTotalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
-                <td style={{ padding: "14px 16px", textAlign: "right" }}>
-                  {calculatedCostBasis > 0 ? (
-                    <>
-                      <div style={{ fontWeight: 700, fontSize: "13px", color: totalGainUsd >= 0 ? "#10b981" : "#ef4444" }}>
-                        {totalGainUsd >= 0 ? "+" : "-"}${Math.abs(totalGainUsd).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                      <small style={{ display: "block", color: totalGainUsd >= 0 ? "#10b981" : "#ef4444", fontSize: "11px", fontWeight: 600 }}>
-                        {totalGainUsd >= 0 ? "+" : ""}{totalGainPct.toFixed(2)}%
-                      </small>
-                    </>
-                  ) : (
-                    <span style={{ color: "var(--ink-3)" }}>—</span>
-                  )}
+                <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 700, fontSize: "14px", color: totalUnrealisedPnl === null ? "var(--ink-3)" : totalUnrealisedPnl >= 0 ? "#10b981" : "#ef4444" }}>
+                  {totalUnrealisedPnl === null ? "—" : `${totalUnrealisedPnl >= 0 ? "+" : "-"}$${Math.abs(totalUnrealisedPnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </td>
               </tr>
             </tfoot>
@@ -435,7 +431,6 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
           <span>Last priced {basket.updated}</span>
         </footer>
       </section>
-
 
       <section className="activity-block">
         <div className="section-title">

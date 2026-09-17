@@ -214,7 +214,9 @@ contract OthelioPortfolioModule is OthelioBaseModule {
 
         require(sumInput == totalFundingAmount, "FUNDING_AMOUNT_MISMATCH");
 
-        uint256 totalNAVAfter = _calculateUniqueNAV(acquiredAssets, acquiredAmounts);
+        // This values only assets acquired by these funding route legs; existing
+        // basket positions and dust are intentionally excluded.
+        uint256 acquiredOutputNavUsdc = _calculateUniqueNAV(acquiredAssets, acquiredAmounts);
         emit BasketFunded(
             safe,
             msg.sender,
@@ -222,7 +224,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
             totalFundingAmount,
             acquiredAssets,
             acquiredAmounts,
-            totalNAVAfter
+            acquiredOutputNavUsdc
         );
     }
 
@@ -247,7 +249,9 @@ contract OthelioPortfolioModule is OthelioBaseModule {
             boughtAmounts[i] = _executeRoute(safe, routes[i], deadline);
         }
 
-        uint256 totalNAV = _calculateUniqueNAV(boughtAssets, boughtAmounts);
+        // This values only the output of this rebalance's legs. Retained basket
+        // assets are not included, so it must never be interpreted as whole-basket NAV.
+        uint256 tradedOutputNavUsdc = _calculateUniqueNAV(boughtAssets, boughtAmounts);
         emit BasketRebalanced(
             safe,
             msg.sender,
@@ -255,7 +259,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
             soldAmounts,
             boughtAssets,
             boughtAmounts,
-            totalNAV
+            tradedOutputNavUsdc
         );
     }
 

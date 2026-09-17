@@ -9,6 +9,7 @@ import {OthelioAaveV3Adapter} from "../../src/lending/OthelioAaveV3Adapter.sol";
 import {OthelioAerodromeSlipstreamAdapter} from "../../src/dex/OthelioAerodromeSlipstreamAdapter.sol";
 import {OthelioAerodromeRouteRegistry, IAerodromeSlipstreamFactory} from "../../src/dex/OthelioAerodromeRouteRegistry.sol";
 import {OthelioBasketAccount} from "../../src/safe/OthelioBasketAccount.sol";
+import {OthelioSafeFactory} from "../../src/factory/OthelioSafeFactory.sol";
 import {AerodromeRoute, AerodromeRouteKind} from "../../src/dex/AerodromeRouteTypes.sol";
 import {MockPriceFeed} from "../../src/mock/MockPriceFeed.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -26,6 +27,7 @@ interface IAerodromeQuoter {
 
 contract AerodromeSlipstreamForkTest is Test {
     address private constant BASE_AERODROME_ROUTER = 0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5;
+    bytes32 private constant BASE_AERODROME_ROUTER_CODEHASH = 0x8ca2876cc2c509da1648ef2ad21a8849c261cf7316b675119b98ba298c8657e7;
     address private constant BASE_AERODROME_QUOTER = 0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a;
     address private constant BASE_AERODROME_FACTORY = 0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A;
     address private constant BASE_USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
@@ -39,13 +41,14 @@ contract AerodromeSlipstreamForkTest is Test {
         string memory rpcUrl = vm.envOr("BASE_RPC_URL", string(""));
         vm.skip(bytes(rpcUrl).length == 0, "BASE_RPC_URL unavailable: Aerodrome fork test skipped");
 
-        vm.createSelectFork(rpcUrl);
+        vm.createSelectFork(rpcUrl, BASE_FORK_BLOCK);
 
         console.log("Router code length:", BASE_AERODROME_ROUTER.code.length);
         console.log("Factory code length:", BASE_AERODROME_FACTORY.code.length);
         console.log("USDC code length:", BASE_USDC.code.length);
 
         assertGt(BASE_AERODROME_ROUTER.code.length, 0, "Aerodrome router missing on Base");
+        assertEq(BASE_AERODROME_ROUTER.codehash, BASE_AERODROME_ROUTER_CODEHASH, "Aerodrome router code changed");
         assertGt(BASE_AERODROME_QUOTER.code.length, 0, "Aerodrome quoter missing on Base");
         assertGt(BASE_AERODROME_FACTORY.code.length, 0, "Aerodrome factory missing on Base");
         assertGt(BASE_USDC.code.length, 0, "USDC token missing on Base");
@@ -55,12 +58,12 @@ contract AerodromeSlipstreamForkTest is Test {
         string memory rpcUrl = vm.envOr("BASE_RPC_URL", string(""));
         vm.skip(bytes(rpcUrl).length == 0, "BASE_RPC_URL unavailable: Aerodrome fork test skipped");
 
-        vm.createSelectFork(rpcUrl);
+        vm.createSelectFork(rpcUrl, BASE_FORK_BLOCK);
 
         vm.startPrank(owner);
         OthelioAssetRegistry registry = new OthelioAssetRegistry(owner, address(0));
         BasketOracle oracle = new BasketOracle(address(registry));
-        OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(owner);
+        OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(owner, BASE_AERODROME_FACTORY);
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(address(0x1111)); // mock placeholder for lending
 
         OthelioAerodromeSlipstreamAdapter dexAdapter = new OthelioAerodromeSlipstreamAdapter(
@@ -77,7 +80,9 @@ contract AerodromeSlipstreamForkTest is Test {
             1.25e18
         );
 
-        OthelioBasketAccount basket = new OthelioBasketAccount(owner, address(portfolio), address(registry));
+        OthelioSafeFactory basketFactory = new OthelioSafeFactory(address(portfolio), address(registry));
+        portfolio.setFactory(address(basketFactory));
+        OthelioBasketAccount basket = OthelioBasketAccount(payable(basketFactory.createBasket("Fork basket")));
 
         // Configure feeds: USDC = $1 (6 dec, 8 feed dec), WETH = $3000 (18 dec, 8 feed dec)
         registry.configure(block.chainid, BASE_USDC, address(new MockPriceFeed(1e8)), true, 6, 8, false);
@@ -124,12 +129,12 @@ contract AerodromeSlipstreamForkTest is Test {
         string memory rpcUrl = vm.envOr("BASE_RPC_URL", string(""));
         vm.skip(bytes(rpcUrl).length == 0, "BASE_RPC_URL unavailable: Aerodrome fork test skipped");
 
-        vm.createSelectFork(rpcUrl);
+        vm.createSelectFork(rpcUrl, BASE_FORK_BLOCK);
 
         vm.startPrank(owner);
         OthelioAssetRegistry registry = new OthelioAssetRegistry(owner, address(0));
         BasketOracle oracle = new BasketOracle(address(registry));
-        OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(owner);
+        OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(owner, BASE_AERODROME_FACTORY);
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(address(0x1111));
 
         OthelioAerodromeSlipstreamAdapter dexAdapter = new OthelioAerodromeSlipstreamAdapter(
@@ -146,7 +151,9 @@ contract AerodromeSlipstreamForkTest is Test {
             1.25e18
         );
 
-        OthelioBasketAccount basket = new OthelioBasketAccount(owner, address(portfolio), address(registry));
+        OthelioSafeFactory basketFactory = new OthelioSafeFactory(address(portfolio), address(registry));
+        portfolio.setFactory(address(basketFactory));
+        OthelioBasketAccount basket = OthelioBasketAccount(payable(basketFactory.createBasket("Fork basket")));
 
         // Configure feeds: USDC = $1, WETH = $3000, AERO = $0.084
         registry.configure(block.chainid, BASE_USDC, address(new MockPriceFeed(1e8)), true, 6, 8, false);

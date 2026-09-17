@@ -35,9 +35,17 @@ services:
       - sh
       - -ec
       - >-
+        psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())";
         for migration in /migrations/*.sql; do
-          echo "Applying $${migration}";
-          psql "$${DATABASE_URL}" -v ON_ERROR_STOP=1 -f "$${migration}";
+          name=$$(basename "$$migration");
+          applied=$$(psql "$$DATABASE_URL" -tAc "SELECT 1 FROM schema_migrations WHERE name = '$$name'");
+          if [ "$$applied" = "1" ]; then
+            echo "Skipping applied migration $$name";
+          else
+            echo "Applying $$name";
+            psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$$migration";
+            psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (name) VALUES ('$$name') ON CONFLICT (name) DO NOTHING";
+          fi;
         done
     depends_on:
       postgres: { condition: service_healthy }
@@ -50,10 +58,6 @@ services:
     tmpfs:
       # Keep Foundry's broadcast output out of the host checkout.
       - /workspace/contracts/broadcast:rw,mode=0777,uid=1000,gid=1000
-    environment:
-      # This registry has no code at the pinned Base fork block.
-      COINBASE_REGISTRY_ADDRESS: "0x0000000000000000000000000000000000000000"
-      OTHELIO_INSTALL_LOCAL_MOCKS: "true"
     entrypoint:
       - sh
       - -c
@@ -61,7 +65,7 @@ services:
         if [ "$$(cast code 0x5FC8d32690cc91D4c39d9d3abcBD16989F875707 --rpc-url http://anvil:8545)" != "0x" ]; then
           echo "Othelio contracts already deployed; skipping deployment";
           exit 0;
-        fi; exec forge script script/DeployOthelio.s.sol --tc DeployOthelio --rpc-url http://anvil:8545 --broadcast
+        fi; exec forge script script/local/DeployLocalOthelio.s.sol --tc DeployLocalOthelio --rpc-url http://anvil:8545 --broadcast
     depends_on:
       anvil: { condition: service_healthy }
 
@@ -84,8 +88,11 @@ services:
       RPC_URL: http://anvil:8545
       CHAIN_ID: "31337"
       START_BLOCK: "51166844"
-      FACTORY_ADDRESS: "0x21efb0c4fdA036F670A6a2b05b9Cb3bc3FbE006d"
-      MODULE_ADDRESS: "0x49d7AF0c0A242Ca8178f00cE9dc5800C97d9579F"
+      INDEXER_CONFIRMATIONS: "1"
+      FACTORY_ADDRESS: "0x6244434D825Df1dDE9eB4e092c0678f2edE19a97"
+      MODULE_ADDRESS: "0x2563B90A1192bDbE848A13bA4Ce0C112857fE4Ba"
+      ASSET_REGISTRY_ADDRESS: "0x835E426B749C7a215CeD0E487981271Cbf399c05"
+      VALUATION_INTERVAL_SECS: "3600"
     depends_on:
       postgres: { condition: service_healthy }
       anvil: { condition: service_healthy }

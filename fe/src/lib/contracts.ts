@@ -16,15 +16,15 @@ export const CONTRACT_ADDRESSES = {
     usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as `0x${string}`,
   },
   31337: {
-    factory: '0x21efb0c4fdA036F670A6a2b05b9Cb3bc3FbE006d' as `0x${string}`,
-    module: '0x49d7AF0c0A242Ca8178f00cE9dc5800C97d9579F' as `0x${string}`,
-    oracle: '0x23D4ae48A1434dA63Cf97efEc10CB6cf2d8b0229' as `0x${string}`,
-    registry: '0x36065592975f6CfBE171e57E6743ef2F6FaD0eDc' as `0x${string}`,
-    coinbaseRegistry: '0x0000000000000000000000000000000000000000' as `0x${string}`,
+    factory: '0x6244434D825Df1dDE9eB4e092c0678f2edE19a97' as `0x${string}`,
+    module: '0x2563B90A1192bDbE848A13bA4Ce0C112857fE4Ba' as `0x${string}`,
+    oracle: '0x9b3f8d4e9f985033f486B14Ea71DF73c292972Ef' as `0x${string}`,
+    registry: '0x835E426B749C7a215CeD0E487981271Cbf399c05' as `0x${string}`,
+    coinbaseRegistry: '0xD344074e7F0A5A718A5EA66fc261CB24a0155Fbe' as `0x${string}`,
     usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
     dexRouter: '0xBD606f1dAE0285D55113eFC11501677B2221A4dd' as `0x${string}`,
-    aaveAdapter: '0xeb354b33171Ca5072038bCf7d808E6F527BCB15f' as `0x${string}`,
-    aerodromeAdapter: '0x21163F943b3b1721af829e95E13BcCBE42D2cC8E' as `0x${string}`,
+    aaveAdapter: '0xe3B1E81bB4ae2a723CF4fF23b7E66C71CC6A2330' as `0x${string}`,
+    aerodromeAdapter: '0x787C53FA27340DAA779F3a1B8CDbf7936B14B68e' as `0x${string}`,
   },
 } as const;
 
@@ -145,7 +145,7 @@ export const OTHELIO_PORTFOLIO_MODULE_ABI = [
       { name: 'amounts', type: 'uint256[]' },
       { name: 'remainingTokens', type: 'address[]' },
     ],
-    outputs: [{ name: 'remainingNAV', type: 'uint256' }],
+    outputs: [{ name: 'remainingListedAssetsNavUsdc', type: 'uint256' }],
     stateMutability: 'nonpayable',
   },
   {
@@ -177,17 +177,6 @@ export const OTHELIO_FACTORY_ABI = [
     name: 'createBasket',
     inputs: [{ name: 'name', type: 'string' }],
     outputs: [{ name: 'basket', type: 'address' }],
-    stateMutability: 'nonpayable',
-  },
-  {
-    type: 'function',
-    name: 'registerBasket',
-    inputs: [
-      { name: 'safe', type: 'address' },
-      { name: 'owner', type: 'address' },
-      { name: 'name', type: 'string' },
-    ],
-    outputs: [],
     stateMutability: 'nonpayable',
   },
   {

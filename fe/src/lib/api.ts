@@ -1,7 +1,14 @@
 import type { ExecutionPlan } from '@/types/shared';
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+const localBackendUrl =
+  typeof window === 'undefined'
+    ? 'http://localhost:3001'
+    : `${window.location.protocol}//${window.location.hostname}:3001`;
+
+// `localhost` is correct only when the browser runs on the same machine as
+// Next.js. On a phone connected through the LAN URL, it points at the phone;
+// derive the host from the page unless a deployment explicitly overrides it.
+const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || localBackendUrl;
 
 export async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
