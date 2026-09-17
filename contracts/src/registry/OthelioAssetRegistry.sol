@@ -3,11 +3,16 @@ pragma solidity ^0.8.24;
 
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
-interface ICoinbaseRegistry {
-    function isRegistered(address token) external view returns (bool);
+interface IB20Factory {
+    function isB20(address token) external view returns (bool);
+    function isB20Initialized(address token) external view returns (bool);
 }
 
 contract OthelioAssetRegistry is Ownable2Step {
+    /// @dev Base's singleton B20 factory precompile. It is intentionally not
+    /// code-length checked: precompiles do not have conventional EVM bytecode.
+    address private constant BASE_B20_FACTORY = 0xB20f000000000000000000000000000000000000;
+    uint256 private constant BASE_CHAIN_ID = 8453;
     struct Asset {
         bool supported;
         address priceFeed;
@@ -15,8 +20,6 @@ contract OthelioAssetRegistry is Ownable2Step {
         uint8 feedDecimals;
         bool isCoinbaseB20;
     }
-
-    address public coinbaseRegistry;
 
     mapping(uint256 chainId => mapping(address token => Asset)) public assets;
 
@@ -36,18 +39,9 @@ contract OthelioAssetRegistry is Ownable2Step {
         bool isCoinbaseB20
     );
 
-    event CoinbaseRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
     event LendingPoolConfigured(address indexed pool, bool approved);
 
-    constructor(address owner_, address coinbaseRegistry_) Ownable(owner_) {
-        coinbaseRegistry = coinbaseRegistry_;
-    }
-
-    function setCoinbaseRegistry(address newRegistry) external onlyOwner {
-        address previous = coinbaseRegistry;
-        coinbaseRegistry = newRegistry;
-        emit CoinbaseRegistryUpdated(previous, newRegistry);
-    }
+    constructor(address owner_) Ownable(owner_) {}
 
     function configure(
         uint256 chainId,
@@ -62,12 +56,13 @@ contract OthelioAssetRegistry is Ownable2Step {
         require(!supported || priceFeed != address(0), "ZERO_FEED");
         require(tokenDecimals <= 38 && feedDecimals <= 38, "DECIMALS_TOO_LARGE");
 
-        // A B20 classification gives a token special handling elsewhere (including
-        // native/precompile-backed token recovery), so it must be backed by Coinbase's
-        // authoritative registry. Never silently accept a failed verification.
-        if (supported && isCoinbaseB20) {
-            require(coinbaseRegistry != address(0) && coinbaseRegistry.code.length > 0, "INVALID_COINBASE_REGISTRY");
-            require(ICoinbaseRegistry(coinbaseRegistry).isRegistered(token), "UNREGISTERED_COINBASE_B20");
+        // B20 assets are native/precompile-backed, so code-length is not a valid
+        // authenticity check. On Base, verify the official B20 factory's address
+        // classification and initialized state. The owner-governed allowlist then
+        // remains the product-level authority for which valid B20 assets Othelio
+        // chooses to support.
+        if (supported && isCoinbaseB20 && block.chainid == BASE_CHAIN_ID) {
+            require(_isInitializedBaseB20(token), "UNVERIFIED_BASE_B20");
         }
 
         assets[chainId][token] = Asset(supported, priceFeed, tokenDecimals, feedDecimals, isCoinbaseB20);
@@ -125,14 +120,26 @@ contract OthelioAssetRegistry is Ownable2Step {
         return assets[chainId][token].supported;
     }
 
-    /// @notice True when `token` remains an authenticated Coinbase B20 asset,
-    /// including after governance has disabled it as a supported portfolio asset.
+    /// @notice True when governance has classified `token` as a Coinbase B20 asset,
+    /// including after it was disabled as a supported portfolio asset.
     /// @dev This is intentionally distinct from `isSupported` so owners can recover
     /// a delisted native/precompile-backed B20 from a basket.
     function isVerifiedCoinbaseB20(uint256 chainId, address token) external view returns (bool) {
         if (!assets[chainId][token].isCoinbaseB20) return false;
-        if (coinbaseRegistry == address(0) || coinbaseRegistry.code.length == 0) return false;
-        return ICoinbaseRegistry(coinbaseRegistry).isRegistered(token);
+        return block.chainid != BASE_CHAIN_ID || _isInitializedBaseB20(token);
+    }
+
+    function _isInitializedBaseB20(address token) private view returns (bool) {
+        try IB20Factory(BASE_B20_FACTORY).isB20(token) returns (bool isB20) {
+            if (!isB20) return false;
+        } catch {
+            return false;
+        }
+        try IB20Factory(BASE_B20_FACTORY).isB20Initialized(token) returns (bool initialized) {
+            return initialized;
+        } catch {
+            return false;
+        }
     }
 
     function getAsset(uint256 chainId, address token) external view returns (Asset memory) {

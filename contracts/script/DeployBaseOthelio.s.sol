@@ -2,7 +2,6 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Script.sol";
-import {TokenizedAssetConstants} from "../src/constants/TokenizedAssetConstants.sol";
 import {OthelioDeploymentAssets} from "./OthelioDeploymentAssets.sol";
 import {OthelioAssetRegistry} from "../src/registry/OthelioAssetRegistry.sol";
 import {BasketOracle} from "../src/oracle/BasketOracle.sol";
@@ -16,9 +15,9 @@ import {OthelioSafeFactory} from "../src/factory/OthelioSafeFactory.sol";
 /// and contains no state-injection cheatcodes.
 contract DeployBaseOthelio is Script {
     uint256 private constant BASE_CHAIN_ID = 8453;
-    address private constant AERODROME_FACTORY = 0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A;
-    address private constant AERODROME_ROUTER = 0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5;
-    bytes32 private constant AERODROME_ROUTER_CODEHASH = 0x8ca2876cc2c509da1648ef2ad21a8849c261cf7316b675119b98ba298c8657e7;
+    address private constant AERODROME_FACTORY = 0xf8f2eB4940CFE7d13603DDDD87f123820Fc061Ef;
+    address private constant AERODROME_ROUTER = 0x698Cb2b6dd822994581fEa6eA4Fc755d1363A92F;
+    bytes32 private constant AERODROME_ROUTER_CODEHASH = 0xfedc4e21e1097b0ec1b4f1aa901cf645c22f9e5d297727b0f37275ee1d083df4;
     address private constant BASE_USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     address private constant BASE_AAVE_V3_POOL = 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5;
 
@@ -27,12 +26,11 @@ contract DeployBaseOthelio is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         address governance = vm.envAddress("GOVERNANCE_OWNER_ADDRESS");
-        address coinbaseRegistry = TokenizedAssetConstants.COINBASE_ONCHAIN_REGISTRY;
         require(governance != address(0) && governance != deployer, "INVALID_GOVERNANCE_OWNER");
         _requireInfrastructure();
 
         vm.startBroadcast(deployerPrivateKey);
-        OthelioAssetRegistry registry = new OthelioAssetRegistry(deployer, coinbaseRegistry);
+        OthelioAssetRegistry registry = new OthelioAssetRegistry(deployer);
         BasketOracle oracle = new BasketOracle(address(registry));
         OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(deployer, AERODROME_FACTORY);
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(BASE_AAVE_V3_POOL);
@@ -54,7 +52,6 @@ contract DeployBaseOthelio is Script {
     }
 
     function _requireInfrastructure() private view {
-        require(TokenizedAssetConstants.COINBASE_ONCHAIN_REGISTRY.code.length > 0, "MISSING_COINBASE_REGISTRY");
         require(AERODROME_FACTORY.code.length > 0, "MISSING_AERODROME_FACTORY");
         require(AERODROME_ROUTER.codehash == AERODROME_ROUTER_CODEHASH, "UNEXPECTED_AERODROME_ROUTER_CODE");
         require(BASE_USDC.code.length > 0, "MISSING_USDC");
@@ -72,19 +69,13 @@ contract DeployBaseOthelio is Script {
         uint8[] memory tokenDecimals = new uint8[](length);
         uint8[] memory feedDecimals = new uint8[](length);
         bool[] memory isB20 = new bool[](length);
-        int24[4] memory ticks = [int24(100), int24(200), int24(500), int24(2000)];
         for (uint256 i; i < length; i++) {
             require(feeds[i].code.length > 0, "MISSING_PRICE_FEED");
-            supported[i] = true; tokenDecimals[i] = 18; feedDecimals[i] = 8; isB20[i] = true;
-            bool routeRegistered;
-            for (uint256 j; j < ticks.length; j++) {
-                address pool = IAerodromeSlipstreamFactory(AERODROME_FACTORY).getPool(BASE_USDC, tokens[i], ticks[j]);
-                if (pool != address(0) && pool.code.length > 0) {
-                    routeRegistry.setPoolApproval(block.chainid, BASE_USDC, tokens[i], ticks[j], AERODROME_FACTORY, true);
-                    routeRegistered = true;
-                }
-            }
-            require(routeRegistered, "MISSING_REQUIRED_AERODROME_ROUTE");
+            supported[i] = true; tokenDecimals[i] = OthelioDeploymentAssets.baseTokenDecimals(i); feedDecimals[i] = 8; isB20[i] = true;
+            int24 tickSpacing = OthelioDeploymentAssets.baseUsdcTickSpacing(i);
+            address pool = IAerodromeSlipstreamFactory(AERODROME_FACTORY).getPool(BASE_USDC, tokens[i], tickSpacing);
+            require(pool != address(0) && pool.code.length > 0, "MISSING_REQUIRED_AERODROME_ROUTE");
+            routeRegistry.setPoolApproval(block.chainid, BASE_USDC, tokens[i], tickSpacing, AERODROME_FACTORY, true);
         }
         registry.configureBatch(block.chainid, tokens, feeds, supported, tokenDecimals, feedDecimals, isB20);
     }

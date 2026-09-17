@@ -600,19 +600,13 @@ export class BasketsService {
   async getAssets() {
     return {
       data: [
-        { symbol: "NVDAc", name: "NVIDIA Corp", address: "0xb20000000000000000000078ee7ce2fE4908108C", priceFeed: "0x04689a41629776563E6822F76f2e57D148d28513", price: 125.40, color: "#8aa4ff", isCoinbaseB20: true },
         { symbol: "AAPLc", name: "Apple Inc", address: "0xb200000000000000000000C2e324d24d7eEcd1fb", priceFeed: "0x787f13dEa48Db0897CbCDD985de77809D837F988", price: 224.50, color: "#5371d9", isCoinbaseB20: true },
-        { symbol: "MSFTc", name: "Microsoft Corp", address: "0xB200000000000000000000Ab99cFa739E253872B", priceFeed: "0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c", price: 415.20, color: "#858b87", isCoinbaseB20: true },
+        { symbol: "AMZNc", name: "Amazon.com Inc", address: "0xb200000000000000000000d9192b6B456483C2E8", priceFeed: "0x06A8E4b3aBB3B7543d8396FB2B763d22820cB295", price: 180.00, color: "#e6a663", isCoinbaseB20: true },
         { symbol: "GOOGLc", name: "Alphabet Inc", address: "0xb2000000000000000000002D0BA3164cc74f58B7", priceFeed: "0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2", price: 175.00, color: "#6f8cff", isCoinbaseB20: true },
-        { symbol: "AMZNc", name: "Amazon.com Inc", address: "0xb200000000000000000000d9192b6B456483C2E8", priceFeed: "0x06A8E4b3aBB3B7543d8396FB2B763d22820cB295", price: 180.00, color: "#b88a58", isCoinbaseB20: true },
-        { symbol: "METAc", name: "Meta Platforms", address: "0xb2000000000000000000008bC8786B856E61707C", priceFeed: "0x6526aE6797A76123638b863AeE4dD27Ba4E4b27D", price: 500.00, color: "#4e7fff", isCoinbaseB20: true },
-        { symbol: "TSLAc", name: "Tesla Inc", address: "0xb2000000000000000000001e800a7f5189430cD0", priceFeed: "0xFaf869185383a24F8cb00e27BdA6b63B9905DCb4", price: 250.00, color: "#b16f83", isCoinbaseB20: true },
-        { symbol: "COINc", name: "Coinbase Global", address: "0xb200000000000000000000c85a31389D71F3ecfb", priceFeed: "0x408e44f504A7371a345F03a73dDC96A4b48e8aa7", price: 200.00, color: "#0052ff", isCoinbaseB20: true },
-        { symbol: "MSTRc", name: "MicroStrategy Inc", address: "0xb2000000000000000000004884b426556b92883d", priceFeed: "0xB3cE282CD188b35DA0E38D8Bc7d58e33173D202a", price: 135.00, color: "#d94141", isCoinbaseB20: true },
-        { symbol: "CRCLc", name: "Circle Internet Financial", address: "0xB20000000000000000000019f6E7C675b73C2e4D", priceFeed: "0x0231cF2635D1E17bB5c2462cc7504Ba1fBd61f33", price: 28.50, color: "#2775ca", isCoinbaseB20: true },
-        { symbol: "INTCc", name: "Intel Corp", address: "0xB2000000000000000000004AFF16039bA04bdFBc", priceFeed: "0xAB657C39bac0D5886250D70849e2E3E008F2EECB", price: 31.20, color: "#0071c5", isCoinbaseB20: true },
-        { symbol: "SNDKc", name: "SanDisk Corp", address: "0xb200000000000000000000397293Cb8cda9a10c5", priceFeed: "0x388b0dC46C0Fb05A74BeE0994fa5b02c6Fcca2eA", price: 65.00, color: "#e2231a", isCoinbaseB20: true },
-        { symbol: "SPCXc", name: "SpaceX (Destiny Tech100)", address: "0xb2000000000000000000007b9fcbd005511aCBd5", priceFeed: "0x6A634B235903C4ad6376892180d6fF8612e3Fa68", price: 42.00, color: "#3f4652", isCoinbaseB20: true },
+        { symbol: "METAc", name: "Meta Platforms", address: "0xb2000000000000000000008bC8786B856E61707C", priceFeed: "0x6526aE6797A76123638b863AeE4dD27Ba4E4b27D", price: 500.00, color: "#89b6f8", isCoinbaseB20: true },
+        { symbol: "MSFTc", name: "Microsoft Corp", address: "0xb200000000000000000000Ab99cFa739E253872B", priceFeed: "0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c", price: 415.20, color: "#71bfac", isCoinbaseB20: true },
+        { symbol: "MSTRc", name: "Strategy Inc", address: "0xb2000000000000000000004884b426556b92883d", priceFeed: "0xB3cE282CD188b35DA0E38D8Bc7d58e33173D202a", price: 135.00, color: "#d595db", isCoinbaseB20: true },
+        { symbol: "NVDAc", name: "NVIDIA Corp", address: "0xb20000000000000000000078ee7ce2fE4908108C", priceFeed: "0x04689a41629776563E6822F76f2e57D148d28513", price: 125.40, color: "#8aa4ff", isCoinbaseB20: true },
         { symbol: "USDC", name: "USD Coin", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", priceFeed: "0x0000000000000000000000000000000000000000", price: 1.00, color: "#8daed0", isCoinbaseB20: false },
       ],
     };

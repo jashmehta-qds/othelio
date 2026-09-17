@@ -126,8 +126,6 @@ export async function recordLendingSubmission(
 export interface AccountSettings {
   accountAddress: string;
   slippageTolerance: number;
-  deadlineMinutes: number;
-  mevProtection: boolean;
   riskTier: string;
   customRiskBuffer: number | null;
   updatedAt?: string;

@@ -24,8 +24,6 @@ export default function SettingsPage() {
   const [slippage, setSlippageState] = useState<number>(0.5);
   const [customSlippage, setCustomSlippage] = useState<string>("");
   const [isCustom, setIsCustom] = useState<boolean>(false);
-  const [deadline, setDeadline] = useState<number>(20);
-  const [mevProtection, setMevProtection] = useState<boolean>(true);
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState<boolean>(false);
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
@@ -43,8 +41,6 @@ export default function SettingsPage() {
   const persistSettings = useCallback(
     async (settingsToSave: {
       slippageTolerance?: number;
-      deadlineMinutes?: number;
-      mevProtection?: boolean;
       riskTier?: string;
       customRiskBuffer?: number | null;
     }) => {
@@ -88,14 +84,6 @@ export default function SettingsPage() {
       setCustomRiskBuffer("");
     }
 
-    if (typeof window !== "undefined") {
-      const savedDeadline = localStorage.getItem(`othelio_deadline_${lowerAddr}`) || localStorage.getItem("othelio_deadline_minutes");
-      if (savedDeadline) setDeadline(Number(savedDeadline));
-
-      const savedMev = localStorage.getItem(`othelio_mev_${lowerAddr}`) || localStorage.getItem("othelio_mev_protection");
-      if (savedMev !== null) setMevProtection(savedMev === "true");
-    }
-
     // 2. Fetch canonical settings from PostgreSQL
     let isCancelled = false;
     setDbLoading(true);
@@ -115,16 +103,6 @@ export default function SettingsPage() {
           setCustomSlippage("");
         }
         setSlippageTolerance(dbSettings.slippageTolerance, lowerAddr);
-
-        setDeadline(dbSettings.deadlineMinutes);
-        if (typeof window !== "undefined") {
-          localStorage.setItem(`othelio_deadline_${lowerAddr}`, dbSettings.deadlineMinutes.toString());
-        }
-
-        setMevProtection(dbSettings.mevProtection);
-        if (typeof window !== "undefined") {
-          localStorage.setItem(`othelio_mev_${lowerAddr}`, dbSettings.mevProtection.toString());
-        }
 
         const tier = (dbSettings.riskTier as RiskTier) || "safe";
         setRiskTier(tier);
@@ -186,25 +164,6 @@ export default function SettingsPage() {
       setSlippageTolerance(num, address);
       persistSettings({ slippageTolerance: num });
     }
-  };
-
-  const handleDeadlineChange = (val: number) => {
-    if (!address) return;
-    setDeadline(val);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(`othelio_deadline_${address.toLowerCase()}`, val.toString());
-    }
-    persistSettings({ deadlineMinutes: val });
-  };
-
-  const handleMevToggle = () => {
-    if (!address) return;
-    const next = !mevProtection;
-    setMevProtection(next);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(`othelio_mev_${address.toLowerCase()}`, next.toString());
-    }
-    persistSettings({ mevProtection: next });
   };
 
   // Guard: If wallet is not connected or session is not authenticated, render connection prompt
@@ -643,85 +602,6 @@ export default function SettingsPage() {
                 Custom buffer active ({customRiskBuffer || 30}%)
               </span>
             )}
-          </div>
-        </div>
-
-        {/* Transaction Expiry & MEV Policy Block */}
-        <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "16px", padding: "24px" }}>
-          <div className="section-title" style={{ marginBottom: "16px" }}>
-            <div>
-              <h2>Transaction expiry & MEV policy</h2>
-              <p>Control order deadline thresholds and private transaction routing for basket execution.</p>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "20px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <strong style={{ fontSize: "13px", color: "var(--ink)" }}>Transaction Deadline (Execution Speed)</strong>
-                <p style={{ fontSize: "11px", color: "var(--muted-ink)", margin: "2px 0 0" }}>
-                  Transactions revert automatically if not confirmed within this window.
-                </p>
-              </div>
-              <div style={{ display: "flex", gap: "8px" }}>
-                {[10, 20, 30].map((mins) => (
-                  <button
-                    key={mins}
-                    type="button"
-                    onClick={() => handleDeadlineChange(mins)}
-                    style={{
-                      minHeight: "36px",
-                      padding: "0 14px",
-                      borderRadius: "9px",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      border: deadline === mins ? "1px solid #d7ff46" : "1px solid var(--line)",
-                      background: deadline === mins ? "#d7ff46" : "var(--panel-2)",
-                      color: deadline === mins ? "#10110f" : "var(--ink)",
-                    }}
-                  >
-                    {mins}m
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ borderTop: "1px solid var(--line)", paddingTop: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <strong style={{ fontSize: "13px", color: "var(--ink)" }}>MEV / Front-Running Protection (Account Security)</strong>
-                <p style={{ fontSize: "11px", color: "var(--muted-ink)", margin: "2px 0 0" }}>
-                  Route rebalance transactions through private mempools to prevent sandwich attacks.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleMevToggle}
-                style={{
-                  width: "44px",
-                  height: "24px",
-                  borderRadius: "12px",
-                  background: mevProtection ? "#d7ff46" : "var(--panel-2)",
-                  border: "1px solid var(--line)",
-                  cursor: "pointer",
-                  position: "relative",
-                  transition: "background 0.2s ease",
-                }}
-              >
-                <div
-                  style={{
-                    width: "18px",
-                    height: "18px",
-                    borderRadius: "50%",
-                    background: mevProtection ? "#10110f" : "var(--muted-ink)",
-                    position: "absolute",
-                    top: "2px",
-                    left: mevProtection ? "22px" : "2px",
-                    transition: "left 0.2s ease",
-                  }}
-                />
-              </button>
-            </div>
           </div>
         </div>
 

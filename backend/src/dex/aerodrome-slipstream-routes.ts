@@ -1,12 +1,15 @@
-import { CONTRACT_B20_TOKENS } from '@othelio/shared';
+import { BASE_LAUNCH_B20_TOKENS } from '@othelio/shared';
 import { isAddress } from 'viem';
 
-export const BASE_AERODROME_SLIPSTREAM_ROUTER = '0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5';
+export const BASE_AERODROME_SLIPSTREAM_ROUTER = '0x698Cb2b6dd822994581fEa6eA4Fc755d1363A92F';
 export const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 /** Local-only MockDEXRouter installed by the Anvil fixture process when chainId is 31337. */
 export const LOCAL_AERODROME_SLIPSTREAM_ROUTER = '0xBD606f1dAE0285D55113eFC11501677B2221A4dd';
 
-export const CANDIDATE_TICK_SPACINGS = [100, 200, 500, 2000] as const;
+/** Factory spacings checked during launch discovery. */
+export const CANDIDATE_TICK_SPACINGS = [1, 10, 50, 100, 200, 500, 2000] as const;
+/** One reviewed, executable USDC pool per launch asset, in launch-list order. */
+export const BASE_LAUNCH_USDC_TICK_SPACINGS = [10, 10, 10, 10, 10, 10, 200] as const;
 
 export interface AerodromeSlipstreamRoute {
   chainId: 31337 | 8453;
@@ -18,23 +21,22 @@ export interface AerodromeSlipstreamRoute {
 
 /**
  * Reviewed default Aerodrome Slipstream routes on Base Mainnet (chainId 8453).
- * Sourced directly from contract B20 constants across candidate tick spacings [100, 200, 500, 2000].
+ * Each entry is the single pool that passed the release-size executable quote
+ * check; do not add discovered-but-unreviewed pools here.
  */
-export const DEFAULT_AERODROME_SLIPSTREAM_ROUTES: AerodromeSlipstreamRoute[] = CONTRACT_B20_TOKENS.flatMap((tokenAddress) =>
-  CANDIDATE_TICK_SPACINGS.map((tickSpacing) => ({
+export const DEFAULT_AERODROME_SLIPSTREAM_ROUTES: AerodromeSlipstreamRoute[] = BASE_LAUNCH_B20_TOKENS.map((tokenAddress, index) => ({
     chainId: 8453 as const,
     token0: BASE_USDC_ADDRESS,
     token1: tokenAddress,
-    tickSpacing,
+    tickSpacing: BASE_LAUNCH_USDC_TICK_SPACINGS[index],
     enabled: true,
-  }))
-);
+  }));
 
 /**
  * Explicit local-development manifest. These routes target only the deployed
  * MockDEXRouter and must never be promoted to a production chain.
  */
-export const LOCAL_AERODROME_SLIPSTREAM_ROUTES: AerodromeSlipstreamRoute[] = CONTRACT_B20_TOKENS.map((tokenAddress) => ({
+export const LOCAL_AERODROME_SLIPSTREAM_ROUTES: AerodromeSlipstreamRoute[] = BASE_LAUNCH_B20_TOKENS.map((tokenAddress) => ({
   chainId: 31337,
   token0: BASE_USDC_ADDRESS,
   token1: tokenAddress,

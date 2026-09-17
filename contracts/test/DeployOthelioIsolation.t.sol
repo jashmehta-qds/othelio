@@ -44,7 +44,7 @@ contract DeployOthelioIsolationTest is Test {
 
     function testGovernanceMustExplicitlyAcceptOwnership() public {
         address governance = makeAddr("governance");
-        OthelioAssetRegistry registry = new OthelioAssetRegistry(address(this), address(0));
+        OthelioAssetRegistry registry = new OthelioAssetRegistry(address(this));
         OthelioAerodromeRouteRegistry routeRegistry =
             new OthelioAerodromeRouteRegistry(address(this), address(new LocalMockAerodromeFactory()));
 

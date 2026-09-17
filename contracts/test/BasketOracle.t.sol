@@ -54,7 +54,7 @@ contract BasketOracleTest is Test {
     MockV3Aggregator public feedUSDC;
 
     function setUp() public {
-        registry = new OthelioAssetRegistry(owner, address(0));
+        registry = new OthelioAssetRegistry(owner);
         oracle = new BasketOracle(address(registry));
 
         feedNVDA = new MockV3Aggregator(8, 120 * 1e8); // $120.00

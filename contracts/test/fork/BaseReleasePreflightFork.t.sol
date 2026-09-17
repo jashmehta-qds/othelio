@@ -25,7 +25,7 @@ contract BaseReleasePreflightForkTest is Test {
     uint256 private constant DEPLOYER_PRIVATE_KEY = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
     address private constant GOVERNANCE = 0x0000000000000000000000000000000000009999;
     address private constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
-    address private constant QUOTER = 0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a;
+    address private constant QUOTER = 0x514c8B5f54112481E28028F1166Bd78501089259;
 
     function testFork_ProductionLaunchManifestAndB20Execution() public {
         if (!vm.envOr("REQUIRE_BASE_RELEASE_TESTS", false)) {
@@ -51,6 +51,7 @@ contract BaseReleasePreflightForkTest is Test {
         (address[] memory tokens,) = OthelioDeploymentAssets.tokensAndBaseFeeds();
         for (uint256 i; i < tokens.length; i++) {
             assertTrue(registry.isSupported(block.chainid, tokens[i]), "launch B20 not configured");
+            assertTrue(registry.isVerifiedCoinbaseB20(block.chainid, tokens[i]), "launch asset is not initialized B20");
             _approvedTick(routes, USDC, tokens[i]);
         }
 
@@ -107,7 +108,7 @@ contract BaseReleasePreflightForkTest is Test {
         view
         returns (int24)
     {
-        int24[4] memory ticks = [int24(100), int24(200), int24(500), int24(2000)];
+        int24[7] memory ticks = [int24(1), int24(10), int24(50), int24(100), int24(200), int24(500), int24(2000)];
         for (uint256 i; i < ticks.length; i++) {
             try routes.requireApprovedPool(block.chainid, tokenA, tokenB, ticks[i]) returns (address, address) {
                 return ticks[i];

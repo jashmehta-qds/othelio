@@ -10,7 +10,7 @@ import {
 } from '../aerodrome-slipstream-routes';
 import { getLocalAssetMarket } from '../local-anvil-market';
 
-const AERODROME_QUOTER_ADDRESS = '0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a' as const;
+const AERODROME_QUOTER_ADDRESS = '0x514c8B5f54112481E28028F1166Bd78501089259' as const;
 const AERODROME_QUOTER_ABI = parseAbi([
   'function quoteExactInput(bytes path, uint256 amountIn) external returns (uint256 amountOut, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList, uint256 gasEstimate)',
 ]);

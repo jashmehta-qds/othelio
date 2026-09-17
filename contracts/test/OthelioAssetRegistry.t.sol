@@ -2,23 +2,10 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {OthelioAssetRegistry, ICoinbaseRegistry} from "../src/registry/OthelioAssetRegistry.sol";
-
-contract MockCoinbaseRegistry is ICoinbaseRegistry {
-    mapping(address => bool) public registeredTokens;
-
-    function setRegistered(address token, bool registered) external {
-        registeredTokens[token] = registered;
-    }
-
-    function isRegistered(address token) external view override returns (bool) {
-        return registeredTokens[token];
-    }
-}
+import {OthelioAssetRegistry} from "../src/registry/OthelioAssetRegistry.sol";
 
 contract OthelioAssetRegistryTest is Test {
     OthelioAssetRegistry public registry;
-    MockCoinbaseRegistry public mockCoinbaseRegistry;
 
     address public owner = address(0x111);
     address public user = address(0x222);
@@ -26,9 +13,7 @@ contract OthelioAssetRegistryTest is Test {
     address public feedNVDA = address(0x444);
 
     function setUp() public {
-        mockCoinbaseRegistry = new MockCoinbaseRegistry();
-        registry = new OthelioAssetRegistry(owner, address(mockCoinbaseRegistry));
-        mockCoinbaseRegistry.setRegistered(tokenNVDA, true);
+        registry = new OthelioAssetRegistry(owner);
     }
 
     function testConfigureAssetByOwner() public {
@@ -51,18 +36,10 @@ contract OthelioAssetRegistryTest is Test {
         registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 18, 8, true);
     }
 
-    function testRejectsUnregisteredCoinbaseB20() public {
-        address unregistered = address(0x999);
-        vm.prank(owner);
-        vm.expectRevert("UNREGISTERED_COINBASE_B20");
-        registry.configure(block.chainid, unregistered, feedNVDA, true, 18, 8, true);
-    }
-
-    function testRejectsCoinbaseB20WhenRegistryIsMissing() public {
-        OthelioAssetRegistry missingRegistry = new OthelioAssetRegistry(owner, address(0));
-        vm.prank(owner);
-        vm.expectRevert("INVALID_COINBASE_REGISTRY");
-        missingRegistry.configure(block.chainid, tokenNVDA, feedNVDA, true, 18, 8, true);
+    function testOnlyOwnerCanClassifyCoinbaseB20() public {
+        vm.prank(user);
+        vm.expectRevert();
+        registry.configure(block.chainid, address(0x999), feedNVDA, true, 18, 8, true);
     }
 
     function testDisableAsset() public {
@@ -88,7 +65,6 @@ contract OthelioAssetRegistryTest is Test {
         address feedUSDC = address(0x888);
 
         vm.startPrank(owner);
-        mockCoinbaseRegistry.setRegistered(tokenAAPL, true);
         // Configure NVDA (B20)
         registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 18, 8, true);
         // Configure AAPL (B20)

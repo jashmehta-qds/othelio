@@ -24,12 +24,6 @@ contract LocalMockAerodromeFactory {
     function getPool(address, address, int24) external view returns (address) { return address(this); }
 }
 
-contract LocalMockCoinbaseRegistry {
-    mapping(address => bool) public registeredTokens;
-    function setRegistered(address token, bool registered) external { registeredTokens[token] = registered; }
-    function isRegistered(address token) external view returns (bool) { return registeredTokens[token]; }
-}
-
 /// @notice Anvil-only protocol deployment. It deploys the same Othelio protocol
 /// contracts as Base, but never mutates chain state with vm.etch; the separate
 /// local fixture process owns Anvil-only external-dependency simulation.
@@ -43,9 +37,8 @@ contract DeployLocalOthelio is Script {
         uint256 deployerPrivateKey = vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
         address deployer = vm.addr(deployerPrivateKey);
         vm.startBroadcast(deployerPrivateKey);
-        LocalMockCoinbaseRegistry coinbaseRegistry = new LocalMockCoinbaseRegistry();
         LocalMockAerodromeFactory canonicalFactory = new LocalMockAerodromeFactory();
-        OthelioAssetRegistry registry = new OthelioAssetRegistry(deployer, address(coinbaseRegistry));
+        OthelioAssetRegistry registry = new OthelioAssetRegistry(deployer);
         BasketOracle oracle = new BasketOracle(address(registry));
         OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(deployer, address(canonicalFactory));
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(BASE_AAVE_V3_POOL);
@@ -63,7 +56,6 @@ contract DeployLocalOthelio is Script {
         for (uint256 i; i < tokens.length; i++) {
             feeds[i] = address(new MockPriceFeed(OthelioDeploymentAssets.localPriceUsdE8(i)));
             supported[i] = true; tokenDecimals[i] = 18; feedDecimals[i] = 8; isB20[i] = true;
-            coinbaseRegistry.setRegistered(tokens[i], true);
             routeRegistry.setPoolApproval(block.chainid, BASE_USDC, tokens[i], 100, address(canonicalFactory), true);
         }
         registry.configureBatch(block.chainid, tokens, feeds, supported, tokenDecimals, feedDecimals, isB20);

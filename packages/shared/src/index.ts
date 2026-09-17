@@ -59,6 +59,20 @@ export const CONTRACT_B20_TOKENS = [
   '0xb2000000000000000000001e800a7f5189430cD0', // TSLAc
 ] as const;
 
+/**
+ * Initial Base launch subset. These assets have a reviewed, executable USDC
+ * route in the pinned Aerodrome Slipstream V3 deployment.
+ */
+export const BASE_LAUNCH_B20_TOKENS = [
+  CONTRACT_B20_TOKENS[0], // AAPLc
+  CONTRACT_B20_TOKENS[1], // AMZNc
+  CONTRACT_B20_TOKENS[4], // GOOGLc
+  CONTRACT_B20_TOKENS[6], // METAc
+  CONTRACT_B20_TOKENS[7], // MSFTc
+  CONTRACT_B20_TOKENS[8], // MSTRc
+  CONTRACT_B20_TOKENS[9], // NVDAc
+] as const;
+
 export const USDC_DECIMALS = 6;
 export const DEFAULT_TOKEN_DECIMALS = 18;
 

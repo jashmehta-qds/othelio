@@ -30,18 +30,6 @@ contract RecoveryToken is ERC20 {
     }
 }
 
-contract RecoveryCoinbaseRegistry {
-    mapping(address => bool) public registered;
-
-    function setRegistered(address token, bool registered_) external {
-        registered[token] = registered_;
-    }
-
-    function isRegistered(address token) external view returns (bool) {
-        return registered[token];
-    }
-}
-
 /// @dev Deliberately mimics the minimum Safe-facing surface but is never registered.
 contract LookalikeBasketAccount {
     function isOwner(address) external pure returns (bool) {
@@ -56,11 +44,9 @@ contract OthelioExecutionSafetyTest is Test {
     BasketOracle private oracle;
     OthelioPortfolioModule private module;
     OthelioSafeFactory private factory;
-    RecoveryCoinbaseRegistry private coinbaseRegistry;
 
     function setUp() public {
-        coinbaseRegistry = new RecoveryCoinbaseRegistry();
-        registry = new OthelioAssetRegistry(address(this), address(coinbaseRegistry));
+        registry = new OthelioAssetRegistry(address(this));
         oracle = new BasketOracle(address(registry));
         MockAavePool pool = new MockAavePool();
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(address(pool));
@@ -159,7 +145,6 @@ contract OthelioExecutionSafetyTest is Test {
         address nativeB20 = 0xB200000000000000000000000000000000000000;
         assertEq(nativeB20.code.length, 0);
 
-        coinbaseRegistry.setRegistered(nativeB20, true);
         registry.configure(block.chainid, nativeB20, address(0x1234), true, 18, 8, true);
         registry.configure(block.chainid, nativeB20, address(0x1234), false, 18, 8, true);
         assertFalse(registry.isSupported(block.chainid, nativeB20));

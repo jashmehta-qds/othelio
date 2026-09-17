@@ -26,14 +26,14 @@ interface IAerodromeQuoter {
 }
 
 contract AerodromeSlipstreamForkTest is Test {
-    address private constant BASE_AERODROME_ROUTER = 0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5;
-    bytes32 private constant BASE_AERODROME_ROUTER_CODEHASH = 0x8ca2876cc2c509da1648ef2ad21a8849c261cf7316b675119b98ba298c8657e7;
-    address private constant BASE_AERODROME_QUOTER = 0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a;
-    address private constant BASE_AERODROME_FACTORY = 0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A;
+    address private constant BASE_AERODROME_ROUTER = 0x698Cb2b6dd822994581fEa6eA4Fc755d1363A92F;
+    bytes32 private constant BASE_AERODROME_ROUTER_CODEHASH = 0xfedc4e21e1097b0ec1b4f1aa901cf645c22f9e5d297727b0f37275ee1d083df4;
+    address private constant BASE_AERODROME_QUOTER = 0x514c8B5f54112481E28028F1166Bd78501089259;
+    address private constant BASE_AERODROME_FACTORY = 0xf8f2eB4940CFE7d13603DDDD87f123820Fc061Ef;
     address private constant BASE_USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
-    address private constant BASE_WETH = 0x4200000000000000000000000000000000000006;
-    address private constant BASE_AERO = 0x940181a94A35A4569E4529A3CDfB74e38FD98631;
-    uint256 private constant BASE_FORK_BLOCK = 30_000_000;
+    address private constant BASE_AAPL = 0xb200000000000000000000C2e324d24d7eEcd1fb;
+    address private constant BASE_GOOGL = 0xb2000000000000000000002D0BA3164cc74f58B7;
+    uint256 private constant BASE_FORK_BLOCK = 51_166_844;
 
     address private owner = address(0xA11CE);
 
@@ -61,7 +61,7 @@ contract AerodromeSlipstreamForkTest is Test {
         vm.createSelectFork(rpcUrl, BASE_FORK_BLOCK);
 
         vm.startPrank(owner);
-        OthelioAssetRegistry registry = new OthelioAssetRegistry(owner, address(0));
+        OthelioAssetRegistry registry = new OthelioAssetRegistry(owner);
         BasketOracle oracle = new BasketOracle(address(registry));
         OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(owner, BASE_AERODROME_FACTORY);
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(address(0x1111)); // mock placeholder for lending
@@ -84,18 +84,18 @@ contract AerodromeSlipstreamForkTest is Test {
         portfolio.setFactory(address(basketFactory));
         OthelioBasketAccount basket = OthelioBasketAccount(payable(basketFactory.createBasket("Fork basket")));
 
-        // Configure feeds: USDC = $1 (6 dec, 8 feed dec), WETH = $3000 (18 dec, 8 feed dec)
+        // Configure feeds: USDC = $1 (6 dec, 8 feed dec), AAPLc = $224.50.
         registry.configure(block.chainid, BASE_USDC, address(new MockPriceFeed(1e8)), true, 6, 8, false);
-        registry.configure(block.chainid, BASE_WETH, address(new MockPriceFeed(3000e8)), true, 18, 8, false);
+        registry.configure(block.chainid, BASE_AAPL, address(new MockPriceFeed(224_50e6)), true, 18, 8, true);
+        assertTrue(registry.isVerifiedCoinbaseB20(block.chainid, BASE_AAPL), "AAPLc is not an initialized B20");
 
-        // Approve pool
-        routeRegistry.setPoolApproval(block.chainid, BASE_USDC, BASE_WETH, 100, BASE_AERODROME_FACTORY, true);
+        routeRegistry.setPoolApproval(block.chainid, BASE_USDC, BASE_AAPL, 10, BASE_AERODROME_FACTORY, true);
         vm.stopPrank();
 
-        // Query real Aerodrome Quoter for 100 USDC -> WETH
-        bytes memory path = abi.encodePacked(BASE_USDC, int24(100), BASE_WETH);
+        // Query real Aerodrome Quoter for 100 USDC -> AAPLc.
+        bytes memory path = abi.encodePacked(BASE_USDC, int24(10), BASE_AAPL);
         (uint256 expectedOut,,,) = IAerodromeQuoter(BASE_AERODROME_QUOTER).quoteExactInput(path, 100e6);
-        assertGt(expectedOut, 0, "Quoter returned 0 output for USDC -> WETH");
+        assertGt(expectedOut, 0, "Quoter returned 0 output for USDC -> AAPLc");
 
         // Fund owner with USDC and execute fundAerodromePortfolio
         deal(BASE_USDC, owner, 100e6);
@@ -104,8 +104,8 @@ contract AerodromeSlipstreamForkTest is Test {
         routes[0] = AerodromeRoute({
             kind: AerodromeRouteKind.DIRECT,
             tokenIn: BASE_USDC,
-            tokenOut: BASE_WETH,
-            firstTickSpacing: 100,
+            tokenOut: BASE_AAPL,
+            firstTickSpacing: 10,
             secondTickSpacing: 0,
             amountIn: 100e6,
             minimumAmountOut: (expectedOut * 99) / 100 // 1% slippage
@@ -122,7 +122,7 @@ contract AerodromeSlipstreamForkTest is Test {
         );
         vm.stopPrank();
 
-        assertGt(IERC20(BASE_WETH).balanceOf(address(basket)), 0, "Basket did not receive WETH from direct swap");
+        assertGt(IERC20(BASE_AAPL).balanceOf(address(basket)), 0, "Basket did not receive AAPLc from direct swap");
     }
 
     function testFork_ViaUsdcAerodromeSwapExecution() public {
@@ -132,7 +132,7 @@ contract AerodromeSlipstreamForkTest is Test {
         vm.createSelectFork(rpcUrl, BASE_FORK_BLOCK);
 
         vm.startPrank(owner);
-        OthelioAssetRegistry registry = new OthelioAssetRegistry(owner, address(0));
+        OthelioAssetRegistry registry = new OthelioAssetRegistry(owner);
         BasketOracle oracle = new BasketOracle(address(registry));
         OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(owner, BASE_AERODROME_FACTORY);
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(address(0x1111));
@@ -155,32 +155,33 @@ contract AerodromeSlipstreamForkTest is Test {
         portfolio.setFactory(address(basketFactory));
         OthelioBasketAccount basket = OthelioBasketAccount(payable(basketFactory.createBasket("Fork basket")));
 
-        // Configure feeds: USDC = $1, WETH = $3000, AERO = $0.084
+        // Configure feeds: USDC = $1, AAPLc = $224.50, GOOGLc = $175.
         registry.configure(block.chainid, BASE_USDC, address(new MockPriceFeed(1e8)), true, 6, 8, false);
-        registry.configure(block.chainid, BASE_WETH, address(new MockPriceFeed(3000e8)), true, 18, 8, false);
-        registry.configure(block.chainid, BASE_AERO, address(new MockPriceFeed(8400000)), true, 18, 8, false);
+        registry.configure(block.chainid, BASE_AAPL, address(new MockPriceFeed(224_50e6)), true, 18, 8, true);
+        registry.configure(block.chainid, BASE_GOOGL, address(new MockPriceFeed(175e8)), true, 18, 8, true);
+        assertTrue(registry.isVerifiedCoinbaseB20(block.chainid, BASE_AAPL), "AAPLc is not an initialized B20");
+        assertTrue(registry.isVerifiedCoinbaseB20(block.chainid, BASE_GOOGL), "GOOGLc is not an initialized B20");
 
-        // Approve pools: WETH <-> USDC (tick 100) and USDC <-> AERO (tick 100)
-        routeRegistry.setPoolApproval(block.chainid, BASE_WETH, BASE_USDC, 100, BASE_AERODROME_FACTORY, true);
-        routeRegistry.setPoolApproval(block.chainid, BASE_USDC, BASE_AERO, 100, BASE_AERODROME_FACTORY, true);
+        routeRegistry.setPoolApproval(block.chainid, BASE_AAPL, BASE_USDC, 10, BASE_AERODROME_FACTORY, true);
+        routeRegistry.setPoolApproval(block.chainid, BASE_USDC, BASE_GOOGL, 10, BASE_AERODROME_FACTORY, true);
         vm.stopPrank();
 
-        // Query real Aerodrome Quoter for 0.01 WETH -> USDC -> AERO
-        bytes memory path = abi.encodePacked(BASE_WETH, int24(100), BASE_USDC, int24(100), BASE_AERO);
-        (uint256 expectedOut,,,) = IAerodromeQuoter(BASE_AERODROME_QUOTER).quoteExactInput(path, 0.01 ether);
-        assertGt(expectedOut, 0, "Quoter returned 0 output for WETH -> USDC -> AERO");
+        // Query real Aerodrome Quoter for AAPLc -> USDC -> GOOGLc.
+        bytes memory path = abi.encodePacked(BASE_AAPL, int24(10), BASE_USDC, int24(10), BASE_GOOGL);
+        (uint256 expectedOut,,,) = IAerodromeQuoter(BASE_AERODROME_QUOTER).quoteExactInput(path, 30_664_321);
+        assertGt(expectedOut, 0, "Quoter returned 0 output for AAPLc -> USDC -> GOOGLc");
 
-        // Fund basket with WETH and rebalance
-        deal(BASE_WETH, address(basket), 0.01 ether);
+        // Fund basket with AAPLc and rebalance.
+        deal(BASE_AAPL, address(basket), 30_664_321);
 
         AerodromeRoute[] memory routes = new AerodromeRoute[](1);
         routes[0] = AerodromeRoute({
             kind: AerodromeRouteKind.VIA_USDC,
-            tokenIn: BASE_WETH,
-            tokenOut: BASE_AERO,
-            firstTickSpacing: 100,
-            secondTickSpacing: 100,
-            amountIn: 0.01 ether,
+            tokenIn: BASE_AAPL,
+            tokenOut: BASE_GOOGL,
+            firstTickSpacing: 10,
+            secondTickSpacing: 10,
+            amountIn: 30_664_321,
             minimumAmountOut: expectedOut
         });
 
@@ -191,7 +192,7 @@ contract AerodromeSlipstreamForkTest is Test {
             block.timestamp + 300
         );
 
-        assertGt(IERC20(BASE_AERO).balanceOf(address(basket)), 0, "Basket did not receive AERO from 2-hop swap");
-        assertEq(IERC20(BASE_WETH).balanceOf(address(basket)), 0, "Basket still holds WETH after swap");
+        assertGt(IERC20(BASE_GOOGL).balanceOf(address(basket)), 0, "Basket did not receive GOOGLc from 2-hop swap");
+        assertEq(IERC20(BASE_AAPL).balanceOf(address(basket)), 0, "Basket still holds AAPLc after swap");
     }
 }

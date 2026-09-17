@@ -27,18 +27,6 @@ contract MockFactory {
     }
 }
 
-contract PortfolioCoinbaseRegistry {
-    mapping(address => bool) public registered;
-
-    function setRegistered(address token, bool registered_) external {
-        registered[token] = registered_;
-    }
-
-    function isRegistered(address token) external view returns (bool) {
-        return registered[token];
-    }
-}
-
 contract OthelioPortfolioModuleTest is Test {
     address private owner = address(0xA11CE);
     OthelioPortfolioModule private portfolio;
@@ -55,12 +43,10 @@ contract OthelioPortfolioModuleTest is Test {
     BasketOracle private oracle;
     OthelioAerodromeRouteRegistry private routeRegistry;
     MockDEXRouter private router;
-    PortfolioCoinbaseRegistry private coinbaseRegistry;
 
     function setUp() public {
         vm.startPrank(owner);
-        coinbaseRegistry = new PortfolioCoinbaseRegistry();
-        registry = new OthelioAssetRegistry(owner, address(coinbaseRegistry));
+        registry = new OthelioAssetRegistry(owner);
         oracle = new BasketOracle(address(registry));
         pool = new MockAavePool();
         adapter = new OthelioAaveV3Adapter(address(pool));
@@ -173,7 +159,6 @@ contract OthelioPortfolioModuleTest is Test {
         address nativeB20 = 0xB200000000000000000000000000000000000000;
         assertEq(nativeB20.code.length, 0);
         MockPriceFeed nativeB20Feed = new MockPriceFeed(1e8);
-        coinbaseRegistry.setRegistered(nativeB20, true);
 
         vm.prank(owner);
         registry.configure(block.chainid, nativeB20, address(nativeB20Feed), true, 18, 8, true);
