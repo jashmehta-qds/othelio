@@ -10,6 +10,25 @@ use sqlx::PgPool;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
+const BASE_FORK_CHAIN_ID: i64 = 31337;
+const BASE_MAINNET_CHAIN_ID: i64 = 8453;
+
+fn is_supported_chain_id(chain_id: i64) -> bool {
+    matches!(chain_id, BASE_FORK_CHAIN_ID | BASE_MAINNET_CHAIN_ID)
+}
+
+#[cfg(test)]
+mod network_tests {
+    use super::{is_supported_chain_id, BASE_FORK_CHAIN_ID, BASE_MAINNET_CHAIN_ID};
+
+    #[test]
+    fn supports_only_base_fork_and_base_mainnet() {
+        assert!(is_supported_chain_id(BASE_FORK_CHAIN_ID));
+        assert!(is_supported_chain_id(BASE_MAINNET_CHAIN_ID));
+        assert!(!is_supported_chain_id(84532));
+    }
+}
+
 abigen!(
     IOthelioEvents,
     r#"[
@@ -52,8 +71,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://othelio:othelio@localhost:5432/othelio".to_string());
-    let rpc_url = std::env::var("RPC_URL").unwrap_or_else(|_| "https://mainnet.base.org".to_string());
-    let chain_id: i64 = std::env::var("CHAIN_ID").unwrap_or_else(|_| "8453".to_string()).parse()?;
+    let rpc_url = std::env::var("RPC_URL").expect("RPC_URL must be configured");
+    let chain_id: i64 = std::env::var("CHAIN_ID").unwrap_or_else(|_| BASE_MAINNET_CHAIN_ID.to_string()).parse()?;
+    if !is_supported_chain_id(chain_id) {
+        return Err(format!("Unsupported chain ID: {}. Expected 31337 or 8453.", chain_id).into());
+    }
     let factory_addr_str = std::env::var("FACTORY_ADDRESS").unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
     let module_addr_str = std::env::var("MODULE_ADDRESS").unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
     let registry_addr_str = std::env::var("ASSET_REGISTRY_ADDRESS").unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
@@ -113,7 +135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(latest_block) => {
                 let latest_block = latest_block.as_u64();
 
-                if chain_id != 31337 && latest_block > current_block + 50000 {
+                if chain_id == BASE_MAINNET_CHAIN_ID && latest_block > current_block + 50000 {
                     let target_block = latest_block.saturating_sub(100);
                     info!("[Rust Indexer] Fast-forwarding indexer from block {} to latest block {}...", current_block, target_block);
                     current_block = target_block;
@@ -179,7 +201,7 @@ async fn resolve_start_block(pool: &PgPool, chain_id: i64, latest_block: u64) ->
         }
     }
 
-    if chain_id == 31337 {
+    if chain_id == BASE_FORK_CHAIN_ID {
         0
     } else if latest_block > 1000 {
         latest_block - 1000

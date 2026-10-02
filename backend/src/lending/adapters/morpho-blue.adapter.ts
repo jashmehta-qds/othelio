@@ -12,8 +12,7 @@ const MORPHO_BLUE_ABI = parseAbi([
 
 const MORPHO_BLUE_POOLS: Record<number, string> = {
   8453: '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb',   // Base Mainnet Morpho Blue
-  84532: '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb',  // Base Sepolia
-  31337: '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb',  // Anvil Mainnet Fork (Base Morpho Blue)
+  31337: '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb',  // Local Base fork
 };
 
 const DEFAULT_MARKET_PARAMS = {
@@ -24,19 +23,19 @@ const DEFAULT_MARKET_PARAMS = {
   lltv: 865000000000000000n,
 };
 
-const RPC_URLS: Record<number, string> = {
-  8453: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-  84532: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
-  31337: process.env.ANVIL_RPC_URL || 'http://127.0.0.1:8545',
+const RPC_URLS: Record<number, string | undefined> = {
+  8453: process.env.BASE_RPC_URL,
+  31337: process.env.ANVIL_RPC_URL || process.env.RPC_URL || 'http://127.0.0.1:8545',
 };
 
 @Injectable()
 export class MorphoBlueLendingAdapter implements ILendingAdapter {
   readonly name = 'MorphoBlue';
-  readonly supportedChainIds = [8453, 84532, 31337];
+  readonly supportedChainIds = [31337, 8453];
 
   async getQuote(params: LendingQuoteParams): Promise<LendingQuoteResult> {
-    const targetPool = MORPHO_BLUE_POOLS[params.chainId] || MORPHO_BLUE_POOLS[31337];
+    const targetPool = MORPHO_BLUE_POOLS[params.chainId];
+    if (!targetPool) throw new Error(`Morpho Blue is not configured for chain ${params.chainId}`);
     const amount = BigInt(params.amount);
     let calldata = '0x';
 
@@ -92,7 +91,8 @@ export class MorphoBlueLendingAdapter implements ILendingAdapter {
     assetAddress: string,
   ): Promise<{ supplyApy: number; borrowApy: number; isAvailable: boolean }> {
     try {
-      const rpcUrl = RPC_URLS[chainId] || RPC_URLS[31337];
+      const rpcUrl = RPC_URLS[chainId];
+      if (!rpcUrl) throw new Error(`No RPC is configured for chain ${chainId}`);
       const client = createPublicClient({ transport: http(rpcUrl) });
       const id = '0x0000000000000000000000000000000000000000000000000000000000000000';
 

@@ -1,0 +1,60 @@
+name: othelio-fork
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: othelio
+      POSTGRES_PASSWORD: othelio
+      POSTGRES_DB: othelio
+    ports: [ "5433:5432" ]
+    volumes:
+      - othelio-postgres-fork:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U othelio" ]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  database-migrations:
+    image: postgres:17-alpine
+    volumes:
+      - ./database/migrations:/migrations:ro
+    environment:
+      DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
+    entrypoint:
+      - sh
+      - -ec
+      - >-
+        psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())";
+        for migration in /migrations/*.sql; do
+          name=$$(basename "$$migration");
+          applied=$$(psql "$$DATABASE_URL" -tAc "SELECT 1 FROM schema_migrations WHERE name = '$$name'");
+          if [ "$$applied" = "1" ]; then
+            echo "Skipping applied migration $$name";
+          else
+            echo "Applying $$name";
+            psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$$migration";
+            psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (name) VALUES ('$$name') ON CONFLICT (name) DO NOTHING";
+          fi;
+        done
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  indexer:
+    build:
+      context: ./indexer
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
+      RPC_URL: http://host.docker.internal:8545
+      CHAIN_ID: "31337"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  othelio-postgres-fork:

@@ -13,14 +13,12 @@ const MOONWELL_MTOKEN_ABI = parseAbi([
 
 const MOONWELL_POOLS: Record<number, string> = {
   8453: '0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22',   // Base Mainnet mWUSDC
-  84532: '0x3aD7860B95B1Dae7a057dC689886a0FBC8C60447',  // Base Sepolia
-  31337: '0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22',  // Anvil Mainnet Fork (Base mWUSDC)
+  31337: '0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22',  // Local Base fork
 };
 
-const RPC_URLS: Record<number, string> = {
-  8453: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-  84532: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
-  31337: process.env.ANVIL_RPC_URL || 'http://127.0.0.1:8545',
+const RPC_URLS: Record<number, string | undefined> = {
+  8453: process.env.BASE_RPC_URL,
+  31337: process.env.ANVIL_RPC_URL || process.env.RPC_URL || 'http://127.0.0.1:8545',
 };
 
 const SECONDS_PER_YEAR = 31536000;
@@ -28,10 +26,11 @@ const SECONDS_PER_YEAR = 31536000;
 @Injectable()
 export class MoonwellLendingAdapter implements ILendingAdapter {
   readonly name = 'Moonwell';
-  readonly supportedChainIds = [8453, 84532, 31337];
+  readonly supportedChainIds = [31337, 8453];
 
   async getQuote(params: LendingQuoteParams): Promise<LendingQuoteResult> {
-    const targetPool = MOONWELL_POOLS[params.chainId] || MOONWELL_POOLS[31337];
+    const targetPool = MOONWELL_POOLS[params.chainId];
+    if (!targetPool) throw new Error(`Moonwell is not configured for chain ${params.chainId}`);
     const amount = BigInt(params.amount);
     let calldata = '0x';
 
@@ -82,7 +81,8 @@ export class MoonwellLendingAdapter implements ILendingAdapter {
     assetAddress: string,
   ): Promise<{ supplyApy: number; borrowApy: number; isAvailable: boolean }> {
     try {
-      const rpcUrl = RPC_URLS[chainId] || RPC_URLS[31337];
+      const rpcUrl = RPC_URLS[chainId];
+      if (!rpcUrl) throw new Error(`No RPC is configured for chain ${chainId}`);
       const client = createPublicClient({ transport: http(rpcUrl) });
 
       const supplyRatePerSec = (await client.readContract({

@@ -28,8 +28,9 @@ const ERC20_TRANSFER_ABI = [
 
 @Injectable()
 export class PrepareService {
-  async prepareOperation(operation: string, bodyInput: any) {
+  async prepareOperation(operationInput: string, bodyInput: any) {
     const validOperations = ['deposit', 'mint', 'redeem', 'withdraw', 'rebalance'];
+    const operation = operationInput;
     if (!validOperations.includes(operation)) {
       throw new NotFoundException({ error: 'UNSUPPORTED_OPERATION' });
     }

@@ -22,7 +22,7 @@ export class LendingManagerService {
     winningQuote: LendingQuoteResult | null;
     allQuotes: LendingQuoteResult[];
   }> {
-    this.assertActionCanBePrepared(params);
+    await this.assertActionCanBePrepared(params);
     const errors: string[] = [];
     const quotePromises = this.adapters.map(async (adapter) => {
       if (!adapter || !adapter.supportedChainIds || !adapter.supportedChainIds.includes(params.chainId)) {
@@ -71,7 +71,7 @@ export class LendingManagerService {
     };
   }
 
-  private assertActionCanBePrepared(params: LendingQuoteParams) {
+  private async assertActionCanBePrepared(params: LendingQuoteParams) {
     if (params.action === 'SUPPLY' || params.action === 'BORROW' || params.action === 'REINVEST') {
       throw new ForbiddenException({
         error: 'ACTION_DISABLED',
@@ -99,6 +99,7 @@ export class LendingManagerService {
           marketAddress: params.marketAddress,
         });
       }
+
     }
   }
 

@@ -18,7 +18,7 @@ interface BorrowModalProps {
 
 export function BorrowModal({ basket, mode, moduleAddress, onClose }: BorrowModalProps) {
   const chainId = useChainId();
-  const activeChainId = chainId && (chainId in CONTRACT_ADDRESSES) ? (chainId as 31337 | 8453 | 84532) : 31337;
+  const activeChainId = chainId && (chainId in CONTRACT_ADDRESSES) ? (chainId as 31337 | 8453) : 31337;
 
   const [amountInput, setAmountInput] = useState<string>("");
   const { writeContractAsync, isPending, isSuccess, error } = useWriteContract();

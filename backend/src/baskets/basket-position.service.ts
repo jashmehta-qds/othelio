@@ -10,7 +10,7 @@ import {
 import { createPublicClient, http, parseAbi } from 'viem';
 import { DatabaseService } from '../database/database.service';
 import { AAVE_RPC_URLS, AAVE_V3_POOLS } from '../lending/adapters/aave-v3.adapter';
-import { getLocalAssetMarket } from '../dex/local-anvil-market';
+import { rpcUrlForChain } from '../config/network-runtime';
 
 const ERC20_ABI = parseAbi([
   'function balanceOf(address account) view returns (uint256)',
@@ -65,7 +65,12 @@ export class BasketPositionService {
   ) {}
 
   protected getClient(chainId: number): PositionClient | null {
-    const rpcUrl = AAVE_RPC_URLS[chainId];
+    let rpcUrl: string | undefined;
+    try {
+      rpcUrl = rpcUrlForChain(chainId) ?? AAVE_RPC_URLS[chainId];
+    } catch {
+      return null;
+    }
     return rpcUrl ? createPublicClient({ transport: http(rpcUrl) }) : null;
   }
 
@@ -146,6 +151,26 @@ export class BasketPositionService {
       ? await this.getAaveOracle(client, poolAddress, blockNumber, issues)
       : null;
 
+    const dbPrices = new Map<string, bigint>();
+    try {
+      const priceRows = await this.db.query(
+        `SELECT DISTINCT ON (LOWER(asset_address))
+           LOWER(asset_address) AS asset_address,
+           price_usd_e8
+         FROM asset_price_observations
+         WHERE chain_id = $1
+         ORDER BY LOWER(asset_address), observed_at DESC`,
+        [chainId],
+      );
+      for (const row of priceRows.rows) {
+        if (row.price_usd_e8) {
+          dbPrices.set(row.asset_address.toLowerCase(), BigInt(row.price_usd_e8));
+        }
+      }
+    } catch {
+      // Ignore DB price resolution errors
+    }
+
     const reads = await Promise.all(
       [...universe.values()].map((assetAddress) => this.readAsset(
         client,
@@ -156,6 +181,7 @@ export class BasketPositionService {
         reserveAssets.some((reserve) => reserve.toLowerCase() === assetAddress.toLowerCase()),
         poolAddress,
         oracle,
+        dbPrices,
         blockNumber,
         issues,
       )),
@@ -429,6 +455,7 @@ export class BasketPositionService {
     isAaveReserve: boolean,
     poolAddress: Address | undefined,
     oracle: { address: Address; baseUnit: bigint } | null,
+    dbPrices: Map<string, bigint>,
     blockNumber: bigint,
     issues: string[],
   ): Promise<AssetRead> {
@@ -479,11 +506,8 @@ export class BasketPositionService {
       if (debt === null) issues.push(`AAVE_DEBT_UNAVAILABLE:${poolAddress}:${assetAddress}`);
     }
 
-    let priceUsdE8: bigint | null = null;
-    if (chainId === 31337) {
-      priceUsdE8 = getLocalAssetMarket(assetAddress)?.priceUsdE8 ?? null;
-    }
-    if (isAaveReserve && oracle) {
+    let priceUsdE8: bigint | null = dbPrices.get(assetAddress.toLowerCase()) ?? null;
+    if (priceUsdE8 === null && isAaveReserve && oracle) {
       try {
         const rawPrice = await client.readContract({
           address: oracle.address,

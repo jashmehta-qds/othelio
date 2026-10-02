@@ -54,7 +54,8 @@ function displayAverageCost(rawMicroPerBaseUnit: string | null, decimals: number
 }
 
 export function BasketDetail({ basket: fallbackBasket, initialAction = null }: { basket: Basket; initialAction?: BasketAction }) {
-  const chainId = useChainId() || 31337;
+  const defaultChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 31337);
+  const chainId = useChainId() || defaultChainId;
   const { address, isConnected } = useAccount();
   const isWalletRestoring = useWalletRestoring();
   const [action, setAction] = useState<BasketAction>(initialAction);

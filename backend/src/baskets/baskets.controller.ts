@@ -106,8 +106,8 @@ export class BasketsController {
   }
 
   @Get('assets/supported')
-  async getSupportedAssets() {
-    return this.basketsService.getAssets();
+  async getSupportedAssets(@Query('chainId') chainId?: string) {
+    return this.basketsService.getAssets(chainId);
   }
 
   @Post(':address/quote-swaps')

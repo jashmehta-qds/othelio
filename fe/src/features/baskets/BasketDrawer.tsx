@@ -477,9 +477,9 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
   const isMint = kind === "mint";
   const { address: userAddress, isConnected } = useAccount();
   const chainId = useChainId();
-  const chainConfig = CONTRACT_ADDRESSES[chainId as keyof typeof CONTRACT_ADDRESSES] || CONTRACT_ADDRESSES[8453];
-  const usdcAddress = (chainConfig.usdc || CONTRACT_ADDRESSES[8453].usdc) as `0x${string}`;
-  const moduleAddr = (chainConfig.module || CONTRACT_ADDRESSES[8453].module) as `0x${string}`;
+  const chainConfig = CONTRACT_ADDRESSES[chainId as keyof typeof CONTRACT_ADDRESSES];
+  const usdcAddress = chainConfig?.usdc as `0x${string}` | undefined;
+  const moduleAddr = chainConfig?.module as `0x${string}` | undefined;
 
   const [withdrawInUsdc, setWithdrawInUsdc] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -569,6 +569,10 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
     setActionError(null);
     if (!isConnected || !userAddress) {
       alert("Please connect your Web3 wallet first.");
+      return;
+    }
+    if (!chainConfig || !usdcAddress || !moduleAddr) {
+      setActionError(`Othelio is not configured for chain ${chainId}.`);
       return;
     }
 

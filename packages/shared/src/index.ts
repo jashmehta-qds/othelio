@@ -1,4 +1,16 @@
 export { addressSchema, chainIdSchema } from "./primitives.js";
+export {
+  BASE_FORK_CHAIN_ID,
+  BASE_MAINNET_CHAIN_ID,
+  SUPPORTED_CHAIN_IDS,
+  isSupportedChainId,
+  networkKindForChainId,
+} from "./networks.js";
+export type {
+  NetworkDeploymentAddresses,
+  NetworkKind,
+  SupportedChainId,
+} from "./networks.js";
 export const basketFactoryAbi = [
   { type: "event", name: "BasketCreated", inputs: [
     { indexed: true, name: "basket", type: "address" },

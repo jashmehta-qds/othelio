@@ -6,7 +6,8 @@ import { ActivityEventRow } from "@/features/baskets/ActivityEventRow";
 import { useWalletRestoring } from "@/hooks/useWalletRestoring";
 
 export default function ActivityPage() {
-  const chainId = useChainId() || 31337;
+  const defaultChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 31337);
+  const chainId = useChainId() || defaultChainId;
   const { address, isConnected } = useAccount();
   const isWalletRestoring = useWalletRestoring();
   const { data: activityRes, isLoading } = useAllActivity(chainId, Boolean(isConnected && address));

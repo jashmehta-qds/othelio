@@ -18,7 +18,7 @@ interface AaveActionModalProps {
 
 export function AaveActionModal({ basket, initialMode = "borrow", moduleAddress, onClose }: AaveActionModalProps) {
   const chainId = useChainId();
-  const activeChainId = chainId && (chainId in CONTRACT_ADDRESSES) ? (chainId as 31337 | 8453 | 84532) : 31337;
+  const activeChainId = chainId && (chainId in CONTRACT_ADDRESSES) ? (chainId as 31337 | 8453) : 31337;
 
   const [mode, setMode] = useState<"borrow" | "repay" | "supply" | "withdraw">(initialMode);
   const [amountInput, setAmountInput] = useState<string>("");

@@ -48,9 +48,10 @@ describe('aerodrome-slipstream-routes', () => {
     }
   });
 
-  it('loads only reviewed Base routes plus local fixtures', () => {
+  it('loads reviewed Base routes for both Base runtime environments', () => {
     const routes = getAllAerodromeSlipstreamRoutes();
     expect(routes).toHaveLength(7 + 7);
+    expect(routes.filter((route) => route.chainId === 31337)).toHaveLength(7);
   });
 
   it('resolves routes bidirectionally regardless of address case', () => {

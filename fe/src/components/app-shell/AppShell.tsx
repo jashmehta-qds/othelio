@@ -62,9 +62,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               params: [
                 {
                   chainId: hexChainId,
-                  chainName: targetChainId === 31337 ? "Anvil Local" : targetChainId === 84532 ? "Base Sepolia" : "Base Mainnet",
+                  chainName: targetChainId === 31337 ? "Anvil Local" : "Base Mainnet",
                   nativeCurrency: { name: "Ethereum", symbol: "ETH", decimals: 18 },
-                  rpcUrls: [targetChainId === 31337 ? "http://127.0.0.1:8545" : targetChainId === 84532 ? "https://sepolia.base.org" : "https://mainnet.base.org"],
+                  rpcUrls: [targetChainId === 31337 ? "http://127.0.0.1:8545" : "https://mainnet.base.org"],
                 },
               ],
             });
@@ -177,7 +177,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   // Baskets query to calculate live sum NAV for connected user
-  const { data: basketsResponse, isLoading: isBasketsLoading } = useBasketsList(31337, isConnected ? address : undefined);
+  const { data: basketsResponse, isLoading: isBasketsLoading } = useBasketsList(targetChainId, isConnected ? address : undefined);
 
   const handleDisconnect = () => {
     // Detail/activity responses are wallet-specific in the app. Remove them

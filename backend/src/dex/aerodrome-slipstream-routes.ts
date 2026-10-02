@@ -3,8 +3,6 @@ import { isAddress } from 'viem';
 
 export const BASE_AERODROME_SLIPSTREAM_ROUTER = '0x698Cb2b6dd822994581fEa6eA4Fc755d1363A92F';
 export const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-/** Local-only MockDEXRouter installed by the Anvil fixture process when chainId is 31337. */
-export const LOCAL_AERODROME_SLIPSTREAM_ROUTER = '0xBD606f1dAE0285D55113eFC11501677B2221A4dd';
 
 /** Factory spacings checked during launch discovery. */
 export const CANDIDATE_TICK_SPACINGS = [1, 10, 50, 100, 200, 500, 2000] as const;
@@ -32,18 +30,6 @@ export const DEFAULT_AERODROME_SLIPSTREAM_ROUTES: AerodromeSlipstreamRoute[] = B
     enabled: true,
   }));
 
-/**
- * Explicit local-development manifest. These routes target only the deployed
- * MockDEXRouter and must never be promoted to a production chain.
- */
-export const LOCAL_AERODROME_SLIPSTREAM_ROUTES: AerodromeSlipstreamRoute[] = BASE_LAUNCH_B20_TOKENS.map((tokenAddress) => ({
-  chainId: 31337,
-  token0: BASE_USDC_ADDRESS,
-  token1: tokenAddress,
-  tickSpacing: 100,
-  enabled: true,
-}));
-
 function key(chainId: number, tokenA: string, tokenB: string, tickSpacing?: number) {
   const pair = [tokenA.toLowerCase(), tokenB.toLowerCase()].sort().join(':');
   return tickSpacing !== undefined ? `${chainId}:${pair}:${tickSpacing}` : `${chainId}:${pair}`;
@@ -56,8 +42,10 @@ export function loadRoutes(): Map<string, AerodromeSlipstreamRoute> {
   for (const route of DEFAULT_AERODROME_SLIPSTREAM_ROUTES) {
     routes.set(key(route.chainId, route.token0, route.token1, route.tickSpacing), route);
   }
-  for (const route of LOCAL_AERODROME_SLIPSTREAM_ROUTES) {
-    routes.set(key(route.chainId, route.token0, route.token1, route.tickSpacing), route);
+  // The local Base fork uses the same reviewed Base routes against forked
+  // Aerodrome state; only the chain ID differs for runtime selection.
+  for (const route of DEFAULT_AERODROME_SLIPSTREAM_ROUTES) {
+    routes.set(key(31337, route.token0, route.token1, route.tickSpacing), { ...route, chainId: 31337 });
   }
 
   // Allow runtime overrides via environment variable

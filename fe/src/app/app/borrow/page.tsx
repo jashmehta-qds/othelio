@@ -9,7 +9,8 @@ import { AAVE_UI_ENABLED } from "@/lib/contracts";
 
 export default function LendingRecoveryPage() {
   const { address } = useAccount();
-  const chainId = useChainId() || 31337;
+  const defaultChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 31337);
+  const chainId = useChainId() || defaultChainId;
   const { data, isLoading, error } = useBasketsList(chainId, address);
 
   if (!AAVE_UI_ENABLED) {

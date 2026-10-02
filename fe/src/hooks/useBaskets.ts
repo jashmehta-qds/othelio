@@ -74,7 +74,9 @@ export interface PortfolioValuationHistoryResponse {
   };
 }
 
-export function useBasketsList(chainId = 31337, controller?: string) {
+const DEFAULT_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 31337);
+
+export function useBasketsList(chainId = DEFAULT_CHAIN_ID, controller?: string) {
   const query = controller ? `?chainId=${chainId}&controller=${controller}` : `?chainId=${chainId}`;
   return useQuery<{ data: IndexedBasket[] }>({
     queryKey: ['baskets', chainId, controller],
@@ -85,7 +87,7 @@ export function useBasketsList(chainId = 31337, controller?: string) {
   });
 }
 
-export function useBasketDetails(address: string, chainId = 31337, enabled = true) {
+export function useBasketDetails(address: string, chainId = DEFAULT_CHAIN_ID, enabled = true) {
   return useQuery<BasketDetailsResponse>({
     queryKey: ['basket', address, chainId],
     queryFn: () => fetchApi<BasketDetailsResponse>(`/v1/baskets/${address}?chainId=${chainId}`),
@@ -93,7 +95,7 @@ export function useBasketDetails(address: string, chainId = 31337, enabled = tru
   });
 }
 
-export function useBasketActivity(address: string, chainId = 31337, enabled = true) {
+export function useBasketActivity(address: string, chainId = DEFAULT_CHAIN_ID, enabled = true) {
   return useQuery<{ data: BasketEvent[] }>({
     queryKey: ['basket-activity', address, chainId],
     queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/${address}/activity?chainId=${chainId}`),
@@ -131,7 +133,7 @@ export interface AccountingSummaryResponse {
   };
 }
 
-export function usePortfolioPositions(address: string, chainId = 31337, enabled = true) {
+export function usePortfolioPositions(address: string, chainId = DEFAULT_CHAIN_ID, enabled = true) {
   return useQuery<PortfolioPositionsResponse>({
     queryKey: ['basket-positions', address.toLowerCase(), chainId],
     queryFn: () => fetchApi<PortfolioPositionsResponse>(
@@ -142,7 +144,7 @@ export function usePortfolioPositions(address: string, chainId = 31337, enabled 
   });
 }
 
-export function useAccountingSummary(address: string, chainId = 31337, controller?: string) {
+export function useAccountingSummary(address: string, chainId = DEFAULT_CHAIN_ID, controller?: string) {
   return useQuery<AccountingSummaryResponse>({
     queryKey: ['basket-accounting-summary', address.toLowerCase(), chainId, controller?.toLowerCase()],
     queryFn: () => fetchApi<AccountingSummaryResponse>(
@@ -153,7 +155,7 @@ export function useAccountingSummary(address: string, chainId = 31337, controlle
   });
 }
 
-export function useAllActivity(chainId = 31337, enabled = true) {
+export function useAllActivity(chainId = DEFAULT_CHAIN_ID, enabled = true) {
   return useQuery<{ data: BasketEvent[] }>({
     queryKey: ['all-activity', chainId],
     queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/activity/all?chainId=${chainId}`),
@@ -163,7 +165,7 @@ export function useAllActivity(chainId = 31337, enabled = true) {
 }
 
 export function usePortfolioValuationHistory(
-  chainId = 31337,
+  chainId = DEFAULT_CHAIN_ID,
   controller?: string,
   timeframe: ValuationTimeframe = '30D',
 ) {

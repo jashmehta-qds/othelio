@@ -29,6 +29,7 @@ foundry-pp/
 # Environment & Secrets
 .env
 .env.local
+.env.base
 
 # OS & Editor
 .DS_Store

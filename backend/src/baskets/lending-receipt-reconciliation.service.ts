@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { addressSchema, blockHashSchema, chainIdSchema } from '@othelio/shared';
 import { Hex, createPublicClient, decodeEventLog, http, parseAbi } from 'viem';
 import { DatabaseService } from '../database/database.service';
+import { rpcUrlForChain } from '../config/network-runtime';
 import type { RequestedLendingAction } from './lending-event.service';
 
 const lendingPoolEvents = parseAbi([
@@ -164,9 +165,8 @@ export class LendingReceiptReconciliationService {
     );
     if (!pending.rows[0]) throw new Error('Unknown lending transaction submission');
     const row = pending.rows[0];
-    const rpcUrl = chainId === 31337
-      ? (process.env.ANVIL_RPC_URL ?? 'http://127.0.0.1:8545')
-      : (process.env.RPC_URL ?? 'https://mainnet.base.org');
+    const rpcUrl = rpcUrlForChain(chainId);
+    if (!rpcUrl) throw new Error(`RPC is not configured for chain ${chainId}`);
     const client = createPublicClient({ transport: http(rpcUrl) });
     const observedChainId = await client.getChainId().catch(() => null);
     let activeHash = (row.active_tx_hash ?? row.tx_hash).toLowerCase();

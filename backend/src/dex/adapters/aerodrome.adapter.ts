@@ -6,9 +6,8 @@ import {
   BASE_USDC_ADDRESS,
   getAerodromeSlipstreamRoute,
   getAerodromeSlipstreamRoutes,
-  LOCAL_AERODROME_SLIPSTREAM_ROUTER,
 } from '../aerodrome-slipstream-routes';
-import { getLocalAssetMarket } from '../local-anvil-market';
+import { rpcUrlForChain } from '../../config/network-runtime';
 
 const AERODROME_QUOTER_ADDRESS = '0x514c8B5f54112481E28028F1166Bd78501089259' as const;
 const AERODROME_QUOTER_ABI = parseAbi([
@@ -24,10 +23,7 @@ export class AerodromeAdapter implements IDexAdapter {
     try {
       if (params.sellToken.toLowerCase() === params.buyToken.toLowerCase()) return null;
 
-      if (params.chainId === 31337) {
-        return this.getLocalMockQuote(params);
-      }
-      if (params.chainId !== 8453) return null;
+      if (params.chainId !== 31337 && params.chainId !== 8453) return null;
 
       const isUsdcIn = params.sellToken.toLowerCase() === BASE_USDC_ADDRESS.toLowerCase();
       const isUsdcOut = params.buyToken.toLowerCase() === BASE_USDC_ADDRESS.toLowerCase();
@@ -92,7 +88,8 @@ export class AerodromeAdapter implements IDexAdapter {
 
       if (candidatePaths.length === 0) return null;
 
-      const rpcUrl = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+      const rpcUrl = rpcUrlForChain(params.chainId);
+      if (!rpcUrl) throw new Error(`RPC is required for Aerodrome quotes on chain ${params.chainId}.`);
       const client = createPublicClient({ transport: http(rpcUrl) });
 
       let bestResult: {
@@ -161,57 +158,4 @@ export class AerodromeAdapter implements IDexAdapter {
     }
   }
 
-  private getLocalMockQuote(params: SwapQuoteParams): SwapQuoteResult | null {
-    const sellAmount = BigInt(params.sellAmount);
-    if (sellAmount <= 0n) return null;
-
-    const isUsdcIn = params.sellToken.toLowerCase() === BASE_USDC_ADDRESS.toLowerCase();
-    const isUsdcOut = params.buyToken.toLowerCase() === BASE_USDC_ADDRESS.toLowerCase();
-
-    let kind: AerodromeRouteKind = 'DIRECT';
-    let firstTickSpacing = 100;
-    let secondTickSpacing = 0;
-
-    const inInfo = getLocalAssetMarket(params.sellToken) ?? { priceUsdE8: 100_000_000n, decimals: 18 };
-    const outInfo = getLocalAssetMarket(params.buyToken) ?? { priceUsdE8: 100_000_000n, decimals: 18 };
-
-    const sellValueUsdE8 = (sellAmount * inInfo.priceUsdE8) / (10n ** BigInt(inInfo.decimals));
-    const expectedBuyAmount = (sellValueUsdE8 * (10n ** BigInt(outInfo.decimals))) / outInfo.priceUsdE8;
-
-    if (isUsdcIn || isUsdcOut) {
-      kind = 'DIRECT';
-      firstTickSpacing = 100;
-      secondTickSpacing = 0;
-    } else {
-      kind = 'VIA_USDC';
-      firstTickSpacing = 100;
-      secondTickSpacing = 100;
-    }
-
-    if (expectedBuyAmount <= 0n) return null;
-    const minBuyAmount = (expectedBuyAmount * BigInt(10_000 - params.slippageBps)) / 10_000n;
-    if (minBuyAmount <= 0n || !isAddress(LOCAL_AERODROME_SLIPSTREAM_ROUTER)) return null;
-
-    return {
-      providerName: 'Aerodrome',
-      kind,
-      chainId: 31337,
-      sellToken: params.sellToken,
-      buyToken: params.buyToken,
-      sellAmount,
-      routerAddress: LOCAL_AERODROME_SLIPSTREAM_ROUTER,
-      allowanceSpender: LOCAL_AERODROME_SLIPSTREAM_ROUTER,
-      recipientAddress: params.takerAddress,
-      tickSpacing: firstTickSpacing,
-      firstTickSpacing,
-      secondTickSpacing,
-      expectedBuyAmount,
-      minBuyAmount,
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      estimatedGasUsd: 0,
-      netBuyAmountUsd: Number(expectedBuyAmount) / 1e18,
-      isAvailable: true,
-      rawResponse: { source: 'local-mock', oraclePriced: true },
-    };
-  }
 }

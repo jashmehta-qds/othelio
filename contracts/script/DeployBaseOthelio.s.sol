@@ -14,15 +14,24 @@ import {OthelioSafeFactory} from "../src/factory/OthelioSafeFactory.sol";
 /// @notice Base-mainnet deployment only. This file intentionally imports no mocks
 /// and contains no state-injection cheatcodes.
 contract DeployBaseOthelio is Script {
-    uint256 private constant BASE_CHAIN_ID = 8453;
+    uint256 internal constant BASE_CHAIN_ID = 8453;
     address private constant AERODROME_FACTORY = 0xf8f2eB4940CFE7d13603DDDD87f123820Fc061Ef;
     address private constant AERODROME_ROUTER = 0x698Cb2b6dd822994581fEa6eA4Fc755d1363A92F;
     bytes32 private constant AERODROME_ROUTER_CODEHASH = 0xfedc4e21e1097b0ec1b4f1aa901cf645c22f9e5d297727b0f37275ee1d083df4;
     address private constant BASE_USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
+    address private constant BASE_USDC_USD_FEED = 0x7e860098F58bBFC8648a4311b374B1D669a2bc6B;
     address private constant BASE_AAVE_V3_POOL = 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5;
 
-    function run() external returns (address registryAddr, address oracleAddr, address moduleAddr, address factoryAddr) {
+    function run() external virtual returns (address registryAddr, address oracleAddr, address moduleAddr, address factoryAddr) {
+        validateChain();
+        return _run();
+    }
+
+    function validateChain() public view virtual {
         require(block.chainid == BASE_CHAIN_ID, "PRODUCTION_REQUIRES_BASE");
+    }
+
+    function _run() internal returns (address registryAddr, address oracleAddr, address moduleAddr, address factoryAddr) {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         address governance = vm.envAddress("GOVERNANCE_OWNER_ADDRESS");
@@ -41,6 +50,7 @@ contract DeployBaseOthelio is Script {
 
         (address[] memory tokens, address[] memory feeds) = OthelioDeploymentAssets.tokensAndBaseFeeds();
         _configureAssetsAndRoutes(registry, routeRegistry, tokens, feeds);
+        registry.configure(block.chainid, BASE_USDC, BASE_USDC_USD_FEED, true, 6, 8, false);
         registry.setApprovedLendingPool(BASE_AAVE_V3_POOL, true);
         registry.transferOwnership(governance);
         routeRegistry.transferOwnership(governance);
@@ -55,6 +65,7 @@ contract DeployBaseOthelio is Script {
         require(AERODROME_FACTORY.code.length > 0, "MISSING_AERODROME_FACTORY");
         require(AERODROME_ROUTER.codehash == AERODROME_ROUTER_CODEHASH, "UNEXPECTED_AERODROME_ROUTER_CODE");
         require(BASE_USDC.code.length > 0, "MISSING_USDC");
+        require(BASE_USDC_USD_FEED.code.length > 0, "MISSING_USDC_PRICE_FEED");
         require(BASE_AAVE_V3_POOL.code.length > 0, "MISSING_AAVE_POOL");
     }
 

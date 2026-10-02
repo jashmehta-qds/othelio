@@ -16,7 +16,7 @@ interface AggregatorV3Interface {
 
 contract BasketOracle {
     OthelioAssetRegistry public immutable registry;
-    uint256 public constant MAX_STALENESS = 24 hours;
+    uint256 public constant MAX_STALENESS = 7 days;
 
     constructor(address registry_) {
         require(registry_ != address(0), "ZERO_REGISTRY");

@@ -430,7 +430,9 @@ export function formatEventMetadata(evt: any): { amountText: string; isPositive?
         const asset = supportedAssets.find((candidate) => candidate.address?.toLowerCase() === String(assetAddress).toLowerCase());
         const price = asset ? assetPrices[asset.symbol] : undefined;
         if (!price || !/^\d+$/.test(String(withdrawnAmounts[index]))) return sum;
-        return sum + (Number(BigInt(String(withdrawnAmounts[index]))) / 1e18) * price;
+        const isB20 = String(assetAddress).toLowerCase().startsWith("0xb200000000000000000000") || (asset?.symbol ?? "").endsWith("c");
+        const decimals = isB20 ? 8 : (asset?.symbol === "USDC" ? 6 : 18);
+        return sum + Number(formatUnits(BigInt(String(withdrawnAmounts[index])), decimals)) * price;
       }, 0);
       if (localValue > 0) {
         return { amountText: `-$${localValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, isPositive: false };
@@ -529,9 +531,6 @@ export function getExplorerTxUrl(txHash: string, chainId: number = 31337): strin
   }
   if (chainId === 8453) {
     return `https://basescan.org/tx/${txHash}`;
-  }
-  if (chainId === 84532) {
-    return `https://sepolia.basescan.org/tx/${txHash}`;
   }
   return `https://etherscan.io/tx/${txHash}`;
 }

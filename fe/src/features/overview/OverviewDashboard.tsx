@@ -45,7 +45,8 @@ const SECTOR_CATEGORIES = [
 ] as const;
 
 export function OverviewDashboard() {
-  const chainId = useChainId() || 31337;
+  const defaultChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 31337);
+  const chainId = useChainId() || defaultChainId;
   const { address, isConnected } = useAccount();
   const isWalletRestoring = useWalletRestoring();
   const [localBaskets, setLocalBaskets] = useState<Basket[]>([]);

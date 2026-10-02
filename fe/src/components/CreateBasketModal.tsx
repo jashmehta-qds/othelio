@@ -62,7 +62,8 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
     });
   }, [searchQuery, targets, allSupportedAssets]);
 
-  const publicClient = usePublicClient();
+  const targetChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 8453);
+  const publicClient = usePublicClient({ chainId: targetChainId });
   const { isPending: isApproving, writeContractAsync } = useWriteContract();
   const isPending = isApproving;
   const isConfirming = false;
@@ -129,21 +130,40 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
     setTransactionError(null);
     try {
       const cleanName = name.trim() || "Custom Basket";
-      const chainId = 31337;
-      const config = CONTRACT_ADDRESSES[chainId];
+      const defaultChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 8453);
+      const targetChainId = (publicClient?.chain?.id && (publicClient.chain.id in CONTRACT_ADDRESSES))
+        ? publicClient.chain.id
+        : defaultChainId;
+      const config = CONTRACT_ADDRESSES[targetChainId as keyof typeof CONTRACT_ADDRESSES];
+      if (!config) throw new Error(`Othelio is not configured for chain ${targetChainId}.`);
       if (!publicClient) throw new Error("Wallet client is unavailable on this network.");
 
-      const createTxHash = await writeContractAsync({
+      const factoryAbi = [{
+        type: "function",
+        name: "createBasket",
+        stateMutability: "nonpayable",
+        inputs: [{ name: "name", type: "string" }],
+        outputs: [{ name: "basket", type: "address" }],
+      }] as const;
+
+      const estimatedGas = await publicClient.estimateContractGas({
         address: config.factory,
-        abi: [{
-          type: "function",
-          name: "createBasket",
-          stateMutability: "nonpayable",
-          inputs: [{ name: "name", type: "string" }],
-          outputs: [{ name: "basket", type: "address" }],
-        }],
+        abi: factoryAbi,
         functionName: "createBasket",
         args: [cleanName],
+        account: address,
+      }).catch(() => null);
+
+      const gasLimit = estimatedGas ? (estimatedGas * 120n) / 100n : 1_200_000n;
+
+      const createTxHash = await writeContractAsync({
+        chainId: targetChainId,
+        address: config.factory,
+        account: address,
+        abi: factoryAbi,
+        functionName: "createBasket",
+        args: [cleanName],
+        gas: gasLimit,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: createTxHash });
       if (!receipt || receipt.status !== "success") throw new Error("Basket creation transaction failed.");
@@ -152,7 +172,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
       if (!basketAddress) throw new Error("The receipt did not contain the BasketCreated event.");
 
       await registerConfirmedBasket({
-        chainId,
+        chainId: targetChainId,
         address: basketAddress,
         controller: address,
         name: cleanName,

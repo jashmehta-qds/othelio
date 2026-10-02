@@ -1,0 +1,63 @@
+name: othelio-base
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: othelio
+      POSTGRES_PASSWORD: othelio
+      POSTGRES_DB: othelio
+    ports: [ "5434:5432" ]
+    volumes:
+      - othelio-postgres-base:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U othelio" ]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  database-migrations:
+    image: postgres:17-alpine
+    volumes:
+      - ./database/migrations:/migrations:ro
+    environment:
+      DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
+    entrypoint:
+      - sh
+      - -ec
+      - >-
+        psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())";
+        for migration in /migrations/*.sql; do
+          name=$$(basename "$$migration");
+          applied=$$(psql "$$DATABASE_URL" -tAc "SELECT 1 FROM schema_migrations WHERE name = '$$name'");
+          if [ "$$applied" = "1" ]; then
+            echo "Skipping applied migration $$name";
+          else
+            echo "Applying $$name";
+            psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$$migration";
+            psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (name) VALUES ('$$name') ON CONFLICT (name) DO NOTHING";
+          fi;
+        done
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  indexer:
+    build:
+      context: ./indexer
+      dockerfile: Dockerfile
+    env_file:
+      - ${OTHELIO_BASE_ENV_FILE:-.env.base}
+    environment:
+      DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
+      RPC_URL: ${BASE_RPC_URL:?BASE_RPC_URL must be configured}
+      CHAIN_ID: "${CHAIN_ID:-8453}"
+      START_BLOCK: ${START_BLOCK:?START_BLOCK must be configured}
+      BATCH_SIZE: "${BATCH_SIZE:-10}"
+      FACTORY_ADDRESS: ${FACTORY_ADDRESS:?FACTORY_ADDRESS must be configured}
+      MODULE_ADDRESS: ${MODULE_ADDRESS:?MODULE_ADDRESS must be configured}
+      ASSET_REGISTRY_ADDRESS: ${ASSET_REGISTRY_ADDRESS:?ASSET_REGISTRY_ADDRESS must be configured}
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  othelio-postgres-base:

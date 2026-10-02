@@ -27,7 +27,8 @@ const caller = '0x3333333333333333333333333333333333333333';
 const overweight = '0x4444444444444444444444444444444444444444';
 const underweight = '0x5555555555555555555555555555555555555555';
 const thirdAsset = '0x6666666666666666666666666666666666666666';
-const router = '0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5';
+import { BASE_AERODROME_SLIPSTREAM_ROUTER } from '../dex/aerodrome-slipstream-routes';
+const router = BASE_AERODROME_SLIPSTREAM_ROUTER;
 const adapter = '0x7777777777777777777777777777777777777777';
 const TYPED_FUND_ABI = parseAbi([
   'struct AerodromeRoute { uint8 kind; address tokenIn; address tokenOut; int24 firstTickSpacing; int24 secondTickSpacing; uint256 amountIn; uint256 minimumAmountOut; }',

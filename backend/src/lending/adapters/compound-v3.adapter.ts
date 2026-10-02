@@ -12,14 +12,12 @@ const COMPOUND_V3_COMET_ABI = parseAbi([
 
 const COMPOUND_V3_POOLS: Record<number, string> = {
   8453: '0xb125E6687d4313864e53df431d5425969c15Eb2F',   // Base Mainnet cUSDCv3
-  84532: '0x3aD7860B95B1Dae7a057dC689886a0FBC8C60447',  // Base Sepolia
-  31337: '0xb125E6687d4313864e53df431d5425969c15Eb2F',  // Anvil Mainnet Fork (Base cUSDCv3)
+  31337: '0xb125E6687d4313864e53df431d5425969c15Eb2F',  // Local Base fork
 };
 
-const RPC_URLS: Record<number, string> = {
-  8453: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-  84532: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
-  31337: process.env.ANVIL_RPC_URL || 'http://127.0.0.1:8545',
+const RPC_URLS: Record<number, string | undefined> = {
+  8453: process.env.BASE_RPC_URL,
+  31337: process.env.ANVIL_RPC_URL || process.env.RPC_URL || 'http://127.0.0.1:8545',
 };
 
 const SECONDS_PER_YEAR = 31536000;
@@ -27,10 +25,11 @@ const SECONDS_PER_YEAR = 31536000;
 @Injectable()
 export class CompoundV3LendingAdapter implements ILendingAdapter {
   readonly name = 'CompoundV3';
-  readonly supportedChainIds = [8453, 84532, 31337];
+  readonly supportedChainIds = [31337, 8453];
 
   async getQuote(params: LendingQuoteParams): Promise<LendingQuoteResult> {
-    const targetPool = COMPOUND_V3_POOLS[params.chainId] || COMPOUND_V3_POOLS[31337];
+    const targetPool = COMPOUND_V3_POOLS[params.chainId];
+    if (!targetPool) throw new Error(`Compound V3 is not configured for chain ${params.chainId}`);
     const amount = BigInt(params.amount);
     let calldata = '0x';
 
@@ -69,7 +68,8 @@ export class CompoundV3LendingAdapter implements ILendingAdapter {
     assetAddress: string,
   ): Promise<{ supplyApy: number; borrowApy: number; isAvailable: boolean }> {
     try {
-      const rpcUrl = RPC_URLS[chainId] || RPC_URLS[31337];
+      const rpcUrl = RPC_URLS[chainId];
+      if (!rpcUrl) throw new Error(`No RPC is configured for chain ${chainId}`);
       const client = createPublicClient({ transport: http(rpcUrl) });
 
       const utilization = (await client.readContract({

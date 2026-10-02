@@ -4,6 +4,7 @@ import { createPublicClient, decodeEventLog, http, isHash, parseAbi } from 'viem
 import { DatabaseService } from '../database/database.service';
 import { BasketQuotePlannerService, BasketQuoteRequest } from './basket-quote-planner.service';
 import { LendingEventRequest, LendingEventService } from './lending-event.service';
+import { rpcUrlForChain } from '../config/network-runtime';
 
 @Injectable()
 export class BasketsService {
@@ -40,11 +41,8 @@ export class BasketsService {
       throw new NotFoundException({ error: 'INVALID_REBALANCE_TARGETS' });
     }
 
-    const rpcUrl = chainId === 31337
-      ? process.env.ANVIL_RPC_URL || process.env.RPC_URL || 'http://127.0.0.1:8545'
-      : chainId === 8453
-        ? process.env.BASE_RPC_URL || 'https://mainnet.base.org'
-        : process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org';
+    const rpcUrl = rpcUrlForChain(chainId);
+    if (!rpcUrl) throw new BadRequestException({ error: 'RPC_NOT_CONFIGURED', chainId });
     const receipt = await createPublicClient({ transport: http(rpcUrl) })
       .getTransactionReceipt({ hash: body.txHash })
       .catch(() => null);
@@ -597,19 +595,64 @@ export class BasketsService {
     return { data: result.rows };
   }
 
-  async getAssets() {
-    return {
-      data: [
-        { symbol: "AAPLc", name: "Apple Inc", address: "0xb200000000000000000000C2e324d24d7eEcd1fb", priceFeed: "0x787f13dEa48Db0897CbCDD985de77809D837F988", price: 224.50, color: "#5371d9", isCoinbaseB20: true },
-        { symbol: "AMZNc", name: "Amazon.com Inc", address: "0xb200000000000000000000d9192b6B456483C2E8", priceFeed: "0x06A8E4b3aBB3B7543d8396FB2B763d22820cB295", price: 180.00, color: "#e6a663", isCoinbaseB20: true },
-        { symbol: "GOOGLc", name: "Alphabet Inc", address: "0xb2000000000000000000002D0BA3164cc74f58B7", priceFeed: "0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2", price: 175.00, color: "#6f8cff", isCoinbaseB20: true },
-        { symbol: "METAc", name: "Meta Platforms", address: "0xb2000000000000000000008bC8786B856E61707C", priceFeed: "0x6526aE6797A76123638b863AeE4dD27Ba4E4b27D", price: 500.00, color: "#89b6f8", isCoinbaseB20: true },
-        { symbol: "MSFTc", name: "Microsoft Corp", address: "0xb200000000000000000000Ab99cFa739E253872B", priceFeed: "0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c", price: 415.20, color: "#71bfac", isCoinbaseB20: true },
-        { symbol: "MSTRc", name: "Strategy Inc", address: "0xb2000000000000000000004884b426556b92883d", priceFeed: "0xB3cE282CD188b35DA0E38D8Bc7d58e33173D202a", price: 135.00, color: "#d595db", isCoinbaseB20: true },
-        { symbol: "NVDAc", name: "NVIDIA Corp", address: "0xb20000000000000000000078ee7ce2fE4908108C", priceFeed: "0x04689a41629776563E6822F76f2e57D148d28513", price: 125.40, color: "#8aa4ff", isCoinbaseB20: true },
-        { symbol: "USDC", name: "USD Coin", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", priceFeed: "0x0000000000000000000000000000000000000000", price: 1.00, color: "#8daed0", isCoinbaseB20: false },
-      ],
-    };
+  private readonly assetPricesCache = new Map<number, { timestamp: number; data: any[] }>();
+  private readonly ASSET_PRICE_CACHE_TTL_MS = 60 * 1000; // 1-minute TTL
+
+  async getAssets(chainIdInput?: string | number) {
+    const chainId = chainIdInput ? Number(chainIdInput) : Number(process.env.CHAIN_ID || 8453);
+    const now = Date.now();
+    const cached = this.assetPricesCache.get(chainId);
+    if (cached && now - cached.timestamp < this.ASSET_PRICE_CACHE_TTL_MS) {
+      return { data: cached.data };
+    }
+
+    const staticAssets = [
+      { symbol: 'AAPLc', name: 'Apple Inc', address: '0xb200000000000000000000C2e324d24d7eEcd1fb', priceFeed: '0x787f13dEa48Db0897CbCDD985de77809D837F988', defaultPrice: 224.50, color: '#5371d9', isCoinbaseB20: true },
+      { symbol: 'AMZNc', name: 'Amazon.com Inc', address: '0xb200000000000000000000d9192b6B456483C2E8', priceFeed: '0x06A8E4b3aBB3B7543d8396FB2B763d22820cB295', defaultPrice: 180.00, color: '#e6a663', isCoinbaseB20: true },
+      { symbol: 'GOOGLc', name: 'Alphabet Inc', address: '0xb2000000000000000000002D0BA3164cc74f58B7', priceFeed: '0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2', defaultPrice: 175.00, color: '#6f8cff', isCoinbaseB20: true },
+      { symbol: 'METAc', name: 'Meta Platforms', address: '0xb2000000000000000000008bC8786B856E61707C', priceFeed: '0x6526aE6797A76123638b863AeE4dD27Ba4E4b27D', defaultPrice: 500.00, color: '#89b6f8', isCoinbaseB20: true },
+      { symbol: 'MSFTc', name: 'Microsoft Corp', address: '0xb200000000000000000000Ab99cFa739E253872B', priceFeed: '0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c', defaultPrice: 415.20, color: '#71bfac', isCoinbaseB20: true },
+      { symbol: 'MSTRc', name: 'Strategy Inc', address: '0xb2000000000000000000004884b426556b92883d', priceFeed: '0xB3cE282CD188b35DA0E38D8Bc7d58e33173D202a', defaultPrice: 135.00, color: '#d595db', isCoinbaseB20: true },
+      { symbol: 'NVDAc', name: 'NVIDIA Corp', address: '0xb20000000000000000000078ee7ce2fE4908108C', priceFeed: '0x04689a41629776563E6822F76f2e57D148d28513', defaultPrice: 125.40, color: '#8aa4ff', isCoinbaseB20: true },
+      { symbol: 'USDC', name: 'USD Coin', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', priceFeed: '0x0000000000000000000000000000000000000000', defaultPrice: 1.00, color: '#8daed0', isCoinbaseB20: false },
+    ];
+
+    const livePriceMap = new Map<string, number>();
+    try {
+      const priceRows = await this.db.query(
+        `SELECT DISTINCT ON (LOWER(asset_address))
+           LOWER(asset_address) AS asset_address,
+           price_usd_e8
+         FROM asset_price_observations
+         WHERE chain_id = $1
+         ORDER BY LOWER(asset_address), observed_at DESC`,
+        [chainId],
+      );
+      for (const row of priceRows.rows) {
+        if (row.price_usd_e8) {
+          livePriceMap.set(row.asset_address.toLowerCase(), Number(row.price_usd_e8) / 1e8);
+        }
+      }
+    } catch {
+      // Fallback to default prices if DB query is unavailable
+    }
+
+    const data = staticAssets.map((asset) => {
+      const livePrice = livePriceMap.get(asset.address.toLowerCase());
+      const price = livePrice !== undefined && livePrice > 0 ? livePrice : asset.defaultPrice;
+      return {
+        symbol: asset.symbol,
+        name: asset.name,
+        address: asset.address,
+        priceFeed: asset.priceFeed,
+        price,
+        color: asset.color,
+        isCoinbaseB20: asset.isCoinbaseB20,
+      };
+    });
+
+    this.assetPricesCache.set(chainId, { timestamp: now, data });
+    return { data };
   }
 
   async quoteSwaps(basketAddress: string, body: BasketQuoteRequest) {

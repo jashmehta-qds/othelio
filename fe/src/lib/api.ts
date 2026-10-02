@@ -8,7 +8,13 @@ const localBackendUrl =
 // `localhost` is correct only when the browser runs on the same machine as
 // Next.js. On a phone connected through the LAN URL, it points at the phone;
 // derive the host from the page unless a deployment explicitly overrides it.
-const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || localBackendUrl;
+const configuredBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+
+if (process.env.NODE_ENV === 'production' && !configuredBackendUrl) {
+  throw new Error('NEXT_PUBLIC_BACKEND_URL must be configured for a production deployment.');
+}
+
+const API_BASE_URL = configuredBackendUrl || localBackendUrl;
 
 export async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {

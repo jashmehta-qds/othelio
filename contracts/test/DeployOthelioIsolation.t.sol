@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {DeployBaseOthelio} from "../script/DeployBaseOthelio.s.sol";
+import {DeployBaseForkOthelio} from "../script/DeployBaseForkOthelio.s.sol";
 import {DeployLocalOthelio, LocalMockAerodromeFactory} from "../script/local/DeployLocalOthelio.s.sol";
 import {OthelioAerodromeRouteRegistry} from "../src/dex/OthelioAerodromeRouteRegistry.sol";
 import {OthelioAssetRegistry} from "../src/registry/OthelioAssetRegistry.sol";
@@ -16,6 +17,11 @@ contract DeployOthelioIsolationTest is Test {
         DeployBaseOthelio deployment = new DeployBaseOthelio();
         vm.expectRevert("PRODUCTION_REQUIRES_BASE");
         deployment.run();
+    }
+
+    function testBaseForkDeploymentAcceptsOnly31337() public {
+        vm.chainId(31337);
+        new DeployBaseForkOthelio().validateChain();
     }
 
     function testLocalMockModePreservesExistingAaveCode() public {

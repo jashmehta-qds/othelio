@@ -48,9 +48,8 @@ export class DexManagerService {
       );
     }
 
-    // Rank quotes by netBuyAmountUsd (buy amount MINUS estimated gas cost)
-    validQuotes.sort((a, b) => b.netBuyAmountUsd - a.netBuyAmountUsd);
-    const winningQuote = validQuotes[0];
+    const sortedByDefault = [...validQuotes].sort((a, b) => b.netBuyAmountUsd - a.netBuyAmountUsd);
+    const winningQuote = sortedByDefault[0];
 
     // Log trade route analytics to PostgreSQL swap_route_logs
     this.logRouteDecision(params, winningQuote, validQuotes).catch((err) =>

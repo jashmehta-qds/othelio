@@ -163,6 +163,8 @@ contract OthelioPortfolioModuleTest is Test {
         vm.prank(owner);
         registry.configure(block.chainid, nativeB20, address(nativeB20Feed), true, 18, 8, true);
 
+        vm.mockCall(nativeB20, abi.encodeWithSelector(IERC20.transfer.selector, owner, 1 ether), abi.encode(true));
+
         address[] memory tokens = new address[](1);
         tokens[0] = nativeB20;
         uint256[] memory amounts = new uint256[](1);

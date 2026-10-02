@@ -1,30 +1,53 @@
+import { BASE_FORK_CHAIN_ID, BASE_MAINNET_CHAIN_ID } from '@othelio/shared';
+
+type BaseDeploymentAddresses = {
+  factory?: string;
+  module?: string;
+  oracle?: string;
+  registry?: string;
+};
+
+function requireBaseDeploymentAddress(value: string | undefined, name: string): `0x${string}` {
+  if (!value) {
+    throw new Error(`${name} must be configured for the Base deployment.`);
+  }
+  return value as `0x${string}`;
+}
+
+export function getBaseDeploymentAddresses(values: BaseDeploymentAddresses) {
+  return {
+    factory: requireBaseDeploymentAddress(values.factory, 'NEXT_PUBLIC_FACTORY_ADDRESS'),
+    module: requireBaseDeploymentAddress(values.module, 'NEXT_PUBLIC_MODULE_ADDRESS'),
+    oracle: requireBaseDeploymentAddress(values.oracle, 'NEXT_PUBLIC_ORACLE_ADDRESS'),
+    registry: requireBaseDeploymentAddress(values.registry, 'NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS'),
+  };
+}
+
+const baseDeploymentAddresses = getBaseDeploymentAddresses({
+  // Keep these references statically named so Next.js inlines them in the client bundle.
+  factory: process.env.NEXT_PUBLIC_FACTORY_ADDRESS || '0xAd21D1aACF2B3c84608e69eAa87B798d27A3915D',
+  module: process.env.NEXT_PUBLIC_MODULE_ADDRESS || '0x245836a679b69e16617e2055d8d809EA5858c81C',
+  oracle: process.env.NEXT_PUBLIC_ORACLE_ADDRESS || '0xF80bfa9608dD9BCBC7ed270Fa341C7C423CA2DF7',
+  registry: process.env.NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS || '0x3DB84b8e172A2b8b1634F8C630C6e2acD07424AC',
+});
+
+const forkDeploymentAddresses = getBaseDeploymentAddresses({
+  factory: process.env.NEXT_PUBLIC_FORK_FACTORY_ADDRESS || process.env.NEXT_PUBLIC_FACTORY_ADDRESS,
+  module: process.env.NEXT_PUBLIC_FORK_MODULE_ADDRESS || process.env.NEXT_PUBLIC_MODULE_ADDRESS,
+  oracle: process.env.NEXT_PUBLIC_FORK_ORACLE_ADDRESS || process.env.NEXT_PUBLIC_ORACLE_ADDRESS,
+  registry: process.env.NEXT_PUBLIC_FORK_ASSET_REGISTRY_ADDRESS || process.env.NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS,
+});
+
 export const CONTRACT_ADDRESSES = {
-  8453: {
-    factory: '0xEB3001cF7E87dcCcb944088A4C90eBdA6ef84930' as `0x${string}`,
-    module: '0xaF52e7D7a3aa70A33087406665d72b4249F6E550' as `0x${string}`,
-    oracle: '0x7bb773006fD109CdFc139c530AdA30bC024D8840' as `0x${string}`,
-    registry: '0x59675EAF89150aA8732244986cA32982389a8c87' as `0x${string}`,
-    coinbaseRegistry: '0x3f3E8cf41cdd3b1D118c16471aB0113DfDDd5CaD' as `0x${string}`,
+  [BASE_MAINNET_CHAIN_ID]: {
+    ...baseDeploymentAddresses,
+    coinbaseRegistry: baseDeploymentAddresses.registry,
     usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
   },
-  84532: {
-    factory: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-    module: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-    oracle: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-    registry: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-    coinbaseRegistry: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-    usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as `0x${string}`,
-  },
-  31337: {
-    factory: '0x6244434D825Df1dDE9eB4e092c0678f2edE19a97' as `0x${string}`,
-    module: '0x2563B90A1192bDbE848A13bA4Ce0C112857fE4Ba' as `0x${string}`,
-    oracle: '0x9b3f8d4e9f985033f486B14Ea71DF73c292972Ef' as `0x${string}`,
-    registry: '0x835E426B749C7a215CeD0E487981271Cbf399c05' as `0x${string}`,
-    coinbaseRegistry: '0xD344074e7F0A5A718A5EA66fc261CB24a0155Fbe' as `0x${string}`,
+  [BASE_FORK_CHAIN_ID]: {
+    ...forkDeploymentAddresses,
+    coinbaseRegistry: forkDeploymentAddresses.registry,
     usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
-    dexRouter: '0xBD606f1dAE0285D55113eFC11501677B2221A4dd' as `0x${string}`,
-    aaveAdapter: '0xe3B1E81bB4ae2a723CF4fF23b7E66C71CC6A2330' as `0x${string}`,
-    aerodromeAdapter: '0x787C53FA27340DAA779F3a1B8CDbf7936B14B68e' as `0x${string}`,
   },
 } as const;
 

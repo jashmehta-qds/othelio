@@ -1,5 +1,6 @@
 import { formatUnits } from "viem";
 import { assetPrices, formatAddress, formatEventLabel, formatEventMetadata, supportedAssets, type BasketActivity } from "@/lib/baskets";
+import { useAssetPrices } from "@/hooks/useBaskets";
 
 function payloadOf(event: BasketActivity): Record<string, unknown> {
   if (typeof event.payload === "string") {
@@ -8,27 +9,30 @@ function payloadOf(event: BasketActivity): Record<string, unknown> {
   return event.payload && typeof event.payload === "object" ? event.payload as Record<string, unknown> : {};
 }
 
-function tokenMovement(address: unknown, amount: unknown) {
-  const asset = supportedAssets.find((item) => item.address?.toLowerCase() === String(address).toLowerCase());
+function tokenMovement(address: unknown, amount: unknown, priceMap?: Record<string, number> | null) {
+  const addrStr = String(address).toLowerCase();
+  const asset = supportedAssets.find((item) => item.address?.toLowerCase() === addrStr);
   const symbol = asset?.symbol ?? formatAddress(String(address));
   if (!/^\d+$/.test(String(amount))) return { symbol, quantity: "Unknown", priceFormatted: null, usd: null };
-  const quantity = Number(formatUnits(BigInt(String(amount)), symbol === "USDC" ? 6 : 18));
-  const price = asset ? (assetPrices[symbol] ?? null) : (symbol === "USDC" ? 1 : null);
+  const isB20 = addrStr.startsWith("0xb200000000000000000000") || symbol.endsWith("c");
+  const decimals = isB20 ? 8 : (symbol === "USDC" ? 6 : 18);
+  const quantity = Number(formatUnits(BigInt(String(amount)), decimals));
+  const price = priceMap?.[symbol] ?? (asset ? (assetPrices[symbol] ?? null) : (symbol === "USDC" ? 1 : null));
   const priceFormatted = price ? price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
   return {
     symbol,
-    quantity: quantity.toLocaleString("en-US", { maximumFractionDigits: 6 }),
+    quantity: quantity.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 }),
     priceFormatted,
     usd: price ? quantity * price : null,
   };
 }
 
-function totalReferenceValueUsd(assets: unknown[], amounts: unknown[]): number | null {
+function totalReferenceValueUsd(assets: unknown[], amounts: unknown[], priceMap?: Record<string, number> | null): number | null {
   if (assets.length !== amounts.length || assets.length === 0) return null;
 
   let total = 0;
   for (let index = 0; index < assets.length; index++) {
-    const value = tokenMovement(assets[index], amounts[index]).usd;
+    const value = tokenMovement(assets[index], amounts[index], priceMap).usd;
     if (value === null || !Number.isFinite(value)) return null;
     total += value;
   }
@@ -53,6 +57,7 @@ function priorAssets(events: BasketActivity[]) {
 }
 
 function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderEvents: BasketActivity[] }) {
+  const { data: priceMap } = useAssetPrices();
   const type = event.event_type.toUpperCase();
   const payload = payloadOf(event);
   const seen = priorAssets(olderEvents);
@@ -65,7 +70,7 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
   const boughtAmounts = amountsFor("boughtAmounts", "acquiredAmounts");
 
   const lines = (assets: unknown[], amounts: unknown[], direction: "in" | "out") => assets.map((address, index) => {
-    const movement = tokenMovement(address, amounts[index]);
+    const movement = tokenMovement(address, amounts[index], priceMap);
     const isNew = isRebalance && direction === "in" && !seen.has(String(address).toLowerCase());
     return <div className="activity-detail-line" key={`${String(address)}-${index}`}>
       <span className={`activity-move ${direction}`}>{direction === "in" ? "Received" : "Sent"}</span>
@@ -78,15 +83,15 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
   if (["CREATED", "BASKETCREATED"].includes(type)) return <div className="activity-detail-body"><p>Basket Safe created for {formatAddress(event.actor_address)}.</p></div>;
 
   const redeemedUsd = payload.navRedeemed ? Number(payload.navRedeemed) / 1e6 : (payload.remainingNAV ? Number(payload.remainingNAV) / 1e6 : null);
-  const isDeliveredUsdc = assetsFor("withdrawnAssets").length === 1 && tokenMovement(assetsFor("withdrawnAssets")[0], amountsFor("withdrawnAmounts")[0]).symbol === "USDC";
+  const isDeliveredUsdc = assetsFor("withdrawnAssets").length === 1 && tokenMovement(assetsFor("withdrawnAssets")[0], amountsFor("withdrawnAmounts")[0], priceMap).symbol === "USDC";
 
   const inputReferenceUsd = isFund && payload.inputAmount
     ? Number(payload.inputAmount) / 1e6
     : isRebalance
-      ? totalReferenceValueUsd(assetsFor("soldAssets"), amountsFor("soldAmounts"))
+      ? totalReferenceValueUsd(assetsFor("soldAssets"), amountsFor("soldAmounts"), priceMap)
       : null;
   const outputReferenceUsd = (isFund || isRebalance)
-    ? totalReferenceValueUsd(boughtAssets, boughtAmounts)
+    ? totalReferenceValueUsd(boughtAssets, boughtAmounts, priceMap)
     : null;
   // This is deliberately not called a fee: reference-value deltas can include
   // LP fees, price impact, and movement between the quote and execution.

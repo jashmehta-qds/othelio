@@ -1,6 +1,22 @@
 export const USDC_DECIMALS = 6;
 export const DEFAULT_TOKEN_DECIMALS = 18;
 
+// Keep the frontend compatibility surface backed by the canonical workspace
+// network contract. The alias for @othelio/shared points at this file for the
+// frontend's existing shared types, so network constants are re-exported here.
+export {
+  BASE_FORK_CHAIN_ID,
+  BASE_MAINNET_CHAIN_ID,
+  SUPPORTED_CHAIN_IDS,
+  isSupportedChainId,
+  networkKindForChainId,
+} from '../../../packages/shared/src/networks';
+export type {
+  NetworkDeploymentAddresses,
+  NetworkKind,
+  SupportedChainId,
+} from '../../../packages/shared/src/networks';
+
 /**
  * Unified helper to convert human-readable amounts (e.g. "100", 100.5) to raw BigInt token amounts
  * given the token's decimal precision (e.g. 6 for USDC, 18 for standard ERC20s).

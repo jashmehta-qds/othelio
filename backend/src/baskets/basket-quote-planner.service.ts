@@ -14,8 +14,8 @@ import {
 import { createPublicClient, encodeFunctionData, http, parseAbi } from 'viem';
 import {
   BASE_AERODROME_SLIPSTREAM_ROUTER,
-  LOCAL_AERODROME_SLIPSTREAM_ROUTER,
 } from '../dex/aerodrome-slipstream-routes';
+import { rpcUrlForChain } from '../config/network-runtime';
 import { DexManagerService } from '../dex/dex-manager.service';
 import { SwapQuoteResult } from '../dex/interfaces/dex-adapter.interface';
 import { BasketPositionService } from './basket-position.service';
@@ -39,12 +39,6 @@ const PORTFOLIO_AERODROME_REBALANCE_ABI = parseAbi([
 const BASKET_WITHDRAW_IN_KIND_V3_ABI = parseAbi([
   'function withdrawInKind(address safe,address recipient,address[] tokens,uint256[] amounts,address[] remainingTokens) external returns (uint256 remainingListedAssetsNavUsdc)',
 ]);
-const RPC_URLS: Record<number, string | undefined> = {
-  1: process.env.ETHEREUM_RPC_URL,
-  31337: process.env.ANVIL_RPC_URL || process.env.RPC_URL || 'http://127.0.0.1:8545',
-  8453: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-  84532: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
-};
 const BASE_USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
 
 type Address = `0x${string}`;
@@ -646,7 +640,7 @@ export class BasketQuotePlannerService {
    * it below the module's five-minute limit.
    */
   private async boundedRouteDeadline(chainId: number, routeExpiry: string): Promise<bigint> {
-    const rpcUrl = RPC_URLS[chainId];
+    const rpcUrl = rpcUrlForChain(chainId);
     if (!rpcUrl) throw new ServiceUnavailableException(`No RPC is configured for chain ${chainId}.`);
 
     try {
@@ -749,11 +743,9 @@ export class BasketQuotePlannerService {
     const target = this.parseAddress(route.routerAddress, 'route target');
     const allowanceSpender = this.parseAddress(route.allowanceSpender, 'route allowance spender');
     this.parseAddress(route.recipientAddress, 'route recipient');
-    const rpcUrl = RPC_URLS[chainId];
+    const rpcUrl = rpcUrlForChain(chainId);
     if (!rpcUrl) throw new ServiceUnavailableException(`No RPC is configured for chain ${chainId}.`);
-    const approvedRouter = chainId === 31337
-      ? LOCAL_AERODROME_SLIPSTREAM_ROUTER
-      : BASE_AERODROME_SLIPSTREAM_ROUTER;
+    const approvedRouter = BASE_AERODROME_SLIPSTREAM_ROUTER;
 
     if (
       target.toLowerCase() !== approvedRouter.toLowerCase()
@@ -848,7 +840,7 @@ export class BasketQuotePlannerService {
     callerAddress: Address;
     moduleCalldata: `0x${string}`;
   }) {
-    const rpcUrl = RPC_URLS[input.chainId];
+    const rpcUrl = rpcUrlForChain(input.chainId);
     if (!rpcUrl) throw new ServiceUnavailableException(`No RPC is configured for chain ${input.chainId}.`);
     const client = createPublicClient({ transport: http(rpcUrl) });
     let moduleVersion: bigint;

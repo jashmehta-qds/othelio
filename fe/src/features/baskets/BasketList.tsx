@@ -13,7 +13,8 @@ import { AppIcon } from "@/components/app-shell/AppIcon";
 import { CreateBasketModal } from "@/components/CreateBasketModal";
 
 export function BasketList() {
-  const chainId = useChainId() || 31337;
+  const defaultChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 31337);
+  const chainId = useChainId() || defaultChainId;
   const { address, isConnected } = useAccount();
   const isHydrated = useHydrated();
   const isWalletRestoring = useWalletRestoring();

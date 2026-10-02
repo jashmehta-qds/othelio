@@ -12,20 +12,18 @@ const AAVE_POOL_ABI = parseAbi([
 
 export const AAVE_V3_POOLS: Readonly<Record<number, `0x${string}`>> = {
   8453: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',   // Base Mainnet
-  84532: '0x07eA79F68B2B3df564D0A34F8e19D9B1e339814b',  // Base Sepolia
-  31337: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',  // Anvil Mainnet Fork (Base Aave V3 Pool)
+  31337: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',  // Local Base fork
 };
 
-export const AAVE_RPC_URLS: Readonly<Record<number, string>> = {
-  8453: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-  84532: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
-  31337: process.env.ANVIL_RPC_URL || 'http://127.0.0.1:8545',
+export const AAVE_RPC_URLS: Readonly<Record<number, string | undefined>> = {
+  8453: process.env.BASE_RPC_URL,
+  31337: process.env.ANVIL_RPC_URL || process.env.RPC_URL || 'http://127.0.0.1:8545',
 };
 
 @Injectable()
 export class AaveV3LendingAdapter implements ILendingAdapter {
   readonly name = 'AaveV3';
-  readonly supportedChainIds = [8453, 84532, 31337];
+  readonly supportedChainIds = [31337, 8453];
 
   async getQuote(params: LendingQuoteParams): Promise<LendingQuoteResult> {
     const targetPool = AAVE_V3_POOLS[params.chainId];

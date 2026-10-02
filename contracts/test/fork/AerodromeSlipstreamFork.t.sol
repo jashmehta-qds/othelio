@@ -84,9 +84,11 @@ contract AerodromeSlipstreamForkTest is Test {
         portfolio.setFactory(address(basketFactory));
         OthelioBasketAccount basket = OthelioBasketAccount(payable(basketFactory.createBasket("Fork basket")));
 
-        // Configure feeds: USDC = $1 (6 dec, 8 feed dec), AAPLc = $224.50.
-        registry.configure(block.chainid, BASE_USDC, address(new MockPriceFeed(1e8)), true, 6, 8, false);
-        registry.configure(block.chainid, BASE_AAPL, address(new MockPriceFeed(224_50e6)), true, 18, 8, true);
+        // Configure feeds: USDC = $1 (6 dec, 8 feed dec), AAPLc (8 token dec, 8 feed dec).
+        address usdcFeed = 0x7e860098F58bBFC8648a4311b374B1D669a2bc6B;
+        address aaplFeed = 0x787f13dEa48Db0897CbCDD985de77809D837F988;
+        registry.configure(block.chainid, BASE_USDC, usdcFeed, true, 6, 8, false);
+        registry.configure(block.chainid, BASE_AAPL, aaplFeed, true, 8, 8, true);
         assertTrue(registry.isVerifiedCoinbaseB20(block.chainid, BASE_AAPL), "AAPLc is not an initialized B20");
 
         routeRegistry.setPoolApproval(block.chainid, BASE_USDC, BASE_AAPL, 10, BASE_AERODROME_FACTORY, true);
@@ -155,24 +157,56 @@ contract AerodromeSlipstreamForkTest is Test {
         portfolio.setFactory(address(basketFactory));
         OthelioBasketAccount basket = OthelioBasketAccount(payable(basketFactory.createBasket("Fork basket")));
 
-        // Configure feeds: USDC = $1, AAPLc = $224.50, GOOGLc = $175.
-        registry.configure(block.chainid, BASE_USDC, address(new MockPriceFeed(1e8)), true, 6, 8, false);
-        registry.configure(block.chainid, BASE_AAPL, address(new MockPriceFeed(224_50e6)), true, 18, 8, true);
-        registry.configure(block.chainid, BASE_GOOGL, address(new MockPriceFeed(175e8)), true, 18, 8, true);
+        // Configure feeds: USDC = $1, AAPLc, GOOGLc using real Base Chainlink price feeds.
+        address usdcFeed = 0x7e860098F58bBFC8648a4311b374B1D669a2bc6B;
+        address aaplFeed = 0x787f13dEa48Db0897CbCDD985de77809D837F988;
+        address googlFeed = 0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2;
+        registry.configure(block.chainid, BASE_USDC, usdcFeed, true, 6, 8, false);
+        registry.configure(block.chainid, BASE_AAPL, aaplFeed, true, 8, 8, true);
+        registry.configure(block.chainid, BASE_GOOGL, googlFeed, true, 8, 8, true);
         assertTrue(registry.isVerifiedCoinbaseB20(block.chainid, BASE_AAPL), "AAPLc is not an initialized B20");
         assertTrue(registry.isVerifiedCoinbaseB20(block.chainid, BASE_GOOGL), "GOOGLc is not an initialized B20");
 
+        routeRegistry.setPoolApproval(block.chainid, BASE_USDC, BASE_AAPL, 10, BASE_AERODROME_FACTORY, true);
         routeRegistry.setPoolApproval(block.chainid, BASE_AAPL, BASE_USDC, 10, BASE_AERODROME_FACTORY, true);
         routeRegistry.setPoolApproval(block.chainid, BASE_USDC, BASE_GOOGL, 10, BASE_AERODROME_FACTORY, true);
         vm.stopPrank();
 
-        // Query real Aerodrome Quoter for AAPLc -> USDC -> GOOGLc.
-        bytes memory path = abi.encodePacked(BASE_AAPL, int24(10), BASE_USDC, int24(10), BASE_GOOGL);
-        (uint256 expectedOut,,,) = IAerodromeQuoter(BASE_AERODROME_QUOTER).quoteExactInput(path, 30_664_321);
-        assertGt(expectedOut, 0, "Quoter returned 0 output for AAPLc -> USDC -> GOOGLc");
+        // Step 1: Fund basket with AAPLc via fundAerodromePortfolio
+        uint256 funding = 100e6;
+        deal(BASE_USDC, owner, funding);
+        bytes memory pathFund = abi.encodePacked(BASE_USDC, int24(10), BASE_AAPL);
+        (uint256 expectedFundOut,,,) = IAerodromeQuoter(BASE_AERODROME_QUOTER).quoteExactInput(pathFund, funding);
 
-        // Fund basket with AAPLc and rebalance.
-        deal(BASE_AAPL, address(basket), 30_664_321);
+        AerodromeRoute[] memory fundRoutes = new AerodromeRoute[](1);
+        fundRoutes[0] = AerodromeRoute({
+            kind: AerodromeRouteKind.DIRECT,
+            tokenIn: BASE_USDC,
+            tokenOut: BASE_AAPL,
+            firstTickSpacing: 10,
+            secondTickSpacing: 0,
+            amountIn: funding,
+            minimumAmountOut: (expectedFundOut * 99) / 100
+        });
+
+        vm.startPrank(owner);
+        IERC20(BASE_USDC).approve(address(portfolio), funding);
+        portfolio.fundAerodromePortfolio(
+            address(basket),
+            BASE_USDC,
+            funding,
+            fundRoutes,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        uint256 aaplBalance = IERC20(BASE_AAPL).balanceOf(address(basket));
+        assertGt(aaplBalance, 0, "Basket did not receive AAPLc from funding");
+
+        // Step 2: Rebalance AAPLc -> USDC -> GOOGLc
+        bytes memory pathRebalance = abi.encodePacked(BASE_AAPL, int24(10), BASE_USDC, int24(10), BASE_GOOGL);
+        (uint256 expectedOut,,,) = IAerodromeQuoter(BASE_AERODROME_QUOTER).quoteExactInput(pathRebalance, aaplBalance);
+        assertGt(expectedOut, 0, "Quoter returned 0 output for AAPLc -> USDC -> GOOGLc");
 
         AerodromeRoute[] memory routes = new AerodromeRoute[](1);
         routes[0] = AerodromeRoute({
@@ -181,8 +215,8 @@ contract AerodromeSlipstreamForkTest is Test {
             tokenOut: BASE_GOOGL,
             firstTickSpacing: 10,
             secondTickSpacing: 10,
-            amountIn: 30_664_321,
-            minimumAmountOut: expectedOut
+            amountIn: aaplBalance,
+            minimumAmountOut: (expectedOut * 99) / 100
         });
 
         vm.prank(owner);
