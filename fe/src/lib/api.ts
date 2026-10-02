@@ -89,21 +89,6 @@ export async function fetchSwapQuote(basketAddress: string, body: unknown) {
   });
 }
 
-export async function confirmBasketRebalance(
-  basketAddress: string,
-  body: {
-    chainId: number;
-    moduleAddress: string;
-    txHash: `0x${string}`;
-    targetWeights: Array<{ assetAddress: string; targetWeightBps: number }>;
-  },
-) {
-  return fetchApi<{ success: true }>(`/v1/baskets/${basketAddress}/rebalance-confirmation`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-}
-
 export async function fetchLendingMarkets(chainId: number = 31337) {
   return fetchApi<{
     success: boolean;

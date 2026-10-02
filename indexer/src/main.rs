@@ -17,15 +17,30 @@ fn is_supported_chain_id(chain_id: i64) -> bool {
     matches!(chain_id, BASE_FORK_CHAIN_ID | BASE_MAINNET_CHAIN_ID)
 }
 
+fn rpc_backoff_delay(failure_count: u32) -> Duration {
+    let exponent = failure_count.saturating_sub(1).min(6);
+    Duration::from_secs((1_u64 << exponent).min(60))
+}
+
 #[cfg(test)]
 mod network_tests {
-    use super::{is_supported_chain_id, BASE_FORK_CHAIN_ID, BASE_MAINNET_CHAIN_ID};
+    use super::{is_supported_chain_id, rpc_backoff_delay, BASE_FORK_CHAIN_ID, BASE_MAINNET_CHAIN_ID};
+    use std::time::Duration;
 
     #[test]
     fn supports_only_base_fork_and_base_mainnet() {
         assert!(is_supported_chain_id(BASE_FORK_CHAIN_ID));
         assert!(is_supported_chain_id(BASE_MAINNET_CHAIN_ID));
         assert!(!is_supported_chain_id(84532));
+    }
+
+    #[test]
+    fn rpc_backoff_is_exponential_and_capped() {
+        assert_eq!(rpc_backoff_delay(1), Duration::from_secs(1));
+        assert_eq!(rpc_backoff_delay(2), Duration::from_secs(2));
+        assert_eq!(rpc_backoff_delay(3), Duration::from_secs(4));
+        assert_eq!(rpc_backoff_delay(7), Duration::from_secs(60));
+        assert_eq!(rpc_backoff_delay(100), Duration::from_secs(60));
     }
 }
 
@@ -129,10 +144,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut current_block = get_next_block(&pool, chain_id, default_start).await?;
     let mut last_valuation_run: Option<std::time::Instant> = None;
+    let mut rpc_failure_count = 0_u32;
 
     loop {
         match provider.get_block_number().await {
             Ok(latest_block) => {
+                rpc_failure_count = 0;
                 let latest_block = latest_block.as_u64();
 
                 if chain_id == BASE_MAINNET_CHAIN_ID && latest_block > current_block + 50000 {
@@ -146,9 +163,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let to_block = (current_block + batch_size).min(latest_block);
                     info!("[Rust Indexer] Scanning blocks {} -> {}", current_block, to_block);
 
-                    process_block_range(&pool, &provider, chain_id, factory_addr, module_addr, registry_addr, usdc_addr, &lending_pool_addrs, current_block, to_block).await?;
-                    update_next_block(&pool, chain_id, to_block + 1).await?;
-                    current_block = to_block + 1;
+                    match process_block_range(&pool, &provider, chain_id, factory_addr, module_addr, registry_addr, usdc_addr, &lending_pool_addrs, current_block, to_block).await {
+                        Ok(()) => {
+                            rpc_failure_count = 0;
+                            update_next_block(&pool, chain_id, to_block + 1).await?;
+                            current_block = to_block + 1;
+                        }
+                        Err(e) => {
+                            rpc_failure_count = rpc_failure_count.saturating_add(1);
+                            let backoff = rpc_backoff_delay(rpc_failure_count);
+                            warn!(
+                                failure_count = rpc_failure_count,
+                                retry_in_secs = backoff.as_secs(),
+                                error = ?e,
+                                "[RPC Error] Block range failed; keeping indexer alive and retrying"
+                            );
+                            tokio::time::sleep(backoff).await;
+                        }
+                    }
                 } else {
                     tokio::time::sleep(Duration::from_secs(3)).await;
                 }
@@ -175,8 +207,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             Err(e) => {
-                error!("[RPC Error] Failed to get latest block number: {:?}", e);
-                tokio::time::sleep(Duration::from_secs(10)).await;
+                rpc_failure_count = rpc_failure_count.saturating_add(1);
+                let backoff = rpc_backoff_delay(rpc_failure_count);
+                warn!(
+                    failure_count = rpc_failure_count,
+                    retry_in_secs = backoff.as_secs(),
+                    error = ?e,
+                    "[RPC Error] Failed to get latest block number; keeping indexer alive and backing off"
+                );
+                tokio::time::sleep(backoff).await;
             }
         }
     }
@@ -320,7 +359,7 @@ async fn process_block_range(
                     .execute(pool)
                     .await?;
 
-                    write_event_valuation_checkpoint(pool, provider, registry_addr, chain_id, e.safe, block_number, &block_hash).await?;
+                    let _ = write_event_valuation_checkpoint(pool, provider, registry_addr, chain_id, e.safe, block_number, &block_hash).await?;
                     reconcile_accounting_for_basket(pool, chain_id, &safe).await?;
 
                     info!("[Rust Indexer] Indexed BasketCreated: safe={} owner={}", safe, owner);
@@ -353,7 +392,16 @@ async fn process_block_range(
                     .execute(pool)
                     .await?;
 
-                    write_event_valuation_checkpoint(pool, provider, registry_addr, chain_id, e.safe, block_number, &block_hash).await?;
+                    let first_funding: bool = sqlx::query_scalar(
+                        "SELECT NOT EXISTS (SELECT 1 FROM basket_events WHERE chain_id=$1 AND basket_address=$2 AND event_type='FUNDED' AND (block_number < $3 OR (block_number=$3 AND log_index < $4)))",
+                    )
+                    .bind(chain_id).bind(&safe).bind(block_number as i64).bind(log_index)
+                    .fetch_one(pool).await?;
+                    if let Some(weights) = write_event_valuation_checkpoint(pool, provider, registry_addr, chain_id, e.safe, block_number, &block_hash).await? {
+                        if first_funding {
+                            save_indexed_target_weights(pool, chain_id, &safe, block_number, &tx_hash, log_index, &weights).await?;
+                        }
+                    }
                     reconcile_accounting_for_basket(pool, chain_id, &safe).await?;
 
                     info!("[Rust Indexer] Indexed BasketFunded: safe={} funder={}", safe, funder);
@@ -386,7 +434,9 @@ async fn process_block_range(
                     .execute(pool)
                     .await?;
 
-                    write_event_valuation_checkpoint(pool, provider, registry_addr, chain_id, e.safe, block_number, &block_hash).await?;
+                    if let Some(weights) = write_event_valuation_checkpoint(pool, provider, registry_addr, chain_id, e.safe, block_number, &block_hash).await? {
+                        save_indexed_target_weights(pool, chain_id, &safe, block_number, &tx_hash, log_index, &weights).await?;
+                    }
                     reconcile_accounting_for_basket(pool, chain_id, &safe).await?;
 
                     info!("[Rust Indexer] Indexed BasketRebalanced: safe={}", safe);
@@ -424,7 +474,7 @@ async fn process_block_range(
                         &e.withdrawn_assets, &e.withdrawn_amounts, usdc_addr,
                     ).await?;
 
-                    write_event_valuation_checkpoint(pool, provider, registry_addr, chain_id, e.safe, block_number, &block_hash).await?;
+                    let _ = write_event_valuation_checkpoint(pool, provider, registry_addr, chain_id, e.safe, block_number, &block_hash).await?;
                     reconcile_accounting_for_basket(pool, chain_id, &safe).await?;
 
                     info!("[Rust Indexer] Indexed BasketWithdrawn: safe={}", safe);
@@ -509,7 +559,7 @@ async fn write_event_valuation_checkpoint(
     safe: Address,
     block_number: u64,
     block_hash: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Option<Vec<(String, u32)>>, Box<dyn std::error::Error>> {
     let safe_string = format!("{:#x}", safe).to_lowercase();
     let block_id = BlockId::Number(BlockNumber::Number(U64::from(block_number)));
 
@@ -523,7 +573,7 @@ async fn write_event_valuation_checkpoint(
         )
         .bind(chain_id).bind(&safe_string).bind(block_number as i64).bind(block_hash).bind(&issue)
         .execute(pool).await?;
-        return Ok(());
+        return Ok(None);
     }
 
     let block = match provider.get_block(block_id).await {
@@ -538,7 +588,7 @@ async fn write_event_valuation_checkpoint(
             )
             .bind(chain_id).bind(&safe_string).bind(block_number as i64).bind(block_hash).bind(&issue)
             .execute(pool).await?;
-            return Ok(());
+            return Ok(None);
         }
     };
 
@@ -559,7 +609,7 @@ async fn write_event_valuation_checkpoint(
             )
             .bind(chain_id).bind(&safe_string).bind(block_number as i64).bind(block_hash).bind(block_timestamp).bind(&issue)
             .execute(pool).await?;
-            return Ok(());
+            return Ok(None);
         }
     };
 
@@ -569,6 +619,7 @@ async fn write_event_valuation_checkpoint(
         balance: U256,
         decimals: u8,
         price_usd_e8: U256,
+        value_micro: U256,
         feed_round_id: U256,
         feed_updated_at: chrono::DateTime<chrono::Utc>,
     }
@@ -669,6 +720,7 @@ async fn write_event_valuation_checkpoint(
             balance,
             decimals: token_decimals,
             price_usd_e8,
+            value_micro,
             feed_round_id: U256::from(round_id),
             feed_updated_at: feed_updated_datetime,
         });
@@ -684,7 +736,7 @@ async fn write_event_valuation_checkpoint(
         .bind(chain_id).bind(&safe_string).bind(block_number as i64).bind(block_hash).bind(block_timestamp).bind(&issue)
         .execute(pool).await?;
         warn!("[Rust Indexer] Event checkpoint UNAVAILABLE for basket={}: {}", safe_string, issue);
-        return Ok(());
+        return Ok(None);
     }
 
     let mut tx = pool.begin().await?;
@@ -744,8 +796,82 @@ async fn write_event_valuation_checkpoint(
 
     tx.commit().await?;
 
+    // A target is the measured allocation at the creation/funding/rebalance
+    // checkpoint. The event itself carries trade amounts, not target weights.
+    let measured_weights = if total_nav_micro.is_zero() {
+        None
+    } else {
+        let mut weights = Vec::new();
+        let mut allocated_bps = 0u32;
+        for cp in checkpoints.iter().filter(|cp| !cp.value_micro.is_zero()) {
+            let scaled = cp.value_micro.checked_mul(U256::from(10_000u64))
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "allocation weight overflow"))?;
+            let bps = (scaled / total_nav_micro).as_u32();
+            allocated_bps += bps;
+            weights.push((cp.token_address.clone(), bps, cp.value_micro));
+        }
+        if let Some(largest) = weights.iter_mut().max_by_key(|entry| entry.2) {
+            largest.1 += 10_000 - allocated_bps;
+        }
+        Some(weights.into_iter().map(|(address, bps, _)| (address, bps)).collect())
+    };
+
     info!("[Rust Indexer] Event checkpoint recorded: basket={} block={} nav_usdc={}", safe_string, block_number, nav_str);
 
+    Ok(measured_weights)
+}
+
+async fn save_indexed_target_weights(
+    pool: &PgPool,
+    chain_id: i64,
+    basket_address: &str,
+    block_number: u64,
+    tx_hash: &str,
+    log_index: i32,
+    weights: &[(String, u32)],
+) -> Result<(), Box<dyn std::error::Error>> {
+    if weights.is_empty() { return Ok(()); }
+
+    let mut tx = pool.begin().await?;
+    let latest_block: Option<i64> = sqlx::query_scalar(
+        "SELECT MAX(updated_block) FROM basket_assets WHERE chain_id=$1 AND basket_address=$2",
+    )
+    .bind(chain_id).bind(basket_address)
+    .fetch_one(&mut *tx).await?;
+
+    if latest_block.map_or(true, |latest| latest <= block_number as i64) {
+        let addresses: Vec<String> = weights.iter().map(|(address, _)| address.clone()).collect();
+        for (address, weight_bps) in weights {
+            sqlx::query(
+                "INSERT INTO basket_assets (chain_id, basket_address, asset_address, target_weight_bps, updated_block)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (chain_id, basket_address, asset_address) DO UPDATE SET
+                   target_weight_bps=EXCLUDED.target_weight_bps, updated_block=EXCLUDED.updated_block",
+            )
+            .bind(chain_id).bind(basket_address).bind(address)
+            .bind(*weight_bps as i32).bind(block_number as i64)
+            .execute(&mut *tx).await?;
+        }
+        sqlx::query(
+            "DELETE FROM basket_assets WHERE chain_id=$1 AND basket_address=$2 AND NOT (asset_address = ANY($3::text[]))",
+        )
+        .bind(chain_id).bind(basket_address).bind(&addresses)
+        .execute(&mut *tx).await?;
+    }
+
+    let target_payload = json!(weights.iter().map(|(asset_address, weight_bps)| json!({
+        "assetAddress": asset_address,
+        "weightBps": weight_bps,
+    })).collect::<Vec<_>>()).to_string();
+    sqlx::query(
+        "UPDATE basket_events SET payload=jsonb_set(payload, '{targetWeights}', $5::jsonb, true)
+         WHERE chain_id=$1 AND tx_hash=$2 AND log_index=$3 AND basket_address=$4",
+    )
+    .bind(chain_id).bind(tx_hash).bind(log_index).bind(basket_address)
+    .bind(target_payload)
+    .execute(&mut *tx).await?;
+
+    tx.commit().await?;
     Ok(())
 }
 
@@ -900,7 +1026,7 @@ async fn run_hourly_valuation_tick(
                  SUM(
                    (p.quantity_base_units * apo.price_usd_e8 * 1000000.0) /
                    (POWER(10::numeric, p.decimals) * 100000000.0)
-                 ),
+                 ) / 1000000.0,
                  6
                ) AS nav_usdc,
                'HOURLY' AS kind,
@@ -918,6 +1044,7 @@ async fn run_hourly_valuation_tick(
                ON apo.chain_id = p.chain_id
               AND apo.asset_address = p.asset_address
               AND apo.block_number = $2
+             WHERE p.quantity_base_units > 0
              GROUP BY p.chain_id, p.basket_address
              HAVING COUNT(*) FILTER (WHERE apo.asset_address IS NULL) = 0
              ON CONFLICT (chain_id, basket_address, block_number, kind) DO UPDATE SET

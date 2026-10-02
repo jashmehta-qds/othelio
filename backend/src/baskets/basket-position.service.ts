@@ -7,7 +7,7 @@ import {
   PositionSnapshot,
   positionSnapshotSchema,
 } from '@othelio/shared';
-import { createPublicClient, http, parseAbi } from 'viem';
+import { createPublicClient, fallback, http, parseAbi } from 'viem';
 import { DatabaseService } from '../database/database.service';
 import { AAVE_RPC_URLS, AAVE_V3_POOLS } from '../lending/adapters/aave-v3.adapter';
 import { rpcUrlForChain } from '../config/network-runtime';
@@ -32,6 +32,11 @@ const AAVE_PROVIDER_ABI = parseAbi([
 const AAVE_ORACLE_ABI = parseAbi([
   'function BASE_CURRENCY_UNIT() view returns (uint256)',
   'function getAssetPrice(address asset) view returns (uint256)',
+]);
+
+const PRICE_FEED_ABI = parseAbi([
+  'function decimals() view returns (uint8)',
+  'function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
 ]);
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
@@ -71,7 +76,32 @@ export class BasketPositionService {
     } catch {
       return null;
     }
-    return rpcUrl ? createPublicClient({ transport: http(rpcUrl) }) : null;
+    if (!rpcUrl) return null;
+    const transport = chainId === 8453
+      ? fallback([
+          http(rpcUrl, { retryCount: 3, retryDelay: 1_000 }),
+          http('https://mainnet.base.org', { retryCount: 3, retryDelay: 1_000 }),
+        ])
+      : http(rpcUrl, { retryCount: 3, retryDelay: 1_000 });
+    return createPublicClient({ transport });
+  }
+
+  async getIndexedPositionSnapshot(
+    basketAddressInput: string,
+    chainIdInput: string | number,
+  ): Promise<BasketPositionResponse> {
+    let basketAddress: Address;
+    let chainId: number;
+    try {
+      basketAddress = addressSchema.parse(basketAddressInput).toLowerCase() as Address;
+      chainId = chainIdSchema.parse(chainIdInput);
+    } catch {
+      throw new BadRequestException('basketAddress and chainId must be valid EVM values.');
+    }
+    const snapshot = await this.lastKnownSnapshot(chainId, basketAddress, 'INDEXED_SNAPSHOT');
+    if (snapshot) return { data: snapshot, capabilities: this.resolveRecoveryCapabilities(chainId, snapshot) };
+    const unavailable = this.unavailableSnapshot(chainId, basketAddress, 'INDEXED_SNAPSHOT_UNAVAILABLE');
+    return { data: unavailable, capabilities: this.getCapabilities(chainId) };
   }
 
   async getPositionSnapshot(
@@ -90,29 +120,20 @@ export class BasketPositionService {
     const client = this.getClient(chainId);
 
     if (!client) {
-      return {
-        data: this.unavailableSnapshot(chainId, basketAddress, `RPC_UNCONFIGURED:${chainId}`),
-        capabilities: this.getCapabilities(chainId),
-      };
+      return this.withLastKnownSnapshot(chainId, basketAddress, `RPC_UNCONFIGURED:${chainId}`);
     }
 
     let block: Awaited<ReturnType<PositionClient['getBlock']>>;
     try {
       block = await client.getBlock({ blockTag: 'latest' });
     } catch {
-      return {
-        data: this.unavailableSnapshot(chainId, basketAddress, 'RPC_BLOCK_UNAVAILABLE'),
-        capabilities: this.getCapabilities(chainId),
-      };
+      return this.withLastKnownSnapshot(chainId, basketAddress, 'RPC_BLOCK_UNAVAILABLE');
     }
 
     const blockNumber = block.number;
     const blockHash = block.hash;
     if (blockNumber === null || blockHash === null) {
-      return {
-        data: this.unavailableSnapshot(chainId, basketAddress, 'RPC_BLOCK_NOT_CANONICAL'),
-        capabilities: this.getCapabilities(chainId),
-      };
+      return this.withLastKnownSnapshot(chainId, basketAddress, 'RPC_BLOCK_NOT_CANONICAL');
     }
 
     const basketCode = await client.getBytecode({ address: basketAddress, blockNumber }).catch(() => undefined);
@@ -151,24 +172,28 @@ export class BasketPositionService {
       ? await this.getAaveOracle(client, poolAddress, blockNumber, issues)
       : null;
 
-    const dbPrices = new Map<string, bigint>();
+    const priceFeeds = new Map<string, Address>();
     try {
       const priceRows = await this.db.query(
         `SELECT DISTINCT ON (LOWER(asset_address))
            LOWER(asset_address) AS asset_address,
-           price_usd_e8
+           LOWER(feed_address) AS feed_address
          FROM asset_price_observations
          WHERE chain_id = $1
-         ORDER BY LOWER(asset_address), observed_at DESC`,
+         ORDER BY LOWER(asset_address), block_number DESC`,
         [chainId],
       );
       for (const row of priceRows.rows) {
-        if (row.price_usd_e8) {
-          dbPrices.set(row.asset_address.toLowerCase(), BigInt(row.price_usd_e8));
+        const parsedAddress = addressSchema.safeParse(row.asset_address.trim());
+        if (parsedAddress.success) {
+          const address = parsedAddress.data.toLowerCase() as Address;
+          universe.set(address, address);
+          const parsedFeed = addressSchema.safeParse(row.feed_address.trim());
+          if (parsedFeed.success) priceFeeds.set(address, parsedFeed.data.toLowerCase() as Address);
         }
       }
     } catch {
-      // Ignore DB price resolution errors
+      issues.push('ASSET_PRICE_FEED_DISCOVERY_UNAVAILABLE');
     }
 
     const reads = await Promise.all(
@@ -181,16 +206,22 @@ export class BasketPositionService {
         reserveAssets.some((reserve) => reserve.toLowerCase() === assetAddress.toLowerCase()),
         poolAddress,
         oracle,
-        dbPrices,
+        priceFeeds.get(assetAddress.toLowerCase()),
         blockNumber,
+        block.timestamp,
         issues,
       )),
     );
 
     const additionalKeys = new Set(additionalAssets.map((address) => address.toLowerCase()));
+    // Price-feed discovery can add assets observed by other baskets. They are
+    // not part of this basket and may not even be deployed on this chain. Do
+    // not let an unreadable zero-balance discovery candidate make this basket's
+    // live valuation unusable; configured and explicitly requested assets are
+    // still retained and validated strictly.
     const visibleReads = reads.filter((read) =>
-      read.configured || read.liquid === null || read.supplied === null || read.debt === null ||
-      read.liquid > 0n || read.supplied > 0n || read.debt > 0n || additionalKeys.has(read.address.toLowerCase()),
+      read.configured || additionalKeys.has(read.address.toLowerCase()) ||
+      read.liquid !== null || read.supplied !== null || read.debt !== null,
     );
 
     let grossAssets = 0n;
@@ -261,6 +292,15 @@ export class BasketPositionService {
       issues: [...new Set(issues)].sort(),
     });
 
+    const configuredKeysForFallback = new Set(configuredAssets.map((asset) => asset.toLowerCase()));
+    const configuredLiquidDataMissing = snapshot.tokens.some((token) =>
+      configuredKeysForFallback.has(token.assetAddress.toLowerCase()) &&
+      (token.liquidAmountBaseUnits === null || token.priceUsdE8 === null),
+    );
+    if (snapshot.readCompleteness === 'UNAVAILABLE' || configuredLiquidDataMissing) {
+      const fallback = await this.lastKnownSnapshot(chainId, basketAddress, snapshot.issues[0] ?? 'LIVE_VALUATION_UNAVAILABLE');
+      if (fallback) return { data: fallback, capabilities: this.resolveRecoveryCapabilities(chainId, fallback) };
+    }
     return { data: snapshot, capabilities: this.resolveRecoveryCapabilities(chainId, snapshot) };
   }
 
@@ -349,6 +389,83 @@ export class BasketPositionService {
       valuationStatus: 'UNAVAILABLE',
       issues: [issue, 'POSITION_DISCOVERY_NOT_PROOF_OF_ZERO_DEBT'],
     });
+  }
+
+  private async withLastKnownSnapshot(chainId: number, basketAddress: Address, issue: string): Promise<BasketPositionResponse> {
+    const snapshot = await this.lastKnownSnapshot(chainId, basketAddress, issue);
+    if (snapshot) return { data: snapshot, capabilities: this.resolveRecoveryCapabilities(chainId, snapshot) };
+    const unavailable = this.unavailableSnapshot(chainId, basketAddress, issue);
+    return { data: unavailable, capabilities: this.getCapabilities(chainId) };
+  }
+
+  private async lastKnownSnapshot(chainId: number, basketAddress: Address, issue: string): Promise<PositionSnapshot | null> {
+    try {
+      const result = await this.db.query(
+        `WITH latest_nav AS (
+           SELECT block_number, block_hash, block_timestamp, position_block_number, nav_usdc
+           FROM basket_nav_observations
+           WHERE chain_id = $1 AND basket_address = $2 AND valuation_status = 'COMPLETE'
+           ORDER BY block_number DESC
+           LIMIT 1
+         ), latest_positions AS (
+           SELECT DISTINCT ON (bp.asset_address)
+             bp.asset_address, bp.quantity_base_units, bp.decimals
+           FROM basket_positions bp, latest_nav nav
+           WHERE bp.chain_id = $1 AND bp.basket_address = $2 AND bp.block_number <= nav.position_block_number
+           ORDER BY bp.asset_address, bp.block_number DESC
+         ), latest_prices AS (
+           SELECT DISTINCT ON (apo.asset_address)
+             apo.asset_address, apo.price_usd_e8
+           FROM asset_price_observations apo
+           WHERE apo.chain_id = $1
+           ORDER BY apo.asset_address, apo.block_number DESC
+         )
+         SELECT nav.block_number, nav.block_hash, nav.block_timestamp,
+                nav.nav_usdc,
+                lp.asset_address, lp.quantity_base_units, lp.decimals,
+                lpr.price_usd_e8
+         FROM latest_nav nav
+         LEFT JOIN latest_positions lp ON TRUE
+         LEFT JOIN latest_prices lpr ON LOWER(lpr.asset_address) = LOWER(lp.asset_address)
+         ORDER BY lp.asset_address`,
+        [chainId, basketAddress],
+      );
+      if (result.rows.length === 0 || !result.rows[0].block_number) return null;
+      const first = result.rows[0];
+      const tokens = result.rows
+        .filter((row) => row.asset_address)
+        .map((row) => ({
+          assetAddress: String(row.asset_address).trim().toLowerCase(),
+          decimals: Number(row.decimals),
+          liquidAmountBaseUnits: String(row.quantity_base_units),
+          priceUsdE8: row.price_usd_e8 === null ? null : String(row.price_usd_e8),
+        }));
+      const navUsdE8 = tokens.reduce((total, token) => {
+        if (token.priceUsdE8 === null) return total;
+        return total + (BigInt(token.liquidAmountBaseUnits ?? '0') * BigInt(token.priceUsdE8)) / (BigInt(10) ** BigInt(token.decimals));
+      }, 0n).toString();
+      return positionSnapshotSchema.parse({
+        chainId,
+        basketAddress,
+        blockNumber: Number(first.block_number),
+        blockHash: String(first.block_hash).trim(),
+        observedAt: new Date(first.block_timestamp).toISOString(),
+        tokens,
+        markets: [],
+        grossAssetsUsdE8: navUsdE8,
+        accruedDebtUsdE8: '0',
+        equityUsdE8: navUsdE8,
+        aaveHealthFactorRay: null,
+        readCompleteness: 'COMPLETE',
+        valuationStatus: 'STALE',
+        issues: [issue, 'LAST_KNOWN_GOOD_SNAPSHOT'],
+      });
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[Position snapshot] Indexed snapshot read failed:', error);
+      }
+      return null;
+    }
   }
 
   private async getConfiguredAssets(
@@ -455,8 +572,9 @@ export class BasketPositionService {
     isAaveReserve: boolean,
     poolAddress: Address | undefined,
     oracle: { address: Address; baseUnit: bigint } | null,
-    dbPrices: Map<string, bigint>,
+    priceFeedAddress: Address | undefined,
     blockNumber: bigint,
+    blockTimestamp: bigint,
     issues: string[],
   ): Promise<AssetRead> {
     const [liquidResult, decimalsResult, symbolResult] = await Promise.allSettled([
@@ -506,7 +624,23 @@ export class BasketPositionService {
       if (debt === null) issues.push(`AAVE_DEBT_UNAVAILABLE:${poolAddress}:${assetAddress}`);
     }
 
-    let priceUsdE8: bigint | null = dbPrices.get(assetAddress.toLowerCase()) ?? null;
+    let priceUsdE8: bigint | null = null;
+    if (priceFeedAddress) {
+      try {
+        const [feedDecimals, round] = await Promise.all([
+          client.readContract({ address: priceFeedAddress, abi: PRICE_FEED_ABI, functionName: 'decimals', blockNumber }),
+          client.readContract({ address: priceFeedAddress, abi: PRICE_FEED_ABI, functionName: 'latestRoundData', blockNumber }),
+        ]);
+        const [roundId, answer, , updatedAt, answeredInRound] = round;
+        if (feedDecimals > 36 || roundId === 0n || answer <= 0n || answeredInRound < roundId || updatedAt === 0n || updatedAt > blockTimestamp) {
+          throw new Error('Invalid price feed round');
+        }
+        priceUsdE8 = answer * BigInt(100_000_000) / BigInt(10) ** BigInt(feedDecimals);
+        if (priceUsdE8 <= 0n) throw new Error('Price rounds to zero');
+      } catch {
+        issues.push(`PRICE_FEED_READ_UNAVAILABLE:${assetAddress}`);
+      }
+    }
     if (priceUsdE8 === null && isAaveReserve && oracle) {
       try {
         const rawPrice = await client.readContract({

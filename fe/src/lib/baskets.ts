@@ -1,4 +1,5 @@
 import { fetchApi } from "./api";
+import { formatUnits } from "viem";
 
 export type Holding = {
   symbol: string;

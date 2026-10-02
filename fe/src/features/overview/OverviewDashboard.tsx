@@ -1,40 +1,30 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useAccount, useChainId } from "wagmi";
-import { useAllActivity, useBasketsList, usePortfolioValuationHistory } from "@/hooks/useBaskets";
-import { canonicalSpotNav } from "@/lib/valuation";
+import { useQueries } from "@tanstack/react-query";
+import { formatUnits } from "viem";
+import { useAllActivity, useBasketsList, usePortfolioValuationHistory, type PortfolioPositionsResponse } from "@/hooks/useBaskets";
+import { fetchApi } from "@/lib/api";
+import { currentHoldingsFromSnapshot } from "@/lib/live-allocation";
 import {
-  assetPrices,
-  defaultDemoBaskets,
   formatAddress,
   formatCompactNumber,
-  formatEventLabel,
-  formatEventMetadata,
   getAssetChange,
   getAssetSector,
-  getBasket,
   getCreatedBaskets,
   getLocalActivity,
   isUserFacingActivity,
   SECTOR_COLORS,
   supportedAssets,
   type Basket,
-  type BasketActivity,
-  type Holding,
 } from "@/lib/baskets";
 import { SectorDonutChart, type SectorAllocation } from "./SectorDonutChart";
 import { PortfolioPerformanceGraph } from "./PortfolioPerformanceGraph";
-import { AppIcon } from "@/components/app-shell/AppIcon";
 import { useWalletRestoring } from "@/hooks/useWalletRestoring";
+import StockLogo from "@/components/StockLogo";
 
 type Timeframe = "1D" | "7D" | "30D";
-type IndexedPosition = {
-  symbol?: string;
-  asset_address?: string;
-  avg_cost_usdc?: number | string | null;
-};
 
 const SECTOR_CATEGORIES = [
   "Big Tech & AI",
@@ -83,7 +73,7 @@ export function OverviewDashboard() {
 
   // Combine active baskets (User Created -> Backend Indexed) - Strict 0 when disconnected
   // Combine active baskets (Backend Indexed -> User Created Fallback) - Strict 0 when disconnected
-  const activeBaskets = useMemo<Basket[]>(() => {
+  const candidateBaskets = useMemo<Basket[]>(() => {
     if (!isConnected || !address) return [];
 
     const basketMap = new Map<string, Basket>();
@@ -93,41 +83,14 @@ export function OverviewDashboard() {
       if (ib.controller && ib.controller.toLowerCase() !== address.toLowerCase()) {
         return;
       }
-      const basketVal = canonicalSpotNav((ib as any).snapshot) ?? 0;
-
-      const mappedHoldings: Holding[] = (ib as any).assets && Array.isArray((ib as any).assets) && (ib as any).assets.length > 0
-        ? (ib as any).assets.map((ast: any) => {
-            const rawAddr = ast.asset_address ? String(ast.asset_address).trim() : "";
-            const knownMeta = supportedAssets.find((sa) =>
-              sa.symbol.toLowerCase() === rawAddr.toLowerCase() ||
-              (sa.address && sa.address.toLowerCase() === rawAddr.toLowerCase())
-            );
-            const symbolKey = knownMeta?.symbol || (rawAddr.startsWith("0x") ? `${rawAddr.slice(0, 6)}…` : rawAddr || "USDC");
-            const targetWeight = (ast.target_weight_bps || 0) / 100;
-            const val = (basketVal * targetWeight) / 100;
-            const price = assetPrices[symbolKey] || 100;
-            const quantity = price > 0 ? Number((val / price).toFixed(4)) : 0;
-            return {
-              symbol: symbolKey,
-              name: knownMeta?.name || symbolKey,
-              target: targetWeight,
-              current: targetWeight,
-              quantity,
-              value: val,
-              color: knownMeta?.color || "#8aa4ff",
-              address: knownMeta?.address || rawAddr,
-            };
-          })
-        : [];
-
       const basketObj: Basket = {
         name: ib.name,
         symbol: ib.symbol || "OTH",
-        value: basketVal,
+        value: 0,
         change: 0.0,
         updated: ib.created_at ? new Date(ib.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Recently",
         address: ib.address,
-        holdings: mappedHoldings,
+        holdings: [],
         isIndexed: true,
         owner: ib.controller,
       };
@@ -159,6 +122,30 @@ export function OverviewDashboard() {
     }
     return deduped;
   }, [isConnected, address, localBaskets, indexedBaskets]);
+
+  const positionQueries = useQueries({
+    queries: candidateBaskets.map((basket) => ({
+      queryKey: ["basket-positions", basket.address.toLowerCase(), chainId],
+      queryFn: () => fetchApi<PortfolioPositionsResponse>(`/v1/baskets/${basket.address}/positions?chainId=${chainId}`),
+      enabled: /^0x[a-fA-F0-9]{40}$/.test(basket.address),
+      refetchInterval: 15_000,
+    })),
+  });
+
+  const activeBaskets = candidateBaskets.map((basket, index): Basket => {
+    const snapshot = positionQueries[index]?.data?.data;
+    if (!snapshot || snapshot.readCompleteness !== "COMPLETE" || !["COMPLETE", "STALE"].includes(snapshot.valuationStatus)) {
+      return { ...basket, value: 0, holdings: [] };
+    }
+    const value = snapshot.equityUsdE8 === null ? 0 : Number(formatUnits(BigInt(snapshot.equityUsdE8), 8));
+    return { ...basket, value, holdings: currentHoldingsFromSnapshot(snapshot) ?? [] };
+  });
+  const livePositionsLoading = positionQueries.some((query) => query.isPending);
+  const livePositionsUnavailable = candidateBaskets.length > 0 && positionQueries.some((query) =>
+    query.isError || (query.data && (
+      query.data.data.readCompleteness !== "COMPLETE" || !["COMPLETE", "STALE"].includes(query.data.data.valuationStatus)
+    )),
+  );
 
   // Executive Hero Metrics
   const totalNAV = useMemo(() => {
@@ -197,9 +184,9 @@ export function OverviewDashboard() {
           (a.address && a.address.toLowerCase() === h.symbol.toLowerCase())
         );
         const symbolKey = meta?.symbol || h.symbol;
-        const price = assetPrices[symbolKey] || 100;
-        const val = h.value || (h.quantity * price);
-        const qty = h.quantity || (price > 0 ? val / price : 0);
+        const price = h.quantity > 0 ? h.value / h.quantity : 0;
+        const val = h.value;
+        const qty = h.quantity;
         // Do not manufacture a gain from a market-return window when no
         // acquisition basis is available. A missing basis is neutral until
         // the indexer provides the position's average cost.
@@ -605,6 +592,10 @@ export function OverviewDashboard() {
                   ? "Restoring your wallet…"
                   : !isConnected
                   ? "No wallet connected. Connect your wallet to view active positions."
+                  : livePositionsLoading
+                  ? "Loading live onchain holdings…"
+                  : livePositionsUnavailable
+                  ? "Live holdings are unavailable right now."
                   : "No active basket holdings found for your connected wallet."}
               </div>
             ) : (
@@ -624,15 +615,7 @@ export function OverviewDashboard() {
                   >
                     {/* Asset Symbol & Badge */}
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span
-                        style={{
-                          width: "10px",
-                          height: "10px",
-                          borderRadius: "50%",
-                          backgroundColor: holding.color,
-                          flexShrink: 0,
-                        }}
-                      />
+                      <StockLogo symbol={holding.symbol} size={24} roundedFull />
                       <div style={{ display: "flex", flexDirection: "column" }}>
                         <strong style={{ fontWeight: 700, color: "var(--ink)" }}>
                           {holding.symbol}

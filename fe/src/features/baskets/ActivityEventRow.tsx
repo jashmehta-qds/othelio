@@ -1,6 +1,7 @@
 import { formatUnits } from "viem";
 import { assetPrices, formatAddress, formatEventLabel, formatEventMetadata, supportedAssets, type BasketActivity } from "@/lib/baskets";
 import { useAssetPrices } from "@/hooks/useBaskets";
+import StockLogo from "@/components/StockLogo";
 
 function payloadOf(event: BasketActivity): Record<string, unknown> {
   if (typeof event.payload === "string") {
@@ -68,19 +69,27 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
   const amountsFor = (key: string, alias?: string) => Array.isArray(payload[key]) ? payload[key] as unknown[] : alias && Array.isArray(payload[alias]) ? payload[alias] as unknown[] : [];
   const boughtAssets = assetsFor("boughtAssets", "acquiredAssets");
   const boughtAmounts = amountsFor("boughtAmounts", "acquiredAmounts");
+  const targetWeights = Array.isArray(payload.targetWeights)
+    ? payload.targetWeights.filter((item): item is { assetAddress: string; weightBps: number } =>
+      Boolean(item && typeof item === "object" && typeof item.assetAddress === "string" && typeof item.weightBps === "number"))
+    : [];
+  const targetSummary = targetWeights.map(({ assetAddress, weightBps }) => {
+    const symbol = supportedAssets.find((asset) => asset.address?.toLowerCase() === assetAddress.toLowerCase())?.symbol ?? formatAddress(assetAddress);
+    return `${symbol} ${(weightBps / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
+  }).join(" · ");
 
   const lines = (assets: unknown[], amounts: unknown[], direction: "in" | "out") => assets.map((address, index) => {
     const movement = tokenMovement(address, amounts[index], priceMap);
     const isNew = isRebalance && direction === "in" && !seen.has(String(address).toLowerCase());
     return <div className="activity-detail-line" key={`${String(address)}-${index}`}>
       <span className={`activity-move ${direction}`}>{direction === "in" ? "Received" : "Sent"}</span>
-      <strong>{movement.quantity} {movement.symbol}</strong>
+      <strong style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}><StockLogo symbol={movement.symbol} size={18} roundedFull />{movement.quantity} {movement.symbol}</strong>
       {movement.priceFormatted ? <span style={{ color: "var(--muted-ink)", fontSize: "11px" }}>@ ${movement.priceFormatted}</span> : (isNew ? <span className="activity-new-token">New position</span> : <span />)}
       {movement.usd !== null && <span style={{ textAlign: "right", color: "var(--muted-ink)", fontSize: "11px" }}>≈ ${movement.usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>}
     </div>;
   });
 
-  if (["CREATED", "BASKETCREATED"].includes(type)) return <div className="activity-detail-body"><p>Basket Safe created for {formatAddress(event.actor_address)}.</p></div>;
+  if (["CREATED", "BASKETCREATED"].includes(type)) return <div className="activity-detail-body"><p>Basket Safe created for {formatAddress(event.actor_address)}.</p>{targetSummary && <p>Target: {targetSummary}</p>}</div>;
 
   const redeemedUsd = payload.navRedeemed ? Number(payload.navRedeemed) / 1e6 : (payload.remainingNAV ? Number(payload.remainingNAV) / 1e6 : null);
   const isDeliveredUsdc = assetsFor("withdrawnAssets").length === 1 && tokenMovement(assetsFor("withdrawnAssets")[0], amountsFor("withdrawnAmounts")[0], priceMap).symbol === "USDC";
@@ -103,6 +112,7 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
   return <div className="activity-detail-body">
     {isFund && payload.inputAmount ? <p>Paid ${(Number(payload.inputAmount) / 1e6).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC allocated into target assets:</p> : null}
     {isFund && lines(boughtAssets, boughtAmounts, "in")}
+    {(isFund || isRebalance) && targetSummary && <p>Target: {targetSummary}</p>}
 
     {isRebalance && <p>Portfolio rebalance movement:</p>}
     {isRebalance && lines(assetsFor("soldAssets"), amountsFor("soldAmounts"), "out")}
@@ -193,8 +203,14 @@ export function ActivityEventRow({ event, basketSymbol, olderEvents = [], full =
     <summary className="activity-row">
       <span className="activity-time">{event.block_number ? `Block ${full ? "#" : ""}${event.block_number}` : "Pending index"}</span>
       {full && <span className="activity-basket" title={event.basket_address}>{basketSymbol ?? "Unknown basket"}</span>}
-      <span className="activity-operation"><strong>{formatEventLabel(event.event_type)}</strong><small>{full ? `Safe: ${formatAddress(event.basket_address || "")} · Actor: ${formatAddress(event.actor_address)}` : formatAddress(event.actor_address)}</small></span>
-      <span className="activity-amount">{meta.amountText && <strong className={meta.isPositive ? "positive" : meta.isPositive === false ? "negative" : ""}>{meta.amountText}</strong>}<small>{formatAddress(event.tx_hash)}{Number(event.chain_id) === 31337 ? " · Anvil" : ""}</small></span>
+      <span className="activity-operation"><strong>{formatEventLabel(event.event_type)}</strong></span>
+      <span className="activity-amount">{meta.amountText && <strong className={meta.isPositive ? "positive" : meta.isPositive === false ? "negative" : ""}>{meta.amountText}</strong>}<small><a
+        href={`https://basescan.org/tx/${event.tx_hash}`}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(clickEvent) => clickEvent.stopPropagation()}
+        style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: "2px" }}
+      >{formatAddress(event.tx_hash)}</a>{Number(event.chain_id) === 31337 ? " · Anvil" : ""}</small></span>
       <span className="activity-row-state">{event.block_number ? "Confirmed" : "Pending"}<svg aria-hidden="true" viewBox="0 0 20 20"><path d="m6 8 4 4 4-4" /></svg></span>
     </summary>
     <ActivityDetails event={event} olderEvents={olderEvents} />

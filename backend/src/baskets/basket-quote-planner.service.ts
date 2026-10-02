@@ -97,7 +97,7 @@ export class BasketQuotePlannerService {
     const { data: snapshot, capabilities } = await this.positions.getPositionSnapshot(basketAddress, chainId);
     const capability = capabilities.actions.WITHDRAW_LIQUID;
     if (capability.availability === 'DISABLED') throw new UnprocessableEntityException(capability.reason);
-    this.assertUsableSnapshot(snapshot, basketAddress, chainId);
+    this.assertUsableLiquidWithdrawalSnapshot(snapshot, basketAddress, chainId);
 
     let totalLiquidValueUsdE8 = 0n;
     const positions = snapshot.tokens.map((token) => {
@@ -124,7 +124,13 @@ export class BasketQuotePlannerService {
 
     const tokens = withdrawals.map((position) => position.assetAddress);
     const amounts = withdrawals.map((position) => position.amount);
-    const remainingTokens = positions.map((position) => position.assetAddress);
+    // The module validates every token in remainingTokens against the asset
+    // registry. Position snapshots also contain zero-balance discovery and
+    // lending assets, which must not be sent as part of this basket's listed
+    // holdings. Keep only assets that are actually held by the basket.
+    const remainingTokens = positions
+      .filter((position) => position.balance > 0n)
+      .map((position) => position.assetAddress);
     const moduleCalldata = encodeFunctionData({
       abi: BASKET_WITHDRAW_IN_KIND_V3_ABI,
       functionName: 'withdrawInKind',
@@ -716,6 +722,19 @@ export class BasketQuotePlannerService {
       throw new UnprocessableEntityException('The canonical snapshot does not match the requested basket and chain.');
     }
     if (snapshot.readCompleteness === 'UNAVAILABLE' || snapshot.valuationStatus === 'UNAVAILABLE' || snapshot.valuationStatus === 'STALE') {
+      throw new UnprocessableEntityException('Current liquid balances and prices are required for every planned asset.');
+    }
+  }
+
+  private assertUsableLiquidWithdrawalSnapshot(snapshot: PositionSnapshot, basketAddress: Address, chainId: number) {
+    if (snapshot.chainId !== chainId || snapshot.basketAddress.toLowerCase() !== basketAddress.toLowerCase()) {
+      throw new UnprocessableEntityException('The canonical snapshot does not match the requested basket and chain.');
+    }
+    if (snapshot.readCompleteness === 'UNAVAILABLE' || snapshot.valuationStatus === 'UNAVAILABLE' || snapshot.valuationStatus === 'STALE') {
+      throw new UnprocessableEntityException('Current liquid balances and prices are required for every planned asset.');
+    }
+    const heldTokens = snapshot.tokens.filter((token) => token.liquidAmountBaseUnits !== null && BigInt(token.liquidAmountBaseUnits) > 0n);
+    if (heldTokens.length === 0 || heldTokens.some((token) => token.priceUsdE8 === null)) {
       throw new UnprocessableEntityException('Current liquid balances and prices are required for every planned asset.');
     }
   }

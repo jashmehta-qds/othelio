@@ -27,14 +27,46 @@ fi
 export PATH="$HOME/.foundry/bin:$PATH"
 cd "$ROOT_DIR"
 
-RPC_CHAIN_ID="$(base-cast chain-id --rpc-url "$BASE_RPC_URL")"
-if [[ "$RPC_CHAIN_ID" != "8453" ]]; then
-  echo "RPC returned chain ID $RPC_CHAIN_ID; refusing to start the Base profile."
+# RPC providers can briefly return 429s (especially while the indexer is
+# catching up). Probe the configured endpoint first, then fall back to Base's
+# public endpoint so a transient provider limit does not tear down the whole
+# dev stack.
+RPC_ENDPOINTS=("$BASE_RPC_URL")
+if [[ "$BASE_RPC_URL" != "https://mainnet.base.org" ]]; then
+  RPC_ENDPOINTS+=("https://mainnet.base.org")
+fi
+ACTIVE_RPC=""
+for candidate in "${RPC_ENDPOINTS[@]}"; do
+  for attempt in 1 2 3; do
+    if RPC_CHAIN_ID="$(base-cast chain-id --rpc-url "$candidate" 2>/dev/null)" \
+      && [[ "$RPC_CHAIN_ID" == "8453" ]] \
+      && RPC_HEAD="$(base-cast block-number --rpc-url "$candidate" 2>/dev/null)" \
+      && [[ "$RPC_HEAD" =~ ^[0-9]+$ ]]; then
+      ACTIVE_RPC="$candidate"
+      break 2
+    fi
+    sleep "$attempt"
+  done
+done
+if [[ -z "$ACTIVE_RPC" ]]; then
+  echo "Unable to reach a Base RPC endpoint (the configured provider may be rate limited)."
   exit 1
+fi
+if [[ "$ACTIVE_RPC" != "$BASE_RPC_URL" ]]; then
+  echo "Configured Base RPC is rate limited; using $ACTIVE_RPC for this session."
+  export BASE_RPC_URL="$ACTIVE_RPC"
+  export RPC_URL="$ACTIVE_RPC"
+  export NEXT_PUBLIC_BASE_RPC_URL="$ACTIVE_RPC"
 fi
 
 if [[ "${START_BLOCK:-}" == "latest" ]]; then
-  LATEST_BLOCK="$(base-cast block-number --rpc-url "$BASE_RPC_URL")"
+  LATEST_BLOCK=""
+  for attempt in 1 2 3; do
+    if LATEST_BLOCK="$(base-cast block-number --rpc-url "$BASE_RPC_URL" 2>/dev/null)" && [[ "$LATEST_BLOCK" =~ ^[0-9]+$ ]]; then
+      break
+    fi
+    sleep "$attempt"
+  done
   if ! [[ "$LATEST_BLOCK" =~ ^[0-9]+$ ]]; then
     echo "Could not resolve the current Base block from the RPC."
     exit 1
@@ -48,7 +80,9 @@ fi
 docker compose --env-file "$ENV_FILE" -f docker-compose.base.yml up -d postgres
 docker compose --env-file "$ENV_FILE" -f docker-compose.base.yml run --rm database-migrations
 
-exec "$ROOT_DIR/node_modules/.bin/concurrently" -k \
+# Keep the host services independent: an indexer restart or crash should not
+# tear down the backend and frontend while developing against Base RPC.
+exec "$ROOT_DIR/node_modules/.bin/concurrently" \
   -n "indexer,backend,frontend" \
   -c "cyan,magenta,green" \
   "docker compose --env-file '$ENV_FILE' -f docker-compose.base.yml up --force-recreate indexer" \

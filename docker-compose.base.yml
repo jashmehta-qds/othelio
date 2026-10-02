@@ -49,13 +49,10 @@ services:
       - ${OTHELIO_BASE_ENV_FILE:-.env.base}
     environment:
       DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
-      RPC_URL: ${BASE_RPC_URL:?BASE_RPC_URL must be configured}
-      CHAIN_ID: "${CHAIN_ID:-8453}"
-      START_BLOCK: ${START_BLOCK:?START_BLOCK must be configured}
-      BATCH_SIZE: "${BATCH_SIZE:-10}"
-      FACTORY_ADDRESS: ${FACTORY_ADDRESS:?FACTORY_ADDRESS must be configured}
-      MODULE_ADDRESS: ${MODULE_ADDRESS:?MODULE_ADDRESS must be configured}
-      ASSET_REGISTRY_ADDRESS: ${ASSET_REGISTRY_ADDRESS:?ASSET_REGISTRY_ADDRESS must be configured}
+      # Keep the container on the RPC selected by dev-base-services.sh. This
+      # overrides a rate-limited value from .env.base when the launcher falls
+      # back to Base's public endpoint.
+      RPC_URL: ${BASE_RPC_URL}
     depends_on:
       postgres: { condition: service_healthy }
 

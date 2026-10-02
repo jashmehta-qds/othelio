@@ -10,6 +10,7 @@ import { AppIcon } from "@/components/app-shell/AppIcon";
 import { assetPrices, asset30dChanges, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
 import { useAccountingSummary, useBasketDetails, useBasketActivity, useBasketsList, useAssetPrices, usePortfolioPositions } from "@/hooks/useBaskets";
 import { canonicalSpotNav } from "@/lib/valuation";
+import { currentHoldingsFromSnapshot, liveAllocation } from "@/lib/live-allocation";
 import { BasketDrawer, type BasketAction } from "./BasketDrawer";
 import { BasketLogo } from "./BasketLogo";
 import { PortfolioDrift } from "./PortfolioDrift";
@@ -27,14 +28,6 @@ function decimalStringParts(rawAmount: string): { value: bigint; fractionalDigit
   const digits = `${whole}${fractional}`.replace(/^0+(?=\d)/, '');
   const value = BigInt(digits || '0');
   return { value: negative ? -value : value, fractionalDigits: fractional.length };
-}
-
-function displayBaseUnits(rawAmount: string, decimals: number): number | null {
-  try {
-    return Number(formatUnits(BigInt(rawAmount), decimals));
-  } catch {
-    return null;
-  }
 }
 
 function displayUsdcMicro(rawAmount: string | null): number | null {
@@ -194,23 +187,18 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         ? localBasket.holdings
         : (fallbackBasket.holdings || []),
   };
+  const allocation = liveAllocation(mappedIndexedHoldings, portfolioSnapshot);
 
   let calculatedTotalValue = 0;
   const accountingByAsset = new Map(
     (accountingResponse?.data.assets ?? []).map((asset) => [asset.assetAddress.toLowerCase(), asset]),
   );
 
-  const holdingsCalculated = basket.holdings.map((h) => {
+  const liveHoldings = currentHoldingsFromSnapshot(portfolioSnapshot);
+  const holdingsCalculated = (liveHoldings ?? []).map((h) => {
     const accounting = h.address ? accountingByAsset.get(h.address.toLowerCase()) : undefined;
-    const tokenPrice = priceMap?.[h.symbol] ?? assetPrices[h.symbol] ?? 100;
-    const indexedQuantity = accounting ? displayBaseUnits(accounting.quantityBaseUnits, accounting.decimals) : null;
-    const indexedValue = accounting?.accountingStatus === 'COMPLETE'
-      ? displayUsdcMicro(accounting.spotValueUsdcMicro)
-      : null;
-    const realQuantity = indexedQuantity ?? ((h.quantity > 0 && Math.abs(h.quantity * tokenPrice - h.value) < 1.0)
-      ? h.quantity
-      : (tokenPrice > 0 ? Number((h.value / tokenPrice).toFixed(4)) : 0));
-    const assetValue = indexedValue ?? h.value;
+    const tokenPrice = h.quantity > 0 ? h.value / h.quantity : 0;
+    const assetValue = h.value;
     const averageCost = accounting?.accountingStatus === 'COMPLETE'
       ? displayAverageCost(accounting.weightedAverageCostUsdcMicroPerBaseUnit, accounting.decimals)
       : null;
@@ -221,7 +209,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
 
     return {
       ...h,
-      quantity: realQuantity,
+      quantity: h.quantity,
       tokenPrice,
       assetValue,
       averageCost,
@@ -336,7 +324,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
 
           <div style={{ flex: "0 1 380px", minWidth: "300px", display: "flex", flexDirection: "column", gap: "16px", alignItems: "flex-end" }}>
             <div style={{ width: "100%" }}>
-              <PortfolioDrift holdings={basket.holdings} />
+              {allocation ? <PortfolioDrift holdings={allocation} /> : <div style={{ color: "var(--muted-ink)", fontSize: "13px" }}>Allocation drift is waiting for live balances and prices.</div>}
             </div>
 
             <div className="basket-actions" style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
@@ -369,6 +357,9 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
               </tr>
             </thead>
             <tbody>
+              {holdingsCalculated.length === 0 && <tr><td colSpan={6} style={{ padding: "28px 16px", textAlign: "center", color: "var(--ink-3)" }}>
+                {liveHoldings === null ? "Live onchain holdings are unavailable right now." : "This basket has no current holdings."}
+              </td></tr>}
               {holdingsCalculated.map((h) => {
                 return (
                   <tr key={h.symbol} style={{ borderBottom: "1px solid var(--line)" }}>
@@ -405,7 +396,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                 <td style={{ padding: "14px 16px", color: "var(--ink-3)" }}>—</td>
                 <td style={{ padding: "14px 16px", color: "var(--ink-3)" }}>—</td>
                 <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 700, fontSize: "14px", color: "var(--ink)" }}>
-                  ${calculatedTotalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {liveHoldings === null ? "—" : `$${calculatedTotalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </td>
                 <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 700, fontSize: "14px", color: totalUnrealisedPnl === null ? "var(--ink-3)" : totalUnrealisedPnl >= 0 ? "#10b981" : "#ef4444" }}>
                   {totalUnrealisedPnl === null ? "—" : `${totalUnrealisedPnl >= 0 ? "+" : "-"}$${Math.abs(totalUnrealisedPnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -420,16 +411,20 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         <div className="section-title">
           <div>
             <h2>Allocation flow</h2>
-            <p>Target weights compared with current onchain balances</p>
+            <p>Indexed target weights compared with current liquid onchain balances</p>
           </div>
         </div>
         <div className="allocation-visual">
-          <AllocationSankey allocations={basket.holdings} theme="dark" />
+          {allocation ? <AllocationSankey allocations={allocation} theme="dark" /> : (
+            <div className="sankey-wrap" style={{ padding: "36px 20px", textAlign: "center", color: "var(--muted-ink)", fontSize: "13px" }}>
+              Allocation is waiting for indexed targets or complete live balances and prices.
+            </div>
+          )}
         </div>
 
         <footer className="allocation-footer">
-          <span>100% allocated</span>
-          <span>Last priced {basket.updated}</span>
+          <span>{allocation ? "Target vs. current allocation" : "Allocation unavailable"}</span>
+          <span>{allocation ? `Live as of ${new Date(portfolioSnapshot!.observedAt).toLocaleString()}` : "Awaiting onchain data"}</span>
         </footer>
       </section>
 

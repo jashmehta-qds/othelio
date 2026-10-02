@@ -102,7 +102,7 @@ export class BasketsController {
     @Param('address') address: string,
     @Query('chainId') chainId: string,
   ) {
-    return this.basketPositions.getPositionSnapshot(address, chainId);
+    return this.basketPositions.getIndexedPositionSnapshot(address, chainId);
   }
 
   @Get('assets/supported')
@@ -116,14 +116,6 @@ export class BasketsController {
     @Body() body: any,
   ) {
     return this.basketsService.quoteSwaps(address, body);
-  }
-
-  @Post(':address/rebalance-confirmation')
-  async confirmRebalance(
-    @Param('address') address: string,
-    @Body() body: any,
-  ) {
-    return this.basketsService.confirmRebalance(address, body);
   }
 
   @Post(':address/lending-log')

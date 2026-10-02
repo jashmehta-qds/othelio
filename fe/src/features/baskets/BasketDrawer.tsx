@@ -4,9 +4,10 @@ import { useAccount, useChainId, useReadContract, useWriteContract, useSendTrans
 import { formatUnits } from "viem";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { supportedAssets, updateBasketWeights, depositBasket, withdrawBasket, getSlippageTolerance, type Basket } from "@/lib/baskets";
+import { supportedAssets, depositBasket, withdrawBasket, getSlippageTolerance, type Basket } from "@/lib/baskets";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
-import { confirmBasketRebalance, fetchSwapQuote } from "@/lib/api";
+import { fetchSwapQuote } from "@/lib/api";
+import { useBasketDetails } from "@/hooks/useBaskets";
 import { toRawAmount, USDC_DECIMALS } from "@/types/shared";
 
 export type BasketAction = "mint" | "withdraw" | "rebalance" | null;
@@ -24,6 +25,10 @@ function userFacingExecutionError(error: unknown, fallback: string): string {
     : error instanceof Error
       ? error.message
       : fallback;
+}
+
+function isCanonicalLiquidWithdrawalError(message: string | null, isMint: boolean): boolean {
+  return !isMint && Boolean(message?.toLowerCase().includes("canonical liquid basket value"));
 }
 
 export function BasketDrawer({ basket, action, onClose }: { basket: Basket; action: Exclude<BasketAction, null>; onClose: () => void }) {
@@ -58,10 +63,13 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
   const { isPending: isSendPending, sendTransactionAsync } = useSendTransaction();
 
   const [activeHash, setActiveHash] = useState<`0x${string}` | null>(null);
-  const [submittedTargets, setSubmittedTargets] = useState<Array<{ assetAddress: string; targetWeightBps: number }>>([]);
   const hash = activeHash;
   const isPending = isSendPending;
-  const { isError: isReceiptError, error: receiptError, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: hash ?? undefined });
+  const { data: receipt, isError: isReceiptError, error: receiptError, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: hash ?? undefined });
+  const { data: indexedDetails } = useBasketDetails(basket.address, chainId);
+  const isAllocationIndexed = Boolean(isSuccess && receipt && indexedDetails?.data.assets.some(
+    (asset) => BigInt(asset.updated_block) >= receipt.blockNumber,
+  ));
 
   const processedHash = useRef<string | null>(null);
   const [countdown, setCountdown] = useState<number>(10);
@@ -69,28 +77,16 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
   useEffect(() => {
     if (isSuccess && hash && processedHash.current !== hash) {
       processedHash.current = hash;
-      updateBasketWeights(basket.address, targets);
-      const activeChain = chainId as keyof typeof CONTRACT_ADDRESSES;
-      const moduleAddress = CONTRACT_ADDRESSES[activeChain]?.module;
-      if (moduleAddress && submittedTargets.length > 0) {
-        void confirmBasketRebalance(basket.address, {
-          chainId: activeChain,
-          moduleAddress,
-          txHash: hash,
-          targetWeights: submittedTargets,
-        }).then(() => Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["basket", basket.address] }),
-          queryClient.invalidateQueries({ queryKey: ["basket-positions", basket.address] }),
-          queryClient.invalidateQueries({ queryKey: ["baskets"] }),
-        ])).catch((error) => {
-          setExecutionError(error instanceof Error ? error.message : "Rebalance confirmed, but its allocation could not be refreshed.");
-        });
-      }
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["basket", basket.address] }),
+        queryClient.invalidateQueries({ queryKey: ["basket-positions", basket.address.toLowerCase()] }),
+        queryClient.invalidateQueries({ queryKey: ["baskets"] }),
+      ]);
     }
-  }, [isSuccess, basket.address, targets, hash, chainId, submittedTargets, queryClient]);
+  }, [isSuccess, basket.address, hash, queryClient]);
 
   useEffect(() => {
-    if (isSuccess) {
+    if (isAllocationIndexed) {
       const interval = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
@@ -102,13 +98,13 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [isSuccess]);
+  }, [isAllocationIndexed]);
 
   useEffect(() => {
-    if (isSuccess && countdown === 0) {
+    if (isAllocationIndexed && countdown === 0) {
       onClose();
     }
-  }, [isSuccess, countdown, onClose]);
+  }, [isAllocationIndexed, countdown, onClose]);
 
   useEffect(() => {
     if (!isReceiptError) return;
@@ -212,7 +208,6 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
         data: call.calldata as `0x${string}`,
         value: BigInt(call.valueBaseUnits),
       });
-      setSubmittedTargets(targetWeights);
       setActiveHash(tx);
     } catch (err) {
       console.error("Rebalance execution error:", err);
@@ -225,13 +220,13 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
       <div className="drawer-scroll" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
         <header>
           <div>
-            <h2>{isSuccess ? "Rebalance Confirmed" : previewing ? "Review Rebalance" : "Rebalance"}</h2>
-            <span>{isSuccess ? "Transaction Confirmed" : previewing ? "Preview & Sign" : "Edit weights"}</span>
+            <h2>{isAllocationIndexed ? "Rebalance Confirmed" : isSuccess ? "Indexing Rebalance" : previewing ? "Review Rebalance" : "Rebalance"}</h2>
+            <span>{isAllocationIndexed ? "Allocation Updated" : isSuccess ? "Transaction Confirmed" : previewing ? "Preview & Sign" : "Edit weights"}</span>
           </div>
           <button onClick={onClose} aria-label="Close rebalance">×</button>
         </header>
 
-        {isSuccess ? (
+        {isAllocationIndexed ? (
           <div style={{ textAlign: "center", padding: "32px 16px" }}>
             <div style={{
               width: "64px",
@@ -292,7 +287,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
               <div style={{ borderTop: "1px solid var(--line)", marginTop: "8px", paddingTop: "8px", display: "flex", justifyContent: "space-between" }}>
                 <span>Transaction Status</span>
                 <strong style={{ color: isSuccess ? "var(--positive)" : "var(--ink)" }}>
-                  {isSuccess ? "Confirmed ✓" : isConfirming ? "Confirming..." : isPending ? "Waiting wallet..." : "Ready to execute"}
+                  {isSuccess ? "Waiting for indexed allocation..." : isConfirming ? "Confirming..." : isPending ? "Waiting wallet..." : "Ready to execute"}
                 </strong>
               </div>
             </div>
@@ -448,7 +443,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
       </div>
 
       <footer>
-        {isSuccess ? (
+        {isAllocationIndexed ? (
           <button className="primary" style={{ width: "100%" }} onClick={onClose}>
             Close
           </button>
@@ -459,10 +454,10 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
             </button>
             <button
               className="primary"
-              disabled={(!previewing && total !== 100) || isPending || isConfirming}
+              disabled={(!previewing && total !== 100) || isPending || isConfirming || isSuccess}
               onClick={previewing ? handleExecuteRebalance : () => setPreviewing(true)}
             >
-              {isPending ? "Confirming..." : previewing ? "Execute" : "Review"}{" "}
+              {isSuccess ? "Indexing..." : isPending ? "Confirming..." : previewing ? "Execute" : "Review"}{" "}
               <AppIcon type="arrow" />
             </button>
           </>
@@ -483,6 +478,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
 
   const [withdrawInUsdc, setWithdrawInUsdc] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const isCanonicalLiquidError = isCanonicalLiquidWithdrawalError(actionError, isMint);
 
   const { data: usdcBalanceRaw, isLoading: isBalanceLoading, refetch: refetchDrawerUsdc } = useReadContract({
     address: usdcAddress,
@@ -657,7 +653,9 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         if (!(chainId in CONTRACT_ADDRESSES)) {
           throw new Error(`Withdrawal is unavailable on unsupported chain ${chainId}.`);
         }
-        const withdrawValueUsdE8 = toRawAmount(depositAmount || "0", 8).toString();
+        // The drawer amount is entered in USDC (6 decimals), while the quote
+        // planner accepts the requested USD value in 8 decimal fixed point.
+        const withdrawValueUsdE8 = (toRawAmount(depositAmount || "0", USDC_DECIMALS) * BigInt(100)).toString();
         const res = await fetchSwapQuote(basket.address, {
           action: 'withdraw',
           chainId,
@@ -691,8 +689,11 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         });
         setActiveHash(withdrawTx);
       } catch (err) {
-        console.error("Withdrawal execution error:", err);
-        setActionError(userFacingExecutionError(err, "The in-kind withdrawal could not be prepared."));
+        const message = userFacingExecutionError(err, "The in-kind withdrawal could not be prepared.");
+        if (!isCanonicalLiquidWithdrawalError(message, isMint)) {
+          console.error("Withdrawal execution error:", err);
+        }
+        setActionError(message);
       }
     }
   };
@@ -753,21 +754,31 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                 : "Redeem value from your portfolio directly to your wallet."}
             </p>
 
-            <label className="amount-field">
+            <label className="amount-field" style={isCanonicalLiquidError ? { border: "1px solid #ef4444", boxShadow: "0 0 0 3px rgba(239, 68, 68, 0.12)" } : undefined}>
               <span>{isMint ? "You deposit" : "Withdrawal Amount"}</span>
               <div>
                 <input
                   inputMode="decimal"
                   value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
+                  aria-invalid={isCanonicalLiquidError}
+                  onChange={(e) => {
+                    setDepositAmount(e.target.value);
+                    if (actionError) setActionError(null);
+                  }}
+                  style={isCanonicalLiquidError ? { color: "#ef4444" } : undefined}
                 />
-                <b>{isMint ? "USDC" : "USD ($)"}</b>
+                <b>USDC</b>
               </div>
               <small>
                 {isMint
                   ? `Available: ${isBalanceLoading ? "Loading..." : formattedBalance}`
                   : `Basket Value: $${basket.value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               </small>
+              {isCanonicalLiquidError && (
+                <small role="alert" style={{ display: "block", marginTop: "8px", color: "#ef4444", fontWeight: 700 }}>
+                  {actionError}
+                </small>
+              )}
             </label>
 
             {/* Quick Percentage Presets for Withdrawal */}
@@ -777,7 +788,10 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                   <button
                     key={pct}
                     type="button"
-                    onClick={() => setDepositAmount(Math.round(basket.value * (pct / 100)).toString())}
+                    onClick={() => {
+                      setDepositAmount(Math.round(basket.value * (pct / 100)).toString());
+                      if (actionError) setActionError(null);
+                    }}
                     style={{
                       padding: "7px 4px",
                       borderRadius: "8px",
@@ -909,20 +923,24 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                   </strong>
                 </div>
               )}
-              <div>
-                <span>DEX Route Optimization</span>
-                <strong style={{ color: "#10b981", fontSize: "12px" }}>
-                  Best rate via 0x / Aerodrome
-                </strong>
-              </div>
+              {isMint && (
+                <div>
+                  <span>DEX Route Optimization</span>
+                  <strong style={{ color: "#10b981", fontSize: "12px" }}>
+                    Best rate via 0x / Aerodrome
+                  </strong>
+                </div>
+              )}
               <div>
                 <span>Est. Network Gas Fee</span>
                 <strong>~$0.04 (Base L2)</strong>
               </div>
-              <div>
-                <span>Max Slippage Tolerance</span>
-                <strong>0.5%</strong>
-              </div>
+              {isMint && (
+                <div>
+                  <span>Max Slippage Tolerance</span>
+                  <strong>0.5%</strong>
+                </div>
+              )}
               <div>
                 <span>Transaction Status</span>
                 <strong>{isSuccess ? "Confirmed ✓" : isConfirming ? "Confirming..." : isPending ? "Waiting wallet..." : "Ready"}</strong>
@@ -935,7 +953,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                 <small>No assets move until you approve the transaction in your wallet.</small>
               </p>
             </div>
-            {actionError && (
+            {actionError && !isCanonicalLiquidError && (
               <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
                 <strong style={{ display: "block", marginBottom: "4px" }}>{actionError === QUOTE_EXPIRED_MESSAGE ? "Quote expired" : "Transaction needs attention"}</strong>
                 <span>{actionError}</span>

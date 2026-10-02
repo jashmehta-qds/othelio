@@ -22,6 +22,7 @@ export interface BasketAsset {
   basket_address: string;
   asset_address: string;
   target_weight_bps: number;
+  updated_block: number | string;
 }
 
 export interface BasketSnapshot {
@@ -92,6 +93,7 @@ export function useBasketDetails(address: string, chainId = DEFAULT_CHAIN_ID, en
     queryKey: ['basket', address, chainId],
     queryFn: () => fetchApi<BasketDetailsResponse>(`/v1/baskets/${address}?chainId=${chainId}`),
     enabled: enabled && Boolean(address),
+    refetchInterval: 3000,
   });
 }
 

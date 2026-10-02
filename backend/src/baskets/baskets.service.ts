@@ -1,10 +1,8 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { addressSchema, chainIdSchema } from '@othelio/shared';
-import { createPublicClient, decodeEventLog, http, isHash, parseAbi } from 'viem';
 import { DatabaseService } from '../database/database.service';
 import { BasketQuotePlannerService, BasketQuoteRequest } from './basket-quote-planner.service';
 import { LendingEventRequest, LendingEventService } from './lending-event.service';
-import { rpcUrlForChain } from '../config/network-runtime';
 
 @Injectable()
 export class BasketsService {
@@ -16,81 +14,6 @@ export class BasketsService {
     @Inject(LendingEventService)
     private readonly lendingEvents: LendingEventService,
   ) {}
-
-  async confirmRebalance(basketAddressInput: string, body: {
-    chainId?: number;
-    moduleAddress?: string;
-    txHash?: string;
-    targetWeights?: Array<{ assetAddress: string; targetWeightBps: number }>;
-  }) {
-    const chainId = chainIdSchema.parse(body.chainId);
-    const basketAddress = addressSchema.parse(basketAddressInput).toLowerCase();
-    const moduleAddress = addressSchema.parse(body.moduleAddress).toLowerCase();
-    if (!body.txHash || !isHash(body.txHash)) throw new NotFoundException({ error: 'REBALANCE_TRANSACTION_NOT_FOUND' });
-
-    const targets = (body.targetWeights ?? []).map((target) => ({
-      assetAddress: addressSchema.parse(target.assetAddress).toLowerCase(),
-      targetWeightBps: target.targetWeightBps,
-    })).filter((target) => target.targetWeightBps > 0);
-    if (
-      targets.length === 0
-      || new Set(targets.map((target) => target.assetAddress)).size !== targets.length
-      || targets.some((target) => !Number.isInteger(target.targetWeightBps))
-      || targets.reduce((sum, target) => sum + target.targetWeightBps, 0) !== 10_000
-    ) {
-      throw new NotFoundException({ error: 'INVALID_REBALANCE_TARGETS' });
-    }
-
-    const rpcUrl = rpcUrlForChain(chainId);
-    if (!rpcUrl) throw new BadRequestException({ error: 'RPC_NOT_CONFIGURED', chainId });
-    const receipt = await createPublicClient({ transport: http(rpcUrl) })
-      .getTransactionReceipt({ hash: body.txHash })
-      .catch(() => null);
-    if (!receipt || receipt.status !== 'success' || receipt.to?.toLowerCase() !== moduleAddress) {
-      throw new NotFoundException({ error: 'REBALANCE_TRANSACTION_NOT_CONFIRMED' });
-    }
-
-    const eventAbi = parseAbi([
-      'event BasketRebalanced(address indexed safe,address indexed controller,address[] soldAssets,uint256[] soldAmounts,address[] boughtAssets,uint256[] boughtAmounts,uint256 tradedOutputNavUsdc)',
-    ]);
-    let matchingEvent: { boughtAssets: readonly `0x${string}`[] } | null = null;
-    receipt.logs.some((log) => {
-      if (log.address.toLowerCase() !== moduleAddress) return false;
-      try {
-        const decoded = decodeEventLog({ abi: eventAbi, data: log.data, topics: log.topics });
-        if (decoded.eventName === 'BasketRebalanced' && decoded.args.safe.toLowerCase() === basketAddress) {
-          matchingEvent = { boughtAssets: decoded.args.boughtAssets };
-          return true;
-        }
-        return false;
-      } catch {
-        return false;
-      }
-    });
-    if (!matchingEvent) throw new NotFoundException({ error: 'REBALANCE_EVENT_NOT_FOUND' });
-    const targetSet = new Set(targets.map((target) => target.assetAddress));
-    if ((matchingEvent as { boughtAssets: readonly `0x${string}`[] }).boughtAssets.some((asset) => !targetSet.has(asset.toLowerCase()))) {
-      throw new NotFoundException({ error: 'REBALANCE_TARGETS_DO_NOT_MATCH_RECEIPT' });
-    }
-
-    const addresses = targets.map((target) => target.assetAddress);
-    const weights = targets.map((target) => target.targetWeightBps);
-    await this.db.query(
-      `WITH upserted AS (
-         INSERT INTO basket_assets (chain_id, basket_address, asset_address, target_weight_bps, updated_block)
-         SELECT $1, $2, LOWER(asset_address), target_weight_bps, $5
-         FROM UNNEST($3::text[], $4::int[]) AS target(asset_address, target_weight_bps)
-         ON CONFLICT (chain_id, basket_address, asset_address) DO UPDATE
-         SET target_weight_bps=EXCLUDED.target_weight_bps, updated_block=EXCLUDED.updated_block
-         RETURNING asset_address
-       )
-       DELETE FROM basket_assets
-       WHERE chain_id=$1 AND basket_address=$2 AND NOT (asset_address = ANY($3::text[]))`,
-      [chainId, basketAddress, addresses, weights, receipt.blockNumber.toString()],
-    );
-
-    return { success: true, data: { basketAddress, txHash: body.txHash, targetWeights: targets } };
-  }
 
   async getBaskets(chainIdInput?: string, controllerInput?: string) {
     try {
@@ -394,16 +317,6 @@ export class BasketsService {
         ],
       );
 
-      if (body.assets && body.assets.length > 0) {
-        for (const asset of body.assets) {
-          await this.db.query(
-            `INSERT INTO basket_assets (chain_id, basket_address, asset_address, target_weight_bps, updated_block)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (chain_id, basket_address, asset_address) DO UPDATE SET target_weight_bps = EXCLUDED.target_weight_bps`,
-            [chainId, address, asset.address.toLowerCase(), asset.targetWeightBps, createdBlock],
-          );
-        }
-      }
     } catch (err) {
       console.warn('[BasketsService] Database insert warning (continuing fallback):', err);
     }
@@ -450,7 +363,7 @@ export class BasketsService {
     }
     address = address.toLowerCase();
 
-    const [basket, assets, snapshot, positions, latestEvent] = await Promise.all([
+    const [basket, assets, snapshot, positions] = await Promise.all([
       this.db.query('SELECT * FROM baskets WHERE chain_id=$1 AND address=$2', [
         chainId,
         address,
@@ -465,10 +378,6 @@ export class BasketsService {
       ),
       this.db.query(
         'SELECT DISTINCT ON (asset_address) * FROM basket_positions WHERE chain_id=$1 AND basket_address=$2 ORDER BY asset_address, block_number DESC',
-        [chainId, address],
-      ).catch(() => ({ rows: [] })),
-      this.db.query(
-        "SELECT * FROM basket_events WHERE chain_id=$1 AND basket_address=$2 AND event_type='FUNDED' ORDER BY block_number DESC LIMIT 1",
         [chainId, address],
       ).catch(() => ({ rows: [] })),
     ]);
@@ -519,38 +428,10 @@ export class BasketsService {
       }
     }
 
-    let finalAssets = assets.rows;
-    if (finalAssets.length === 0 && latestEvent.rows && latestEvent.rows.length > 0) {
-      const payload = typeof latestEvent.rows[0].payload === 'string'
-        ? JSON.parse(latestEvent.rows[0].payload)
-        : (latestEvent.rows[0].payload || {});
-      const boughtAssets: string[] = payload.boughtAssets || [];
-      if (Array.isArray(boughtAssets) && boughtAssets.length > 0) {
-        const weightBps = Math.floor(10000 / boughtAssets.length);
-        const derived: any[] = [];
-        for (const ast of boughtAssets) {
-          const astAddr = String(ast).toLowerCase();
-          await this.db.query(
-            `INSERT INTO basket_assets (chain_id, basket_address, asset_address, target_weight_bps, updated_block)
-             VALUES ($1, $2, $3, $4, 1)
-             ON CONFLICT (chain_id, basket_address, asset_address) DO UPDATE SET target_weight_bps = EXCLUDED.target_weight_bps`,
-            [chainId, address, astAddr, weightBps],
-          ).catch(() => null);
-          derived.push({
-            chain_id: chainId,
-            basket_address: address,
-            asset_address: astAddr,
-            target_weight_bps: weightBps,
-          });
-        }
-        finalAssets = derived;
-      }
-    }
-
     return {
       data: {
         ...basketRow,
-        assets: finalAssets,
+        assets: assets.rows,
         snapshot: snapshot.rows[0] ?? null,
         positions: positions.rows ?? [],
       },
