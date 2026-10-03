@@ -1,11 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useChainId, useReadContract, useWriteContract, useSendTransaction, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
-import { formatUnits } from "viem";
+import { decodeFunctionData, formatUnits, parseUnits } from "viem";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets, depositBasket, withdrawBasket, getSlippageTolerance, type Basket } from "@/lib/baskets";
-import { CONTRACT_ADDRESSES } from "@/lib/contracts";
+import { CONTRACT_ADDRESSES, OTHELIO_PORTFOLIO_MODULE_ABI } from "@/lib/contracts";
 import { fetchSwapQuote } from "@/lib/api";
 import { useBasketDetails, useBasketActivity, useWalletUsdcBalance } from "@/hooks/useBaskets";
 import { toRawAmount, USDC_DECIMALS } from "@/types/shared";
@@ -582,7 +582,10 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
           targetWeightBps: Math.round((h.target || 0) * 100),
         }));
 
-        const usdcAmount = toRawAmount(depositAmount || "0", USDC_DECIMALS);
+        const usdcAmount = parseUnits(depositAmount.trim() || "0", USDC_DECIMALS);
+        if (usdcAmount <= BigInt(0)) {
+          throw new Error("Enter a USDC amount greater than zero.");
+        }
         const amountRaw = usdcAmount.toString();
         const currentAllowance = (allowanceRaw as bigint) || BigInt(0);
         if (currentAllowance < usdcAmount) {
@@ -625,6 +628,17 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
           try {
             if (quote?.inputAsset?.toLowerCase() !== usdcAddress.toLowerCase() || quote.inputAmount !== amountRaw) {
               throw new Error("The simulated funding plan no longer matches the requested input amount.");
+            }
+            const decodedFunding = decodeFunctionData({
+              abi: OTHELIO_PORTFOLIO_MODULE_ABI,
+              data: call.calldata as `0x${string}`,
+            });
+            if (decodedFunding.functionName !== "fundAerodromePortfolio") {
+              throw new Error("The funding quote returned an unexpected module call.");
+            }
+            const encodedFundingAmount = (decodedFunding.args as readonly unknown[])[2] as bigint;
+            if (encodedFundingAmount !== usdcAmount) {
+              throw new Error(`Funding calldata amount mismatch: expected ${amountRaw} USDC base units, received ${encodedFundingAmount.toString()}.`);
             }
             // Submit the exact v3 calldata which the backend simulated at the canonical snapshot.
             const mintTx = await sendTransactionAsync({

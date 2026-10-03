@@ -245,6 +245,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "1".to_string())
         .parse()
         .unwrap_or(1);
+    let price_interval_blocks = configured_u64("INDEXER_PRICE_INTERVAL_BLOCKS", 10).max(1);
 
     let lending_pool_addrs: Vec<Address> = std::env::var("LENDING_POOL_ADDRESSES")
         .unwrap_or_default()
@@ -334,9 +335,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let latest_block = latest_block.as_u64();
 
                 if current_block <= latest_block {
+                    let blocks_per_range = batch_size.saturating_add(1);
+                    let available_blocks = latest_block
+                        .saturating_sub(current_block)
+                        .saturating_add(1);
+                    if available_blocks < blocks_per_range {
+                        tokio::time::sleep(Duration::from_secs(configured_u64(
+                            "INDEXER_HEAD_POLL_INTERVAL_SECS",
+                            5,
+                        )))
+                        .await;
+                        continue;
+                    }
+                    let full_ranges = available_blocks / blocks_per_range;
                     let catchup_concurrency = configured_u64("INDEXER_CATCHUP_CONCURRENCY", 3)
-                        .clamp(1, 3) as usize;
-                    let window_blocks = (batch_size.saturating_add(1))
+                        .clamp(1, 3)
+                        .min(full_ranges) as usize;
+                    let window_blocks = blocks_per_range
                         .saturating_mul(catchup_concurrency as u64);
                     let to_block = current_block
                         .saturating_add(window_blocks.saturating_sub(1))
@@ -462,20 +477,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // on every idle pass so a later reconciliation/bootstrap
                     // can make it applied without rewinding the block ledger.
                     retry_pending_position_projections(&pool, chain_id).await?;
-                    tokio::time::sleep(Duration::from_secs(3)).await;
+                    tokio::time::sleep(Duration::from_secs(configured_u64(
+                        "INDEXER_HEAD_POLL_INTERVAL_SECS",
+                        5,
+                    )))
+                    .await;
                 }
 
                 // Price observations are refreshed every ten confirmed blocks.
                 // NAV rollups retain the configured time cadence independently.
                 let confirmed_block = latest_block.saturating_sub(indexer_confirmations);
-                if confirmed_block >= last_price_block.saturating_add(10) {
+                if confirmed_block >= last_price_block.saturating_add(price_interval_blocks) {
                     let valuation_block = latest_block.saturating_sub(indexer_confirmations);
-                    // A valuation must use a confirmed block that normal event indexing has
-                    // already processed. Otherwise it could value stale position state.
-                    if valuation_block > 0
-                        && current_block > valuation_block
-                        && acquire_worker_lease(&pool, chain_id, "prices").await?
-                    {
+                    // Price observations are independent of event catch-up. This allows the
+                    // oracle table to refresh while a newly-started indexer replays history.
+                    // Action readiness still separately requires the event checkpoint to be
+                    // close enough to the chain head before using those prices.
+                    if valuation_block > 0 && acquire_worker_lease(&pool, chain_id, "prices").await? {
                         if !rpc_health
                             .entry(circuit_key("prices", using_secondary))
                             .or_default()
@@ -1003,10 +1021,10 @@ async fn project_position_deltas(
         let prior: Option<(String, i16)> = sqlx::query_as(
             "SELECT quantity_base_units::text,decimals
              FROM basket_positions
-             WHERE chain_id=$1 AND basket_address=LOWER($2) AND asset_address=LOWER($3)
+             WHERE chain_id=$1 AND basket_address=$2 AND asset_address=$3
              ORDER BY block_number DESC, position_version DESC, event_log_index DESC,
-                      event_tx_hash DESC, observed_at DESC, block_hash DESC
-             LIMIT 1 FOR UPDATE",
+                      event_tx_hash DESC
+             LIMIT 1",
         )
         .bind(chain_id)
         .bind(basket)
@@ -1040,7 +1058,7 @@ async fn project_position_deltas(
             sqlx::query(
                 "INSERT INTO indexer_reconciliation_state
                    (chain_id,basket_address,asset_address,last_checked_block,status,last_error)
-                 VALUES ($1,LOWER($2),LOWER($3),$4,'PENDING',$5)
+                 VALUES ($1,$2,$3,$4,'PENDING',$5)
                  ON CONFLICT (chain_id,basket_address,asset_address) DO UPDATE SET
                    status='PENDING',last_error=EXCLUDED.last_error,last_checked_block=EXCLUDED.last_checked_block",
             )
@@ -1050,7 +1068,7 @@ async fn project_position_deltas(
         sqlx::query(
             "INSERT INTO indexer_projection_pending
                (chain_id,tx_hash,log_index,basket_address,block_number,block_hash,event_type,deltas,issue,attempts,first_seen_at,last_attempt_at)
-             VALUES ($1,$2,$3,LOWER($4),$5,$6,$7,$8,$9,1,NOW(),NOW())
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1,NOW(),NOW())
              ON CONFLICT (chain_id,tx_hash,log_index) DO UPDATE SET
                basket_address=EXCLUDED.basket_address,block_number=EXCLUDED.block_number,
                block_hash=EXCLUDED.block_hash,event_type=EXCLUDED.event_type,deltas=EXCLUDED.deltas,
@@ -1067,14 +1085,13 @@ async fn project_position_deltas(
             "INSERT INTO basket_positions
                (chain_id,basket_address,asset_address,block_number,block_hash,block_timestamp,
                 quantity_base_units,decimals,source,event_tx_hash,event_log_index,position_version,observed_at)
-             SELECT $1,LOWER($2),LOWER($3),$4,$5,
+             SELECT $1,$2,$3,$4,$5,
                     COALESCE((SELECT block_timestamp FROM basket_positions
-                              WHERE chain_id=$1 AND basket_address=LOWER($2)
-                                AND asset_address=LOWER($3) AND block_number <= $4
+                              WHERE chain_id=$1 AND basket_address=$2
+                                AND asset_address=$3 AND block_number <= $4
                               ORDER BY block_number DESC, position_version DESC,
-                                       event_log_index DESC, event_tx_hash DESC,
-                                       observed_at DESC, block_hash DESC LIMIT 1),NOW()),
-                    $6::numeric,$7,'EVENT',LOWER($8),$9,$9,NOW()
+                                       event_log_index DESC, event_tx_hash DESC LIMIT 1),NOW()),
+                    $6::numeric,$7,'EVENT',$8,$9,$9,NOW()
              ON CONFLICT (chain_id,basket_address,asset_address,block_number,event_tx_hash,event_log_index,position_version)
              DO UPDATE SET quantity_base_units=EXCLUDED.quantity_base_units,
                            block_hash=EXCLUDED.block_hash,source='EVENT',observed_at=NOW()",
@@ -2155,15 +2172,14 @@ async fn write_event_valuation_checkpoint(
            WHERE chain_id=$1 AND basket_address=$2 AND block_number <= $3
              AND source='EVENT'
            ORDER BY chain_id,basket_address,asset_address,block_number DESC,
-                    position_version DESC,event_log_index DESC,event_tx_hash DESC,
-                    observed_at DESC,block_hash DESC
+                    position_version DESC,event_log_index DESC,event_tx_hash DESC
          ) p
          LEFT JOIN LATERAL (
            SELECT apo.price_usd_e8
            FROM asset_price_observations apo
            WHERE apo.chain_id=p.chain_id AND apo.asset_address=p.asset_address
              AND apo.block_number <= $3
-           ORDER BY apo.block_number DESC, apo.observed_at DESC, apo.block_hash DESC
+           ORDER BY apo.block_number DESC, apo.observed_at DESC
            LIMIT 1
          ) price ON TRUE
          ORDER BY p.asset_address",
@@ -2509,167 +2525,162 @@ async fn run_hourly_valuation_tick(
     latest_block: u64,
     owner: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if registry_addr == Address::zero() || latest_block == 0 {
-        return Ok(());
-    }
+    let price_block_number = latest_block;
+    let block_id = BlockId::Number(BlockNumber::Number(U64::from(price_block_number)));
+    let block = provider
+        .get_block(block_id)
+        .await
+        .map_err(|e| format!("block read failed: {}", e))?
+        .ok_or_else(|| format!("block {} unavailable", price_block_number))?;
 
-    // PostgreSQL advisory locks are session-scoped. Keep this dedicated
-    // connection until the matching unlock rather than issuing both calls
-    // through the pool, where they may land on different sessions.
-    let mut lock_connection = pool.acquire().await?;
-    let lock_row: (bool,) = sqlx::query_as("SELECT pg_try_advisory_lock($1)")
+    let block_hash = format!("{:#x}", block.hash.unwrap_or_default());
+    let block_secs = block.timestamp.as_u64() as i64;
+    let block_timestamp = chrono::DateTime::from_timestamp(block_secs, 0).unwrap_or_else(chrono::Utc::now);
+
+    let feeds = cached_registry_metadata(provider, registry_addr, chain_id, block_id).await
+        .map_err(|e| format!("registry metadata read failed: {}", e))?;
+    let multicall: Address = std::env::var("MULTICALL3_ADDRESS").unwrap_or_else(|_| MULTICALL3_ADDRESS.to_string()).parse()
+        .map_err(|e| format!("invalid MULTICALL3_ADDRESS: {}", e))?;
+    let chunk_size = configured_u64("INDEXER_PRICE_MULTICALL_CHUNK_SIZE", 100).max(1) as usize;
+    let concurrency = configured_u64("INDEXER_PRICE_MULTICALL_CONCURRENCY", 2).max(1) as usize;
+    let mut feeds_succeeded = 0;
+    let mut failed_assets = Vec::new();
+
+    // Keep price facts, NAV rows, advisory lock, and worker checkpoints in one transaction connection.
+    let mut write_tx = pool.begin().await.map_err(|e| format!("price write transaction failed: {e}"))?;
+    let lock_row: (bool,) = sqlx::query_as("SELECT pg_try_advisory_xact_lock($1)")
         .bind(chain_id)
-        .fetch_one(&mut *lock_connection)
-        .await?;
+        .fetch_one(&mut *write_tx)
+        .await
+        .map_err(|e| format!("advisory lock read failed: {e}"))?;
 
-    match lock_row {
-        (true,) => {}
-        _ => {
-            info!(
-                "[Hourly Valuation] Advisory lock for chain_id {} unavailable; skipping tick",
-                chain_id
-            );
-            return Err("price advisory lock unavailable".into());
-        }
+    if !lock_row.0 {
+        info!(
+            "[Hourly Valuation] Advisory lock for chain_id {} unavailable; skipping tick",
+            chain_id
+        );
+        return Err("price advisory lock unavailable".into());
     }
 
-    let res = async {
-        let price_block_number = latest_block;
-        let block_id = BlockId::Number(BlockNumber::Number(U64::from(price_block_number)));
-        let block = provider
-            .get_block(block_id)
-            .await
-            .map_err(|e| format!("block read failed: {}", e))?
-            .ok_or_else(|| format!("block {} unavailable", price_block_number))?;
-
-        let block_hash = format!("{:#x}", block.hash.unwrap_or_default());
-        let block_secs = block.timestamp.as_u64() as i64;
-        let block_timestamp = chrono::DateTime::from_timestamp(block_secs, 0).unwrap_or_else(chrono::Utc::now);
-
-        let feeds = cached_registry_metadata(provider, registry_addr, chain_id, block_id).await
-            .map_err(|e| format!("registry metadata read failed: {}", e))?;
-        let multicall: Address = std::env::var("MULTICALL3_ADDRESS").unwrap_or_else(|_| MULTICALL3_ADDRESS.to_string()).parse()
-            .map_err(|e| format!("invalid MULTICALL3_ADDRESS: {}", e))?;
-        let chunk_size = configured_u64("INDEXER_PRICE_MULTICALL_CHUNK_SIZE", 100).max(1) as usize;
-        let concurrency = configured_u64("INDEXER_PRICE_MULTICALL_CONCURRENCY", 2).max(1) as usize;
-        let mut feeds_succeeded = 0;
-        let mut failed_assets = Vec::new();
-        // Keep price facts, NAV rows, and worker checkpoints in one commit.
-        let mut write_tx = pool.begin().await.map_err(|e| format!("price write transaction failed: {e}"))?;
-        let mut offset = 0;
-        while offset < feeds.len() {
-            let end = (offset + chunk_size * concurrency).min(feeds.len());
-            let mut tasks = tokio::task::JoinSet::new();
-            for chunk in feeds[offset..end].chunks(chunk_size) {
-                tasks.spawn(read_price_chunk(Arc::new(provider.clone()), multicall, chunk.to_vec(), block_id, block_timestamp));
-            }
-            while let Some(task) = tasks.join_next().await {
-                let (reads, failures) = task.map_err(|e| format!("price chunk task failed: {}", e))?;
-                failed_assets.extend(failures);
-                for price in reads {
-                    let token_addr_str = format!("{:#x}", price.metadata.token).to_lowercase();
-                    sqlx::query(
-                        "INSERT INTO asset_price_observations (chain_id, asset_address, feed_address, block_number, block_hash, block_timestamp, feed_round_id, price_usd_e8, feed_updated_at, observed_at)
-                         SELECT $1,$2,$3,$4,$5,$6,$7::numeric,$8::numeric,$9,NOW()
-                         WHERE NOT EXISTS (SELECT 1 FROM asset_price_observations latest WHERE latest.chain_id=$1 AND latest.asset_address=$2 AND latest.block_number=(SELECT MAX(current.block_number) FROM asset_price_observations current WHERE current.chain_id=$1 AND current.asset_address=$2) AND (latest.feed_round_id=$7::numeric AND latest.price_usd_e8=$8::numeric))"
-                    )
-                    .bind(chain_id).bind(&token_addr_str).bind(&format!("{:#x}", price.metadata.feed).to_lowercase())
-                    .bind(price_block_number as i64).bind(&block_hash).bind(block_timestamp)
-                    .bind(price.round_id.to_string()).bind(price.price_usd_e8.to_string()).bind(price.feed_updated_at)
-                    .execute(&mut *write_tx).await.map_err(|e| format!("price observation write failed: {}", e))?;
-                    feeds_succeeded += 1;
-                }
-            }
-            offset = end;
+    let mut offset = 0;
+    while offset < feeds.len() {
+        let end = (offset + chunk_size * concurrency).min(feeds.len());
+        let mut tasks = tokio::task::JoinSet::new();
+        for chunk in feeds[offset..end].chunks(chunk_size) {
+            tasks.spawn(read_price_chunk(Arc::new(provider.clone()), multicall, chunk.to_vec(), block_id, block_timestamp));
         }
+        while let Some(task) = tasks.join_next().await {
+            let (reads, failures) = task.map_err(|e| format!("price chunk task failed: {}", e))?;
+            failed_assets.extend(failures);
+            for price in reads {
+                let token_addr_str = format!("{:#x}", price.metadata.token).to_lowercase();
+                sqlx::query(
+                    "INSERT INTO asset_price_observations (chain_id, asset_address, feed_address, block_number, block_hash, block_timestamp, feed_round_id, price_usd_e8, feed_updated_at, observed_at)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7::numeric,$8::numeric,$9,NOW())"
+                )
+                .bind(chain_id).bind(&token_addr_str).bind(&format!("{:#x}", price.metadata.feed).to_lowercase())
+                .bind(price_block_number as i64).bind(&block_hash).bind(block_timestamp)
+                .bind(price.round_id.to_string()).bind(price.price_usd_e8.to_string()).bind(price.feed_updated_at)
+                .execute(&mut *write_tx).await.map_err(|e| format!("price observation write failed: {}", e))?;
+                feeds_succeeded += 1;
+            }
+        }
+        offset = end;
+    }
 
-        // Set-based SQL query to revalue active baskets using latest positions & just-inserted price observations
-        let updated_rows = sqlx::query(
-            "INSERT INTO basket_nav_observations (
-               chain_id,
-               basket_address,
-               block_number,
-               block_hash,
-               block_timestamp,
-               position_block_number,
-               price_block_number,
-               nav_usdc,
-               kind,
-               valuation_status,
-               issue,
-               observed_at
-             )
-             SELECT
-               p.chain_id,
-               p.basket_address,
-               $2::bigint AS block_number,
-               $3::text AS block_hash,
-               $4::timestamptz AS block_timestamp,
-               MAX(p.block_number) AS position_block_number,
-               $2::bigint AS price_block_number,
+    // Set-based SQL query to revalue active baskets using latest positions & just-inserted price observations
+    let updated_rows = sqlx::query(
+        "INSERT INTO basket_nav_observations (
+           chain_id,
+           basket_address,
+           block_number,
+           block_hash,
+           block_timestamp,
+           position_block_number,
+           price_block_number,
+           nav_usdc,
+           kind,
+           valuation_status,
+           issue,
+           observed_at
+         )
+         SELECT
+           p.chain_id,
+           p.basket_address,
+           $2::bigint AS block_number,
+           $3::text AS block_hash,
+           $4::timestamptz AS block_timestamp,
+           MAX(p.block_number) AS position_block_number,
+           $2::bigint AS price_block_number,
+           CASE
+             WHEN COUNT(*) FILTER (WHERE apo.asset_address IS NULL) = 0 THEN
                ROUND(
                  SUM(
                    (p.quantity_base_units * apo.price_usd_e8 * 1000000.0) /
                    (POWER(10::numeric, p.decimals) * 100000000.0)
                  ) / 1000000.0,
                  6
-               ) AS nav_usdc,
-               'HOURLY' AS kind,
-               'COMPLETE' AS valuation_status,
-               NULL::text AS issue,
-               NOW() AS observed_at
-             FROM (
-               SELECT DISTINCT ON (chain_id, basket_address, asset_address)
-                 chain_id, basket_address, asset_address, block_number, position_version,
-                 event_log_index, event_tx_hash, block_hash, quantity_base_units, decimals
-               FROM basket_positions
-               WHERE chain_id = $1
-               ORDER BY chain_id, basket_address, asset_address, block_number DESC,
-                        position_version DESC, event_log_index DESC, event_tx_hash DESC,
-                        observed_at DESC, block_hash DESC
-             ) p
-             LEFT JOIN LATERAL (
-               SELECT price_usd_e8, asset_address
-               FROM asset_price_observations candidate
-               WHERE candidate.chain_id = p.chain_id
-                 AND candidate.asset_address = p.asset_address
-                 AND candidate.block_number <= $2
-               ORDER BY candidate.block_number DESC, candidate.observed_at DESC,
-                        candidate.block_hash DESC
-               LIMIT 1
-             ) apo ON TRUE
-             WHERE p.quantity_base_units > 0
-             GROUP BY p.chain_id, p.basket_address
-             HAVING COUNT(*) FILTER (WHERE apo.asset_address IS NULL) = 0
-             ON CONFLICT (chain_id, basket_address, block_number, kind) DO UPDATE SET
-               block_hash = EXCLUDED.block_hash,
-               block_timestamp = EXCLUDED.block_timestamp,
-               position_block_number = EXCLUDED.position_block_number,
-               price_block_number = EXCLUDED.price_block_number,
-               nav_usdc = EXCLUDED.nav_usdc,
-               valuation_status = EXCLUDED.valuation_status,
-               issue = EXCLUDED.issue,
-               observed_at = EXCLUDED.observed_at"
-        )
-        .bind(chain_id)
-        .bind(price_block_number as i64)
-        .bind(&block_hash)
-        .bind(block_timestamp)
-        .execute(&mut *write_tx)
-        .await
-        .map_err(|e| format!("complete NAV write failed: {}", e))?;
+               )
+             ELSE NULL
+           END AS nav_usdc,
+           'HOURLY' AS kind,
+           CASE
+             WHEN COUNT(*) FILTER (WHERE apo.asset_address IS NULL) = 0 THEN 'COMPLETE'
+             ELSE 'UNAVAILABLE'
+           END AS valuation_status,
+           CASE
+             WHEN COUNT(*) FILTER (WHERE apo.asset_address IS NULL) = 0 THEN NULL::text
+             ELSE 'MISSING_OR_INVALID_PRICE_AT_BLOCK'::text
+           END AS issue,
+           NOW() AS observed_at
+         FROM (
+           SELECT DISTINCT ON (chain_id, basket_address, asset_address)
+             chain_id, basket_address, asset_address, block_number, position_version,
+             event_log_index, event_tx_hash, block_hash, quantity_base_units, decimals
+           FROM basket_positions
+           WHERE chain_id = $1
+           ORDER BY chain_id, basket_address, asset_address, block_number DESC,
+                    position_version DESC, event_log_index DESC, event_tx_hash DESC
+         ) p
+         LEFT JOIN LATERAL (
+           SELECT price_usd_e8, asset_address
+           FROM asset_price_observations candidate
+           WHERE candidate.chain_id = p.chain_id
+             AND candidate.asset_address = p.asset_address
+             AND candidate.block_number <= $2
+           ORDER BY candidate.block_number DESC, candidate.observed_at DESC
+           LIMIT 1
+         ) apo ON TRUE
+         WHERE p.quantity_base_units > 0
+         GROUP BY p.chain_id, p.basket_address
+         ON CONFLICT (chain_id, basket_address, block_number, kind) DO UPDATE SET
+           block_hash = EXCLUDED.block_hash,
+           block_timestamp = EXCLUDED.block_timestamp,
+           position_block_number = EXCLUDED.position_block_number,
+           price_block_number = EXCLUDED.price_block_number,
+           nav_usdc = EXCLUDED.nav_usdc,
+           valuation_status = EXCLUDED.valuation_status,
+           issue = EXCLUDED.issue,
+           observed_at = EXCLUDED.observed_at"
+    )
+    .bind(chain_id)
+    .bind(price_block_number as i64)
+    .bind(&block_hash)
+    .bind(block_timestamp)
+    .execute(&mut *write_tx)
+    .await
+    .map_err(|e| format!("NAV observation write failed: {}", e))?;
 
-        // A held asset without a valid price must make the whole basket
-        // unavailable. A partial sum is worse than no displayed valuation.
+    // If any asset feeds failed, mark dependent baskets as UNAVAILABLE
+    for (failed_asset, issue_msg) in failed_assets {
         sqlx::query(
             "INSERT INTO basket_nav_observations (
                chain_id, basket_address, block_number, block_hash, block_timestamp,
                position_block_number, price_block_number, nav_usdc, kind, valuation_status, issue, observed_at
              )
-             SELECT
+             SELECT DISTINCT ON (p.chain_id, p.basket_address)
                p.chain_id, p.basket_address, $2::bigint, $3::text, $4::timestamptz,
-               MAX(p.block_number), $2::bigint, NULL, 'HOURLY', 'UNAVAILABLE',
-               'MISSING_OR_INVALID_PRICE_AT_BLOCK', NOW()
+               p.block_number, $2::bigint, NULL, 'HOURLY', 'UNAVAILABLE', $5::text, NOW()
              FROM (
                SELECT DISTINCT ON (chain_id, basket_address, asset_address)
                  chain_id, basket_address, asset_address, block_number, position_version,
@@ -2677,115 +2688,59 @@ async fn run_hourly_valuation_tick(
                FROM basket_positions
                WHERE chain_id = $1
                ORDER BY chain_id, basket_address, asset_address, block_number DESC,
-                        position_version DESC, event_log_index DESC, event_tx_hash DESC,
-                        observed_at DESC, block_hash DESC
+                        position_version DESC, event_log_index DESC, event_tx_hash DESC
              ) p
-             LEFT JOIN LATERAL (
-               SELECT asset_address
-               FROM asset_price_observations candidate
-               WHERE candidate.chain_id = p.chain_id
-                 AND candidate.asset_address = p.asset_address
-                 AND candidate.block_number <= $2
-               ORDER BY candidate.block_number DESC, candidate.observed_at DESC,
-                        candidate.block_hash DESC
-               LIMIT 1
-             ) apo ON TRUE
-             WHERE p.quantity_base_units > 0
-             GROUP BY p.chain_id, p.basket_address
-             HAVING COUNT(*) FILTER (WHERE apo.asset_address IS NULL) > 0
+             WHERE p.asset_address = $6 AND p.quantity_base_units > 0
              ON CONFLICT (chain_id, basket_address, block_number, kind) DO UPDATE SET
-               valuation_status = 'UNAVAILABLE', nav_usdc = NULL, issue = EXCLUDED.issue, observed_at = EXCLUDED.observed_at"
+               valuation_status = 'UNAVAILABLE', issue = EXCLUDED.issue, observed_at = EXCLUDED.observed_at"
         )
         .bind(chain_id)
         .bind(price_block_number as i64)
         .bind(&block_hash)
         .bind(block_timestamp)
+        .bind(&issue_msg)
+        .bind(&failed_asset)
         .execute(&mut *write_tx)
         .await
-        .map_err(|e| format!("unavailable NAV write failed: {}", e))?;
-
-        // If any asset feeds failed, mark dependent baskets as UNAVAILABLE
-        for (failed_asset, issue_msg) in failed_assets {
-            sqlx::query(
-                "INSERT INTO basket_nav_observations (
-                   chain_id, basket_address, block_number, block_hash, block_timestamp,
-                   position_block_number, price_block_number, nav_usdc, kind, valuation_status, issue, observed_at
-                 )
-                 SELECT DISTINCT ON (p.chain_id, p.basket_address)
-                   p.chain_id, p.basket_address, $2::bigint, $3::text, $4::timestamptz,
-                   p.block_number, $2::bigint, NULL, 'HOURLY', 'UNAVAILABLE', $5::text, NOW()
-                 FROM (
-                   SELECT DISTINCT ON (chain_id, basket_address, asset_address)
-                     chain_id, basket_address, asset_address, block_number, position_version,
-                     event_log_index, event_tx_hash, block_hash, quantity_base_units
-                   FROM basket_positions
-                   WHERE chain_id = $1
-                   ORDER BY chain_id, basket_address, asset_address, block_number DESC,
-                            position_version DESC, event_log_index DESC, event_tx_hash DESC,
-                            observed_at DESC, block_hash DESC
-                 ) p
-                 WHERE p.asset_address = $6 AND p.quantity_base_units > 0
-                 ON CONFLICT (chain_id, basket_address, block_number, kind) DO UPDATE SET
-                   valuation_status = 'UNAVAILABLE', issue = EXCLUDED.issue, observed_at = EXCLUDED.observed_at"
-            )
-            .bind(chain_id)
-            .bind(price_block_number as i64)
-            .bind(&block_hash)
-            .bind(block_timestamp)
-            .bind(&issue_msg)
-            .bind(&failed_asset)
-            .execute(&mut *write_tx)
-            .await
-            .map_err(|e| format!("unavailable asset NAV write failed: {}", e))?;
-        }
-
-        let checkpoint = sqlx::query(
-            "UPDATE indexer_worker_state
-            SET next_block=$1,last_success_block=$2,last_success_at=NOW(),last_attempt_at=NOW(),
-                 consecutive_failures=0,last_error=NULL,updated_at=NOW()
-             WHERE chain_id=$3 AND worker_name='prices' AND lease_owner=$4 AND lease_expires_at > NOW()"
-        )
-        .bind(price_block_number as i64 + 1)
-        .bind(price_block_number as i64)
-        .bind(chain_id)
-        .bind(owner)
-        .execute(&mut *write_tx)
-        .await
-        .map_err(|e| format!("price checkpoint write failed: {e}"))?;
-        if checkpoint.rows_affected() != 1 {
-            return Err("price lease was lost before checkpoint advancement".into());
-        }
-        sqlx::query(
-            "INSERT INTO indexer_worker_state (chain_id,worker_name,next_block,last_success_block,last_success_at,last_attempt_at,consecutive_failures,last_error)
-            VALUES ($1,'nav_rollup',$2,$3,NOW(),NOW(),0,NULL)
-             ON CONFLICT (chain_id,worker_name) DO UPDATE SET next_block=EXCLUDED.next_block,last_success_block=EXCLUDED.last_success_block,last_success_at=NOW(),last_attempt_at=NOW(),consecutive_failures=0,last_error=NULL,updated_at=NOW()"
-        )
-        .bind(chain_id)
-        .bind(price_block_number as i64 + 1)
-        .bind(price_block_number as i64)
-        .execute(&mut *write_tx)
-        .await
-        .map_err(|e| format!("NAV checkpoint write failed: {e}"))?;
-        write_tx.commit().await.map_err(|e| format!("price/NAV commit failed: {e}"))?;
-
-        info!(
-            "⏰ [Hourly Valuation Tick] Block {} evaluated: feeds_succeeded={}, nav_rows_written={}",
-            price_block_number, feeds_succeeded, updated_rows.rows_affected()
-        );
-
-        Ok::<(), String>(())
-    }.await;
-
-    // Always release PostgreSQL advisory lock
-    let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
-        .bind(chain_id)
-        .execute(&mut *lock_connection)
-        .await;
-
-    match res {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e.into()),
+        .map_err(|e| format!("unavailable asset NAV write failed: {}", e))?;
     }
+
+    let checkpoint = sqlx::query(
+        "UPDATE indexer_worker_state
+        SET next_block=$1,last_success_block=$2,last_success_at=NOW(),last_attempt_at=NOW(),
+             consecutive_failures=0,last_error=NULL,updated_at=NOW()
+         WHERE chain_id=$3 AND worker_name='prices' AND lease_owner=$4 AND lease_expires_at > NOW()"
+    )
+    .bind(price_block_number as i64 + 1)
+    .bind(price_block_number as i64)
+    .bind(chain_id)
+    .bind(owner)
+    .execute(&mut *write_tx)
+    .await
+    .map_err(|e| format!("price checkpoint write failed: {e}"))?;
+    if checkpoint.rows_affected() != 1 {
+        return Err("price lease was lost before checkpoint advancement".into());
+    }
+    sqlx::query(
+        "INSERT INTO indexer_worker_state (chain_id,worker_name,next_block,last_success_block,last_success_at,last_attempt_at,consecutive_failures,last_error)
+        VALUES ($1,'nav_rollup',$2,$3,NOW(),NOW(),0,NULL)
+         ON CONFLICT (chain_id,worker_name) DO UPDATE SET next_block=EXCLUDED.next_block,last_success_block=EXCLUDED.last_success_block,last_success_at=NOW(),last_attempt_at=NOW(),consecutive_failures=0,last_error=NULL,updated_at=NOW()"
+    )
+    .bind(chain_id)
+    .bind(price_block_number as i64 + 1)
+    .bind(price_block_number as i64)
+    .execute(&mut *write_tx)
+    .await
+    .map_err(|e| format!("NAV checkpoint write failed: {e}"))?;
+
+    write_tx.commit().await.map_err(|e| format!("price/NAV commit failed: {e}"))?;
+
+    info!(
+        "⏰ [Hourly Valuation Tick] Block {} evaluated: feeds_succeeded={}, nav_rows_written={}",
+        price_block_number, feeds_succeeded, updated_rows.rows_affected()
+    );
+
+    Ok(())
 }
 
 /// Repairs direct transfers and missed module events using only tracked pairs.
@@ -2821,18 +2776,17 @@ async fn run_reconciliation_tick(
              p.basket_address,p.asset_address,p.block_hash,p.decimals
            FROM basket_positions p WHERE p.chain_id=$1
            ORDER BY p.basket_address,p.asset_address,p.block_number DESC,
-                    p.position_version DESC,p.event_log_index DESC,p.event_tx_hash DESC,
-                    p.observed_at DESC,p.block_hash DESC
+                    p.position_version DESC,p.event_log_index DESC,p.event_tx_hash DESC
          )
          SELECT l.basket_address,l.asset_address,l.block_hash,l.decimals
          FROM latest l LEFT JOIN indexer_reconciliation_state r
            ON r.chain_id=$1 AND r.basket_address=l.basket_address AND r.asset_address=l.asset_address
          WHERE (r.last_checked_block IS NULL OR r.last_checked_block <= $2-150 OR r.status='DEGRADED')
-           AND ($3::text IS NULL OR (l.basket_address,l.asset_address) > (LOWER($3),LOWER($4)))
+           AND ($3::text IS NULL OR (l.basket_address,l.asset_address) > ($3,$4))
          ORDER BY CASE WHEN r.status='DEGRADED' THEN 0 ELSE 1 END,
                   COALESCE(r.last_checked_block,0), COALESCE(r.last_checked_at,TO_TIMESTAMP(0)), l.basket_address,l.asset_address
          LIMIT 500",
-    ).bind(chain_id).bind(block_number as i64).bind(cursor.0.as_deref()).bind(cursor.1.as_deref()).fetch_all(pool).await?;
+    ).bind(chain_id).bind(block_number as i64).bind(cursor.0.as_deref().map(|s| s.to_lowercase())).bind(cursor.1.as_deref().map(|s| s.to_lowercase())).fetch_all(pool).await?;
     if pairs.is_empty() {
         let mut checkpoint_tx = pool.begin().await?;
         let updated = sqlx::query("UPDATE indexer_worker_state SET cursor_basket=NULL,cursor_asset=NULL,next_block=$2,last_success_block=$2,last_success_at=NOW(),last_attempt_at=NOW(),consecutive_failures=0,last_error=NULL,updated_at=NOW() WHERE chain_id=$1 AND worker_name='reconciliation' AND lease_owner=$3 AND lease_expires_at > NOW()")
@@ -2851,6 +2805,32 @@ async fn run_reconciliation_tick(
     let multicall: Address = std::env::var("MULTICALL3_ADDRESS")
         .unwrap_or_else(|_| MULTICALL3_ADDRESS.to_string())
         .parse()?;
+
+    // Batch fetch prior quantities for all pairs in 1 query instead of 500 individual loop queries
+    let pair_baskets: Vec<String> = pairs.iter().map(|(b, _, _, _)| b.clone()).collect();
+    let pair_assets: Vec<String> = pairs.iter().map(|(_, a, _, _)| a.clone()).collect();
+    let latest_rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT DISTINCT ON (basket_address, asset_address)
+                basket_address, asset_address, quantity_base_units::text
+         FROM basket_positions
+         WHERE chain_id=$1
+           AND (basket_address, asset_address) IN (
+               SELECT UNNEST($2::text[]), UNNEST($3::text[])
+           )
+         ORDER BY basket_address, asset_address, block_number DESC,
+                  position_version DESC, event_log_index DESC, event_tx_hash DESC",
+    )
+    .bind(chain_id)
+    .bind(&pair_baskets)
+    .bind(&pair_assets)
+    .fetch_all(pool)
+    .await?;
+
+    let latest_map: HashMap<(String, String), String> = latest_rows
+        .into_iter()
+        .map(|(b, a, q)| ((b, a), q))
+        .collect();
+
     let mut balance_calls: Vec<Call3> = Vec::new();
     for (basket, asset, _, _) in &pairs {
         let token: Address = asset.trim().parse()?;
@@ -2876,12 +2856,16 @@ async fn run_reconciliation_tick(
             .call()
             .await?
     };
+
+    let mut rec_baskets = Vec::with_capacity(batch_len);
+    let mut rec_assets = Vec::with_capacity(batch_len);
+    let mut rec_statuses = Vec::with_capacity(batch_len);
+    let mut rec_errors = Vec::with_capacity(batch_len);
+
     for ((basket, asset, _previous_hash, decimals), res) in
         pairs.into_iter().zip(balance_results.into_iter())
     {
         let (success, return_data) = (res.0, res.1);
-        let _basket_addr: Address = basket.trim().parse()?;
-        let _asset_addr: Address = asset.trim().parse()?;
         let observed: Result<U256, String> = if success {
             ethers::abi::decode(&[ethers::abi::ParamType::Uint(256)], return_data.as_ref())
                 .map_err(|error| error.to_string())
@@ -2897,33 +2881,21 @@ async fn run_reconciliation_tick(
         let observed = match observed {
             Ok(value) => value,
             Err(error) => {
-                sqlx::query("INSERT INTO indexer_reconciliation_state (chain_id,basket_address,asset_address,last_checked_block,last_checked_hash,last_checked_at,status,last_error) VALUES ($1,LOWER($2),LOWER($3),$4,$5,NOW(),'DEGRADED',$6) ON CONFLICT (chain_id,basket_address,asset_address) DO UPDATE SET status='DEGRADED',last_error=$6,last_checked_at=NOW()")
-                    .bind(chain_id).bind(&basket).bind(&asset).bind(block_number as i64).bind(&block_hash).bind(error.to_string()).execute(pool).await?;
+                rec_baskets.push(basket);
+                rec_assets.push(asset);
+                rec_statuses.push("DEGRADED".to_string());
+                rec_errors.push(Some(error));
                 continue;
             }
         };
         let observed_str = observed.to_string();
-        let latest: Option<(String,)> = sqlx::query_as(
-            "SELECT quantity_base_units::text FROM basket_positions
-             WHERE chain_id=$1 AND basket_address=LOWER($2) AND asset_address=LOWER($3)
-             ORDER BY block_number DESC, position_version DESC, event_log_index DESC,
-                      event_tx_hash DESC, observed_at DESC, block_hash DESC LIMIT 1",
-        )
-        .bind(chain_id)
-        .bind(&basket)
-        .bind(&asset)
-        .fetch_optional(pool)
-        .await?;
-        if latest
-            .as_ref()
-            .map(|(quantity,)| quantity != &observed_str)
-            .unwrap_or(true)
-        {
+        let prior_quantity = latest_map.get(&(basket.clone(), asset.clone()));
+        if prior_quantity.map_or(true, |q| q != &observed_str) {
             sqlx::query(
                 "INSERT INTO basket_positions
                    (chain_id,basket_address,asset_address,block_number,block_hash,block_timestamp,
                     quantity_base_units,decimals,source,event_tx_hash,event_log_index,position_version,observed_at)
-                 VALUES ($1,LOWER($2),LOWER($3),$4,$5,$6,$7::numeric,$8,'RECONCILIATION',LOWER($5),-1,-1,NOW())
+                 VALUES ($1,$2,$3,$4,$5,$6,$7::numeric,$8,'RECONCILIATION',$5,-1,-1,NOW())
                  ON CONFLICT (chain_id,basket_address,asset_address,block_number,event_tx_hash,event_log_index,position_version)
                  DO UPDATE SET quantity_base_units=EXCLUDED.quantity_base_units,
                                block_hash=EXCLUDED.block_hash,source='RECONCILIATION',observed_at=NOW()",
@@ -2931,8 +2903,34 @@ async fn run_reconciliation_tick(
                 .bind(chain_id).bind(&basket).bind(&asset).bind(block_number as i64).bind(&block_hash)
                 .bind(timestamp).bind(&observed_str).bind(decimals).execute(pool).await?;
         }
-        sqlx::query("INSERT INTO indexer_reconciliation_state (chain_id,basket_address,asset_address,last_checked_block,last_checked_hash,last_checked_at,status,last_error) VALUES ($1,LOWER($2),LOWER($3),$4,$5,NOW(),'COMPLETE',NULL) ON CONFLICT (chain_id,basket_address,asset_address) DO UPDATE SET last_checked_block=$4,last_checked_hash=$5,last_checked_at=NOW(),status='COMPLETE',last_error=NULL")
-            .bind(chain_id).bind(&basket).bind(&asset).bind(block_number as i64).bind(&block_hash).execute(pool).await?;
+        rec_baskets.push(basket);
+        rec_assets.push(asset);
+        rec_statuses.push("COMPLETE".to_string());
+        rec_errors.push(None);
+    }
+
+    // 1 bulk upsert for all reconciliation statuses instead of 500 single-row statements
+    if !rec_baskets.is_empty() {
+        sqlx::query(
+            "INSERT INTO indexer_reconciliation_state
+               (chain_id,basket_address,asset_address,last_checked_block,last_checked_hash,last_checked_at,status,last_error)
+             SELECT $1, UNNEST($2::text[]), UNNEST($3::text[]), $4, $5, NOW(), UNNEST($6::text[]), UNNEST($7::text[])
+             ON CONFLICT (chain_id,basket_address,asset_address) DO UPDATE SET
+               last_checked_block=EXCLUDED.last_checked_block,
+               last_checked_hash=EXCLUDED.last_checked_hash,
+               last_checked_at=NOW(),
+               status=EXCLUDED.status,
+               last_error=EXCLUDED.last_error",
+        )
+        .bind(chain_id)
+        .bind(&rec_baskets)
+        .bind(&rec_assets)
+        .bind(block_number as i64)
+        .bind(&block_hash)
+        .bind(&rec_statuses)
+        .bind(&rec_errors)
+        .execute(pool)
+        .await?;
     }
     let more = batch_len == 500;
     let mut checkpoint_tx = pool.begin().await?;

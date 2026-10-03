@@ -1,8 +1,9 @@
 import { BASE_LAUNCH_B20_TOKENS } from '@othelio/shared';
 import { isAddress } from 'viem';
+import { BASE_USDC_ADDRESS } from '../config/addresses';
 
 export const BASE_AERODROME_SLIPSTREAM_ROUTER = '0x698Cb2b6dd822994581fEa6eA4Fc755d1363A92F';
-export const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+export { BASE_USDC_ADDRESS } from '../config/addresses';
 
 /** Factory spacings checked during launch discovery. */
 export const CANDIDATE_TICK_SPACINGS = [1, 10, 50, 100, 200, 500, 2000] as const;

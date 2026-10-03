@@ -10,6 +10,7 @@ import {
 import { createPublicClient, fallback, http, parseAbi } from 'viem';
 import { DatabaseService } from '../database/database.service';
 import { AAVE_RPC_URLS, AAVE_V3_POOLS } from '../lending/adapters/aave-v3.adapter';
+import { BASE_USDC_ADDRESS } from '../config/addresses';
 import { rpcUrlForChain } from '../config/network-runtime';
 
 const ERC20_ABI = parseAbi([
@@ -77,12 +78,13 @@ export class BasketPositionService {
       return null;
     }
     if (!rpcUrl) return null;
+    const transportOptions = { retryCount: 1, retryDelay: 500, timeout: 4_000 } as const;
     const transport = chainId === 8453
       ? fallback([
-          http(rpcUrl, { retryCount: 3, retryDelay: 1_000 }),
-          http('https://mainnet.base.org', { retryCount: 3, retryDelay: 1_000 }),
+          http(rpcUrl, transportOptions),
+          http('https://mainnet.base.org', transportOptions),
         ])
-      : http(rpcUrl, { retryCount: 3, retryDelay: 1_000 });
+      : http(rpcUrl, transportOptions);
     return createPublicClient({ transport });
   }
 
@@ -117,14 +119,29 @@ export class BasketPositionService {
     } catch {
       throw new ConflictException({ code: 'INDEXER_LAGGING', error: 'INDEXER_LAGGING' });
     }
-    if (chainHead - head > 3) {
+    // The indexer commits canonical checkpoints in 10-block ranges on Base
+    // (BATCH_SIZE=9). Allow one normal range to be outstanding; reject only
+    // when the indexer is beyond its expected catch-up window.
+    const configuredMaxLag = Number(process.env.INDEXER_ACTION_MAX_LAG_BLOCKS ?? 10);
+    const maxIndexerLag = Number.isFinite(configuredMaxLag)
+      ? Math.max(1, Math.floor(configuredMaxLag))
+      : 10;
+    if (chainHead - head > maxIndexerLag) {
       throw new ConflictException({ code: 'INDEXER_LAGGING', error: 'INDEXER_LAGGING' });
     }
-    if (assets.length > 0) {
-      const prices = await this.db.query(`SELECT asset_address,MAX(block_number) AS block_number FROM asset_price_observations WHERE chain_id=$1 AND LOWER(asset_address)=ANY($2::text[]) GROUP BY asset_address`, [chainId, assets.map((asset) => asset.toLowerCase())]);
+    const priceAssets = assets.filter((asset) => asset.toLowerCase() !== BASE_USDC_ADDRESS.toLowerCase());
+    if (priceAssets.length > 0) {
+      const prices = await this.db.query(`SELECT asset_address,MAX(block_number) AS block_number FROM asset_price_observations WHERE chain_id=$1 AND LOWER(asset_address)=ANY($2::text[]) GROUP BY asset_address`, [chainId, priceAssets.map((asset) => asset.toLowerCase())]);
       const byAsset = new Map(prices.rows.map((row) => [String(row.asset_address).trim().toLowerCase(), Number(row.block_number)]));
-      if (assets.some((asset) => !byAsset.has(asset.toLowerCase()) || head - byAsset.get(asset.toLowerCase())! > 10)) {
-        throw new ConflictException({ code: 'PRICE_SNAPSHOT_STALE', error: 'PRICE_SNAPSHOT_STALE' });
+      const staleAssets = priceAssets.filter((asset) => !byAsset.has(asset.toLowerCase()) || head - byAsset.get(asset.toLowerCase())! > 10);
+      if (staleAssets.length > 0) {
+        throw new ConflictException({
+          code: 'PRICE_SNAPSHOT_STALE',
+          error: 'PRICE_SNAPSHOT_STALE',
+          assets: staleAssets,
+          indexedPriceBlocks: Object.fromEntries(staleAssets.map((asset) => [asset, byAsset.get(asset.toLowerCase()) ?? null])),
+          indexedHead: head,
+        });
       }
     }
     const reconciliation = await this.db.query(`SELECT asset_address,last_checked_block,status FROM indexer_reconciliation_state WHERE chain_id=$1 AND basket_address=$2 AND LOWER(asset_address)=ANY($3::text[])`, [chainId, basketAddress, assets.map((asset) => asset.toLowerCase())]);
