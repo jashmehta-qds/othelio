@@ -2,6 +2,8 @@ import { formatUnits } from "viem";
 import { formatAddress, formatEventLabel, formatEventMetadata, supportedAssets, type BasketActivity } from "@/lib/baskets";
 import StockLogo from "@/components/StockLogo";
 import { networkLabelForChainId } from "@/lib/network";
+import { allocationChangesForActivity, type ActivityAllocationChange } from "./activityAllocation";
+import { formatActivityTime } from "./activityTime";
 
 function payloadOf(event: BasketActivity): Record<string, unknown> {
   if (typeof event.payload === "string") {
@@ -107,6 +109,36 @@ function priorAssets(events: BasketActivity[]) {
   return seen;
 }
 
+function formatAllocationPercent(weightBps: number) {
+  return `${(weightBps / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+}
+
+function ActivityAllocation({ changes, sourceAmount }: { changes: ActivityAllocationChange[]; sourceAmount?: string }) {
+  return <section className="activity-allocation">
+    {sourceAmount && <div className="activity-allocation-row activity-allocation-source">
+      <StockLogo symbol="USDC" size={16} roundedFull />
+      <strong>{sourceAmount} USDC</strong>
+      <span aria-hidden="true">→</span>
+    </div>}
+    {changes.map(({ assetAddress, previousWeightBps, weightBps }) => {
+      const symbol = supportedAssets.find((asset) => asset.address?.toLowerCase() === assetAddress.toLowerCase())?.symbol ?? formatAddress(assetAddress);
+      const isNew = previousWeightBps === null && weightBps > 0;
+      const isExited = previousWeightBps !== null && weightBps === 0;
+      return <div className={`activity-allocation-row${isNew ? " is-new" : isExited ? " is-exited" : ""}`} key={assetAddress.toLowerCase()}>
+        <StockLogo symbol={symbol} size={16} roundedFull />
+        <strong>{symbol}</strong>
+        {isNew || isExited
+          ? <strong className="activity-allocation-terminal">{formatAllocationPercent(weightBps)}</strong>
+          : <span className="activity-allocation-change">
+            <span>{previousWeightBps === null ? "—" : formatAllocationPercent(previousWeightBps)}</span>
+            <span aria-hidden="true">→</span>
+            <strong>{formatAllocationPercent(weightBps)}</strong>
+          </span>}
+      </div>;
+    })}
+  </section>;
+}
+
 function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderEvents: BasketActivity[] }) {
   const type = event.eventType.toUpperCase();
   const payload = payloadOf(event);
@@ -123,6 +155,15 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
     ? payload.targetWeights.filter((item): item is { assetAddress: string; weightBps: number } =>
       Boolean(item && typeof item === "object" && typeof item.assetAddress === "string" && typeof item.weightBps === "number"))
     : [];
+  const rebalanceAllocationChanges = allocationChangesForActivity(payload, olderEvents.map(payloadOf));
+  const fundedAllocation = targetWeights.map(({ assetAddress, weightBps }) => ({
+    assetAddress,
+    weightBps,
+    previousWeightBps: null,
+  }));
+  const fundedUsdc = isFund && payload.inputAmount
+    ? (Number(payload.inputAmount) / 1e6).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : null;
   const targetSummary = targetWeights.map(({ assetAddress, weightBps }) => {
     const symbol = supportedAssets.find((asset) => asset.address?.toLowerCase() === assetAddress.toLowerCase())?.symbol ?? formatAddress(assetAddress);
     return `${symbol} ${(weightBps / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
@@ -144,10 +185,7 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
     </div>;
   });
 
-  if (["CREATED", "BASKETCREATED"].includes(type)) return <div className="activity-detail-body"><p>Basket Safe created for {formatAddress(event.actorAddress || "") }.</p>{targetSummary && <p>Target: {targetSummary}</p>}</div>;
-
-  const redeemedUsd = payload.navRedeemed ? Number(payload.navRedeemed) / 1e6 : (payload.remainingNAV ? Number(payload.remainingNAV) / 1e6 : null);
-  const isDeliveredUsdc = assetsFor("withdrawnAssets").length === 1 && tokenMovement(assetsFor("withdrawnAssets")[0], amountsFor("withdrawnAmounts")[0]).symbol === "USDC";
+  if (["CREATED", "BASKETCREATED"].includes(type)) return <div className="activity-detail-body"><p>Basket Safe created for {formatAddress(event.actorAddress || "")}.</p>{targetSummary && <p>Target: {targetSummary}</p>}</div>;
 
   // This is deliberately not called a fee: reference-value deltas can include
   // LP fees, price impact, and movement between the quote and execution.
@@ -158,21 +196,13 @@ function ActivityDetails({ event, olderEvents }: { event: BasketActivity; olderE
   const maxSlippageBps = recordedSlippageBps(payload);
 
   return <div className="activity-detail-body">
-    {isFund && payload.inputAmount ? <p>Paid ${(Number(payload.inputAmount) / 1e6).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC allocated into target assets:</p> : null}
+    {isFund && fundedAllocation.length > 0 && <ActivityAllocation changes={fundedAllocation} sourceAmount={fundedUsdc ?? undefined} />}
     {isFund && lines(boughtAssets, boughtAmounts, "in")}
-    {(isFund || isRebalance) && targetSummary && <p>Target: {targetSummary}</p>}
+    {isRebalance && rebalanceAllocationChanges.length > 0 && <ActivityAllocation changes={rebalanceAllocationChanges} />}
 
-    {isRebalance && <p>Portfolio rebalance movement:</p>}
     {isRebalance && lines(assetsFor("soldAssets"), amountsFor("soldAmounts"), "out")}
     {isRebalance && lines(boughtAssets, boughtAmounts, "in")}
 
-    {isWithdraw && (
-      <p>
-        {isDeliveredUsdc
-          ? `Withdrawal redeemed for ${redeemedUsd !== null ? `$${redeemedUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC` : "USDC"}`
-          : `Assets redeemed and delivered to wallet${redeemedUsd !== null ? ` ($${redeemedUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total NAV)` : ""}:`}
-      </p>
-    )}
     {isWithdraw && lines(assetsFor("withdrawnAssets"), amountsFor("withdrawnAmounts"), "out")}
 
     {(isFund || isRebalance) && (
@@ -249,7 +279,7 @@ export function ActivityEventRow({ event, basketSymbol, olderEvents = [], full =
   const meta = formatEventMetadata(event);
   return <details className={`activity-event ${full ? "full" : "compact"}`}>
     <summary className="activity-row">
-      <span className="activity-time">{event.blockNumber ? `Block ${full ? "#" : ""}${event.blockNumber}` : "Pending index"}</span>
+      <span className="activity-time"><time dateTime={event.occurredAt} title={event.occurredAt}>{formatActivityTime(event.occurredAt)}</time></span>
       {full && <span className="activity-basket" title={event.basketAddress}>{basketSymbol ?? "Unknown basket"}</span>}
       <span className="activity-operation"><strong>{formatEventLabel(event.eventType)}</strong></span>
       <span className="activity-amount">{meta.amountText && <strong className={meta.isPositive ? "positive" : meta.isPositive === false ? "negative" : ""}>{meta.amountText}</strong>}<small><a

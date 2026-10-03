@@ -309,28 +309,20 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
             <p className="drawer-intro">Choose assets and set target weights. Nothing changes until you review and sign.</p>
 
             {/* 1. Add Stock Token Combobox (On Top) */}
-            <div style={{ marginBottom: "20px", position: "relative" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--muted-ink)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            <div className="rebalance-asset-picker">
+              <div className="rebalance-asset-picker-head">
+                <span className="rebalance-selection-label">
                   Add Stock Tokens ({selected.length} Selected)
                 </span>
-                {selected.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={equalizeWeights}
-                    style={{
-                      background: "transparent",
-                      border: 0,
-                      color: "var(--accent)",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      padding: 0,
-                    }}
-                  >
-                    Auto-balance
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="equalize-weights-button"
+                  onClick={equalizeWeights}
+                  disabled={selected.length < 2}
+                >
+                  <AppIcon type="sync" />
+                  Split evenly
+                </button>
               </div>
 
               <div style={{ position: "relative" }}>

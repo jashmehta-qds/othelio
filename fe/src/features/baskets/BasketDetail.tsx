@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { formatUnits } from "viem";
 import { useAccount, useChainId } from "wagmi";
 import AllocationSankey from "@/components/AllocationSankey";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { asset30dChanges, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
+import { asset30dChanges, formatAddress, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
 import { useBasketDetails, useBasketActivity, type IndexedHolding } from "@/hooks/useBaskets";
 import { BasketDrawer, type BasketAction } from "./BasketDrawer";
 import { BasketLogo } from "./BasketLogo";
@@ -15,6 +15,7 @@ import { PortfolioDrift } from "./PortfolioDrift";
 import { ActivityEventRow } from "./ActivityEventRow";
 import { useWalletRestoring } from "@/hooks/useWalletRestoring";
 import { networkLabelForChainId } from "@/lib/network";
+import { deriveBasketDetailState } from "./basket-detail-state";
 
 const USDC_MICRO_DECIMALS = 6;
 
@@ -60,42 +61,19 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
   const { address, isConnected } = useAccount();
   const isWalletRestoring = useWalletRestoring();
   const [action, setAction] = useState<BasketAction>(initialAction);
-  const [localBasket, setLocalBasket] = useState<Basket | null>(null);
-
-  const { data: apiDetails, isLoading: isBasketDetailsLoading } = useBasketDetails(fallbackBasket.address, chainId, isConnected ? address : undefined);
+  const { data: apiDetails, isLoading: isBasketDetailsLoading, isError: isBasketDetailsError } = useBasketDetails(fallbackBasket.address, chainId, isConnected ? address : undefined);
   const detail = apiDetails?.data;
   const canManageBasket = Boolean(detail?.summary.controller && detail.summary.controller.toLowerCase() === address?.toLowerCase());
   const { data: fetchedActivity } = useBasketActivity(fallbackBasket.address, chainId, isConnected ? address : undefined);
   const apiActivity = fetchedActivity;
 
-  useEffect(() => {
-    const loadBasket = () => {
-      if (typeof window !== "undefined" && canManageBasket) {
-        const created = getCreatedBaskets();
-        const found = created.find(
-          (b: Basket) => b.address.toLowerCase() === fallbackBasket.address.toLowerCase() ||
-            b.name.toLowerCase() === fallbackBasket.name.toLowerCase()
-        ) ?? getBasket(fallbackBasket.address);
-        if (found) setLocalBasket({ ...found });
-      } else {
-        setLocalBasket(null);
-      }
-    };
-    loadBasket();
-    window.addEventListener("basket_updated", loadBasket);
-    return () => window.removeEventListener("basket_updated", loadBasket);
-  }, [fallbackBasket.address, fallbackBasket.name, canManageBasket]);
-
-  const isBasketIndexed = Boolean(detail) || Boolean(localBasket);
-
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const shouldShowIndexingStatus = mounted && !isWalletRestoring && !isBasketDetailsLoading && !isBasketIndexed;
-
-  const localEvents = mounted && canManageBasket ? getLocalActivity(fallbackBasket.address) : [];
+  const basketDetailState = deriveBasketDetailState({
+    isWalletRestoring,
+    isConnected,
+    isLoading: isBasketDetailsLoading,
+    isError: isBasketDetailsError,
+    isIndexed: Boolean(detail),
+  });
   const apiEvents: BasketActivity[] = (apiActivity?.data ?? []).map((evt) => ({
     eventType: evt.eventType === "FUNDED" ? "BasketFunded" : evt.eventType === "CREATED" ? "BasketCreated" : evt.eventType,
     actorAddress: evt.actorAddress || "Wallet execution",
@@ -109,7 +87,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     occurredAt: evt.occurredAt,
   }));
 
-  const combinedEvents = [...apiEvents, ...localEvents];
+  const combinedEvents = apiEvents;
   const events = combinedEvents.filter((evt, idx, self) => {
     const normType = evt.eventType.toLowerCase();
     const normHash = (evt.txHash || "").toLowerCase();
@@ -172,9 +150,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     };
   }).filter((holding): holding is NonNullable<typeof holding> => holding !== null);
 
-  const fallbackHoldings = (localBasket && localBasket.holdings && localBasket.holdings.length > 0)
-    ? localBasket.holdings
-    : (fallbackBasket.holdings || []);
+  const fallbackHoldings = fallbackBasket.holdings || [];
 
   const displayHoldings = holdingsCalculated.length > 0
     ? holdingsCalculated
@@ -200,17 +176,15 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     ? navFromDetail
     : calculatedTotalValue > 0
       ? calculatedTotalValue
-      : (localBasket && localBasket.value > 0)
-        ? localBasket.value
-        : (fallbackBasket.value || 0);
+      : (fallbackBasket.value || 0);
 
   const basket: Basket = {
-    name: localBasket?.name ?? detail?.summary.name ?? fallbackBasket.name,
-    symbol: localBasket?.symbol ?? detail?.summary.symbol ?? fallbackBasket.symbol,
+    name: detail?.summary.name ?? fallbackBasket.name,
+    symbol: detail?.summary.symbol ?? fallbackBasket.symbol,
     value: activeBasketValue,
-    change: localBasket?.change ?? fallbackBasket.change,
-    updated: localBasket?.updated ?? fallbackBasket.updated,
-    address: localBasket?.address ?? detail?.summary.address ?? fallbackBasket.address,
+    change: fallbackBasket.change,
+    updated: fallbackBasket.updated,
+    address: detail?.summary.address ?? fallbackBasket.address,
     holdings: (mappedIndexedHoldings.length > 0)
       ? mappedIndexedHoldings
       : fallbackHoldings,
@@ -244,62 +218,34 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         </div>
       </div>
 
-      {shouldShowIndexingStatus && (
-        <div
-          style={{
-            padding: "12px 16px",
-            background: "rgba(234,179,8,0.08)",
-            border: "1px solid rgba(234,179,8,0.25)",
-            borderRadius: "12px",
-            marginBottom: "20px",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            fontSize: "13px",
-            color: "#eab308",
-          }}
-        >
-          <span style={{ width: "18px", height: "18px", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <AppIcon type="clock" />
-          </span>
-          <div>
-            <strong>Confirming transaction...</strong>
-            <span style={{ display: "block", fontSize: "12px", opacity: 0.85, marginTop: "2px" }}>
-              Your basket was submitted on-chain. Network confirmation in progress.
-            </span>
-          </div>
+      {basketDetailState === "disconnected" && (
+        <div className="basket-surface-notice disconnected">
+          <span className="basket-surface-notice-icon"><AppIcon type="lock" /></span>
+          <div><strong>Connect your wallet to view live basket data</strong><span>Basket details are scoped to the connected controller wallet.</span></div>
+        </div>
+      )}
+      {basketDetailState === "error" && (
+        <div className="basket-surface-notice error">
+          <span className="basket-surface-notice-icon"><AppIcon type="alert" /></span>
+          <div><strong>Live basket data is unavailable</strong><span>Try again later. The values below may reflect the last available basket snapshot.</span></div>
+        </div>
+      )}
+      {basketDetailState === "indexing" && (
+        <div className="basket-surface-notice indexing">
+          <span className="basket-surface-notice-icon"><AppIcon type="clock" /></span>
+          <div><strong>Confirming transaction...</strong><span>Your basket was submitted on-chain. Network confirmation in progress.</span></div>
         </div>
       )}
 
-      <section className="basket-hero" style={{ paddingBottom: "24px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "32px", flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "column", gap: "24px" }}>
+      <section className="basket-hero">
+        <div className="basket-hero-layout">
+          <div className="basket-hero-main">
             <div className="basket-title-row">
               <BasketLogo name={basket.name} />
               <div>
-                <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <h1 className="page-title basket-title">
                   {basket.name}
-                  {shouldShowIndexingStatus && (
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        background: "rgba(234,179,8,0.15)",
-                        color: "#eab308",
-                        border: "1px solid rgba(234,179,8,0.3)",
-                        padding: "2px 8px",
-                        borderRadius: "6px",
-                        fontWeight: 700,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
-                      }}
-                    >
-                      <span style={{ width: "12px", height: "12px", display: "inline-flex" }}>
-                        <AppIcon type="clock" />
-                      </span>
-                      Confirming...
-                    </span>
-                  )}
+                  {basketDetailState === "indexing" && <span className="basket-title-status"><AppIcon type="clock" />Confirming...</span>}
                 </h1>
                 <p>
                   {networkLabelForChainId(chainId)} <i /> {formatAddress(basket.address)}
@@ -321,12 +267,12 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
             </div>
           </div>
 
-          <div style={{ flex: "0 1 380px", minWidth: "300px", display: "flex", flexDirection: "column", gap: "16px", alignItems: "flex-end" }}>
-            <div style={{ width: "100%" }}>
-              {allocation ? <PortfolioDrift holdings={allocation} /> : <div style={{ color: "var(--muted-ink)", fontSize: "13px" }}>Allocation drift is waiting for live balances and prices.</div>}
+          <div className="basket-hero-side">
+            <div className="basket-drift-slot">
+              {allocation ? <PortfolioDrift holdings={allocation} /> : <div className="basket-drift-empty">Allocation drift is waiting for live balances and prices.</div>}
             </div>
 
-            <div className="basket-actions" style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+            <div className="basket-actions">
               <button className="primary" disabled={!canManageBasket} onClick={() => setAction("mint")}>
                 <AppIcon type="plus" />Add funds
               </button>
@@ -336,7 +282,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
           </div>
         </div>
       </section>
-      <section className="allocation-block" style={{ marginTop: "24px" }}>
+      <section className="allocation-block basket-holdings-block">
         <div className="section-title">
           <div>
             <h2>Basket Holdings</h2>
