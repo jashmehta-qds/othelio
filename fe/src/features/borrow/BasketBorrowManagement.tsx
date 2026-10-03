@@ -40,7 +40,7 @@ export function BasketBorrowManagement({ basketId }: { basketId: string }) {
   const publicClient = usePublicClient();
   const { writeContractAsync, isPending: isWalletPending } = useWriteContract();
   const { data: ownedBaskets, isLoading: isLoadingOwnership } = useBasketsList(activeChainId, isConnected ? address : undefined);
-  const ownsBasket = Boolean(ownedBaskets?.data.some((basket) =>
+  const ownsBasket = Boolean(ownedBaskets?.data?.some((basket) =>
     basket.address.toLowerCase() === basketId.toLowerCase()
     && basket.controller.toLowerCase() === address?.toLowerCase(),
   ));

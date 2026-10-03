@@ -1,21 +1,19 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useAccount, useChainId, useReadContract } from 'wagmi';
 import type { BasketCapabilities, PositionSnapshot } from '@/types/shared';
+import type {
+  AssetCatalogItem,
+  ActivityEvent,
+  ActivityPage,
+  BasketDetail as SharedBasketDetail,
+  BasketSummary,
+  Holding as SharedHolding,
+  PortfolioOverview as SharedPortfolioOverview,
+} from '../../../packages/shared/src/portfolio';
 import { fetchApi } from '@/lib/api';
+import { CONTRACT_ADDRESSES } from '@/lib/contracts';
 
-export interface IndexedBasket {
-  chain_id: number;
-  address: string;
-  controller: string;
-  name: string;
-  symbol: string;
-  created_block: number;
-  created_tx: string;
-  created_at: string;
-  seed_amount?: number;
-  value?: number;
-  snapshot?: BasketSnapshot | null;
-  assets?: BasketAsset[];
-}
+export type IndexedBasket = BasketSummary;
 
 export interface BasketAsset {
   chain_id: number;
@@ -23,6 +21,8 @@ export interface BasketAsset {
   asset_address: string;
   target_weight_bps: number;
   updated_block: number | string;
+  assetAddress?: string;
+  targetWeightBps?: number;
 }
 
 export interface BasketSnapshot {
@@ -40,24 +40,12 @@ export interface BasketSnapshot {
 }
 
 export interface BasketDetailsResponse {
-  data: IndexedBasket & {
-    assets: BasketAsset[];
-    snapshot: BasketSnapshot | null;
-  };
+  data: SharedBasketDetail;
 }
+export type IndexedHolding = SharedHolding;
+export type PortfolioOverview = SharedPortfolioOverview;
 
-export interface BasketEvent {
-  chain_id: number;
-  tx_hash: string;
-  log_index: number;
-  block_number: number;
-  block_hash: string;
-  basket_address: string;
-  event_type: 'FUNDED' | 'CREATED' | 'WEIGHTS_UPDATED' | 'WITHDRAWN' | string;
-  actor_address: string;
-  payload: any;
-  occurred_at: string;
-}
+export type BasketEvent = ActivityEvent;
 
 export type ValuationTimeframe = '1D' | '7D' | '30D';
 
@@ -88,21 +76,21 @@ export function useBasketsList(chainId = DEFAULT_CHAIN_ID, controller?: string) 
   });
 }
 
-export function useBasketDetails(address: string, chainId = DEFAULT_CHAIN_ID, enabled = true) {
+export function useBasketDetails(address: string, chainId = DEFAULT_CHAIN_ID, controller?: string, pendingTransaction = false) {
   return useQuery<BasketDetailsResponse>({
-    queryKey: ['basket', address, chainId],
-    queryFn: () => fetchApi<BasketDetailsResponse>(`/v1/baskets/${address}?chainId=${chainId}`),
-    enabled: enabled && Boolean(address),
-    refetchInterval: 3000,
+    queryKey: ['basket', address, chainId, controller?.toLowerCase()],
+    queryFn: () => fetchApi<BasketDetailsResponse>(`/v1/baskets/${address}?chainId=${chainId}&controller=${encodeURIComponent(controller!)}`),
+    enabled: Boolean(address && controller),
+    refetchInterval: pendingTransaction ? 2_000 : 30_000,
   });
 }
 
-export function useBasketActivity(address: string, chainId = DEFAULT_CHAIN_ID, enabled = true) {
-  return useQuery<{ data: BasketEvent[] }>({
-    queryKey: ['basket-activity', address, chainId],
-    queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/${address}/activity?chainId=${chainId}`),
-    enabled: enabled && Boolean(address),
-    refetchInterval: 3000,
+export function useBasketActivity(address: string, chainId = DEFAULT_CHAIN_ID, controller?: string, pendingTransaction = false) {
+  return useQuery<ActivityPage>({
+    queryKey: ['basket-activity', address, chainId, controller?.toLowerCase()],
+    queryFn: () => fetchApi<ActivityPage>(`/v1/baskets/${address}/activity?chainId=${chainId}&controller=${encodeURIComponent(controller!)}`),
+    enabled: Boolean(address && controller),
+    refetchInterval: pendingTransaction ? 2_000 : 30_000,
   });
 }
 
@@ -158,11 +146,23 @@ export function useAccountingSummary(address: string, chainId = DEFAULT_CHAIN_ID
 }
 
 export function useAllActivity(chainId = DEFAULT_CHAIN_ID, enabled = true) {
-  return useQuery<{ data: BasketEvent[] }>({
-    queryKey: ['all-activity', chainId],
-    queryFn: () => fetchApi<{ data: BasketEvent[] }>(`/v1/baskets/activity/all?chainId=${chainId}`),
-    enabled,
-    refetchInterval: 3000,
+  const { address } = useAccount();
+  return useQuery<ActivityPage>({
+    queryKey: ['all-activity', chainId, address?.toLowerCase()],
+    queryFn: () => fetchApi<ActivityPage>(`/v1/activity?chainId=${chainId}&controller=${encodeURIComponent(address!)}`),
+    enabled: enabled && Boolean(address),
+    refetchInterval: 30_000,
+  });
+}
+
+export function usePortfolioOverview(chainId = DEFAULT_CHAIN_ID, controller?: string) {
+  return useQuery<{ data: PortfolioOverview }>({
+    queryKey: ['portfolio-overview', chainId, controller?.toLowerCase()],
+    queryFn: () => fetchApi<{ data: PortfolioOverview }>(
+      `/v1/portfolio/overview?chainId=${chainId}&controller=${encodeURIComponent(controller!)}`,
+    ),
+    enabled: Boolean(controller),
+    refetchInterval: 30_000,
   });
 }
 
@@ -177,7 +177,7 @@ export function usePortfolioValuationHistory(
       `/v1/baskets/valuation-history?chainId=${chainId}&controller=${encodeURIComponent(controller!)}&timeframe=${timeframe}`,
     ),
     enabled: Boolean(controller),
-    refetchInterval: 15_000,
+    refetchInterval: 30_000,
   });
 }
 
@@ -198,31 +198,30 @@ export function usePrepareOperation() {
   });
 }
 
-export interface SupportedAssetResponse {
-  symbol: string;
-  name: string;
-  address: string;
-  priceFeed: string;
-  color: string;
-  isCoinbaseB20: boolean;
-}
+export type SupportedAssetResponse = AssetCatalogItem;
 
 export function useSupportedAssets() {
   return useQuery<{ data: SupportedAssetResponse[] }>({
-    queryKey: ['supported-assets'],
-    queryFn: () => fetchApi<{ data: SupportedAssetResponse[] }>('/v1/baskets/assets/supported'),
+    queryKey: ['supported-assets', DEFAULT_CHAIN_ID],
+    queryFn: () => fetchApi<{ data: SupportedAssetResponse[] }>(`/v1/assets?chainId=${DEFAULT_CHAIN_ID}`),
   });
 }
 
-export function useAssetPrices() {
-  return useQuery<Record<string, number>>({
-    queryKey: ['asset-prices'],
-    queryFn: async () => {
-      const res = await fetch('/api/prices');
-      if (!res.ok) throw new Error('Failed to fetch asset prices');
-      return res.json();
+const usdcAbi = [{ inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' }] as const;
+
+export function useWalletUsdcBalance() {
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId() || DEFAULT_CHAIN_ID;
+  const usdcAddress = CONTRACT_ADDRESSES[chainId as keyof typeof CONTRACT_ADDRESSES]?.usdc;
+  return useReadContract({
+    address: usdcAddress as `0x${string}` | undefined,
+    abi: usdcAbi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: Boolean(isConnected && address && usdcAddress),
+      refetchInterval: 30_000,
+      refetchOnWindowFocus: true,
     },
-    refetchInterval: 60000, // 1-minute interval
-    staleTime: 60000,
   });
 }

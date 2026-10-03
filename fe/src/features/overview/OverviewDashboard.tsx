@@ -2,11 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAccount, useChainId } from "wagmi";
-import { useQueries } from "@tanstack/react-query";
 import { formatUnits } from "viem";
-import { useAllActivity, useBasketsList, usePortfolioValuationHistory, type PortfolioPositionsResponse } from "@/hooks/useBaskets";
-import { fetchApi } from "@/lib/api";
-import { currentHoldingsFromSnapshot } from "@/lib/live-allocation";
+import { useAllActivity, usePortfolioOverview, usePortfolioValuationHistory } from "@/hooks/useBaskets";
 import {
   formatAddress,
   formatCompactNumber,
@@ -58,9 +55,8 @@ export function OverviewDashboard() {
     }
   }, []);
 
-  // Fetch indexed baskets from backend API
-  const { data: apiResponse } = useBasketsList(chainId, isConnected ? address : undefined);
-  const indexedBaskets = apiResponse?.data || [];
+  const { data: overviewResponse } = usePortfolioOverview(chainId, isConnected ? address : undefined);
+  const indexedBaskets = overviewResponse?.data?.baskets || [];
   const { data: valuationHistory, isLoading: isValuationHistoryLoading } = usePortfolioValuationHistory(
     chainId,
     isConnected ? address : undefined,
@@ -88,7 +84,7 @@ export function OverviewDashboard() {
         symbol: ib.symbol || "OTH",
         value: 0,
         change: 0.0,
-        updated: ib.created_at ? new Date(ib.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Recently",
+        updated: ib.createdAt ? new Date(ib.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Recently",
         address: ib.address,
         holdings: [],
         isIndexed: true,
@@ -123,34 +119,24 @@ export function OverviewDashboard() {
     return deduped;
   }, [isConnected, address, localBaskets, indexedBaskets]);
 
-  const positionQueries = useQueries({
-    queries: candidateBaskets.map((basket) => ({
-      queryKey: ["basket-positions", basket.address.toLowerCase(), chainId],
-      queryFn: () => fetchApi<PortfolioPositionsResponse>(`/v1/baskets/${basket.address}/positions?chainId=${chainId}`),
-      enabled: /^0x[a-fA-F0-9]{40}$/.test(basket.address),
-      refetchInterval: 15_000,
-    })),
+  const overviewHoldings = overviewResponse?.data?.holdings ?? [];
+  const activeBaskets = candidateBaskets.map((basket): Basket => {
+    const indexed = indexedBaskets.find((item) => item.address.toLowerCase() === basket.address.toLowerCase());
+    const indexedValue = indexed?.totalNavUsdcMicro === null || indexed?.totalNavUsdcMicro === undefined
+      ? basket.value
+      : Number(indexed.totalNavUsdcMicro) / 1e6;
+    return { ...basket, value: indexedValue, holdings: [] };
   });
-
-  const activeBaskets = candidateBaskets.map((basket, index): Basket => {
-    const snapshot = positionQueries[index]?.data?.data;
-    if (!snapshot || snapshot.readCompleteness !== "COMPLETE" || !["COMPLETE", "STALE"].includes(snapshot.valuationStatus)) {
-      return { ...basket, value: 0, holdings: [] };
-    }
-    const value = snapshot.equityUsdE8 === null ? 0 : Number(formatUnits(BigInt(snapshot.equityUsdE8), 8));
-    return { ...basket, value, holdings: currentHoldingsFromSnapshot(snapshot) ?? [] };
-  });
-  const livePositionsLoading = positionQueries.some((query) => query.isPending);
-  const livePositionsUnavailable = candidateBaskets.length > 0 && positionQueries.some((query) =>
-    query.isError || (query.data && (
-      query.data.data.readCompleteness !== "COMPLETE" || !["COMPLETE", "STALE"].includes(query.data.data.valuationStatus)
-    )),
-  );
+  const livePositionsLoading = !overviewResponse && candidateBaskets.length > 0;
+  const livePositionsUnavailable = false;
 
   // Executive Hero Metrics
   const totalNAV = useMemo(() => {
-    return activeBaskets.reduce((sum, b) => sum + (b.value || 0), 0);
-  }, [activeBaskets]);
+    const rawMicro = overviewResponse?.data?.totalNavUsdcMicro;
+    return rawMicro !== null && rawMicro !== undefined
+      ? Number(rawMicro) / 1e6
+      : activeBaskets.reduce((sum, b) => sum + (b.value || 0), 0);
+  }, [activeBaskets, overviewResponse]);
 
   const totalRealizedGains = useMemo(() => {
     return activeBaskets.reduce((sum, b) => sum + (b.realizedGains || 0), 0);
@@ -172,46 +158,40 @@ export function OverviewDashboard() {
       }
     >();
 
-    activeBaskets.forEach((basket) => {
-      const holdings = basket.holdings && basket.holdings.length > 0
-        ? basket.holdings
-        : [];
-
-      holdings.forEach((h) => {
+    overviewHoldings.forEach((h) => {
         const meta = supportedAssets.find((a) =>
-          a.symbol.toLowerCase() === h.symbol.toLowerCase() ||
-          (a.address && h.address && a.address.toLowerCase() === h.address.toLowerCase()) ||
-          (a.address && a.address.toLowerCase() === h.symbol.toLowerCase())
+          h.symbol !== null && a.symbol.toLowerCase() === h.symbol.toLowerCase() ||
+          (a.address && h.assetAddress && a.address.toLowerCase() === h.assetAddress.toLowerCase())
         );
-        const symbolKey = meta?.symbol || h.symbol;
-        const price = h.quantity > 0 ? h.value / h.quantity : 0;
-        const val = h.value;
-        const qty = h.quantity;
+        const symbolKey = meta?.symbol || h.symbol || h.assetAddress.slice(0, 10);
+        const qty = Number(formatUnits(BigInt(h.quantityBaseUnits), h.decimals));
+        const val = h.valueUsdcMicro === null ? 0 : Number(h.valueUsdcMicro) / 1e6;
+        const price = qty > 0 ? val / qty : 0;
         // Do not manufacture a gain from a market-return window when no
         // acquisition basis is available. A missing basis is neutral until
         // the indexer provides the position's average cost.
-        const costBasis = h.avgCost && h.avgCost > 0 ? qty * h.avgCost : val;
+        const avgCost = h.averageCostUsdcMicroPerBaseUnit === null ? 0 : Number(h.averageCostUsdcMicroPerBaseUnit) / 1e6 * 10 ** h.decimals;
+        const costBasis = avgCost > 0 ? qty * avgCost : val;
 
         const existing = map.get(symbolKey);
         if (existing) {
           existing.totalUnits += qty;
           existing.totalValue += val;
           existing.totalCostBasis += costBasis;
-          existing.baskets.add(basket.symbol);
+          existing.baskets.add("Portfolio");
         } else {
           map.set(symbolKey, {
             symbol: symbolKey,
-            name: meta?.name || h.name || symbolKey,
-            color: meta?.color || h.color || "#8aa4ff",
+            name: meta?.name || symbolKey,
+            color: meta?.color || "#8aa4ff",
             currentPrice: price,
             totalUnits: qty,
             totalValue: val,
             totalCostBasis: costBasis,
-            baskets: new Set([basket.symbol]),
+            baskets: new Set(["Portfolio"]),
           });
         }
       });
-    });
 
     const result = Array.from(map.values()).map((item) => ({
       ...item,
@@ -221,7 +201,7 @@ export function OverviewDashboard() {
 
     // Default sorted descending by Total USD Value
     return result.sort((a, b) => b.totalValue - a.totalValue);
-  }, [activeBaskets, totalNAV]);
+  }, [overviewHoldings, totalNAV]);
 
   // Aggregate Unrealized P&L Calculation
   const { totalUnrealizedDollar, totalUnrealizedPercent } = useMemo(() => {
@@ -297,10 +277,10 @@ export function OverviewDashboard() {
 
     if (combined.length === 0) return [];
 
-    // Remove duplicates by tx_hash
+    // Remove duplicates by normalized transaction hash and event type.
     const uniqueMap = new Map<string, any>();
     combined.forEach((item) => {
-      const key = item.tx_hash ? item.tx_hash.toLowerCase() : `${item.event_type}-${item.occurred_at}`;
+      const key = item.txHash ? item.txHash.toLowerCase() : `${item.eventType}-${item.occurredAt}`;
       if (!uniqueMap.has(key)) {
         uniqueMap.set(key, item);
       }

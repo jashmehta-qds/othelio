@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Header, Inject, Param, Post, Query } from '@nestjs/common';
 import { BasketsService } from './baskets.service';
 import { BasketPositionService } from './basket-position.service';
 import { LendingReceiptReconciliationService } from './lending-receipt-reconciliation.service';
@@ -16,18 +16,20 @@ export class BasketsController {
 
   @Delete('reset')
   async resetAllBaskets() {
+    if (process.env.NODE_ENV === 'production') throw new ForbiddenException({ error: 'RESET_DISABLED_IN_PRODUCTION' });
     return this.basketsService.clearAllBaskets();
   }
 
   @Post('reset')
   async resetAllBasketsPost() {
+    if (process.env.NODE_ENV === 'production') throw new ForbiddenException({ error: 'RESET_DISABLED_IN_PRODUCTION' });
     return this.basketsService.clearAllBaskets();
   }
 
   @Get()
   async getBaskets(
     @Query('chainId') chainId: string,
-    @Query('controller') controller?: string,
+    @Query('controller') controller: string,
   ) {
     return this.basketsService.getBaskets(chainId, controller);
   }
@@ -85,16 +87,9 @@ export class BasketsController {
   async getBasketByAddress(
     @Param('address') address: string,
     @Query('chainId') chainId: string,
+    @Query('controller') controller?: string,
   ) {
-    return this.basketsService.getBasketByAddress(address, chainId);
-  }
-
-  @Get(':address/activity')
-  async getBasketActivity(
-    @Param('address') address: string,
-    @Query('chainId') chainId: string,
-  ) {
-    return this.basketsService.getBasketActivity(address, chainId);
+    return this.basketsService.getBasketDetail(address, chainId, controller);
   }
 
   @Get(':address/positions')

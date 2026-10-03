@@ -5,7 +5,7 @@ import {
   SUPPORTED_CHAIN_IDS,
   isSupportedChainId,
   networkKindForChainId,
-} from '../../../packages/shared/src/networks.ts';
+} from '@othelio/shared';
 
 describe('shared network contract', () => {
   it('supports only the local Base fork and Base mainnet', () => {

@@ -7,10 +7,11 @@ import { BasketsService } from './baskets.service';
 import { LendingEventService } from './lending-event.service';
 import { LendingReceiptReconciliationService } from './lending-receipt-reconciliation.service';
 import { BasketPositionService } from './basket-position.service';
+import { PortfolioController } from './portfolio.controller';
 
 @Module({
   imports: [DatabaseModule, DexModule],
-  controllers: [BasketsController],
+  controllers: [BasketsController, PortfolioController],
   providers: [BasketsService, BasketPositionService, BasketQuotePlannerService, LendingEventService, LendingReceiptReconciliationService],
   exports: [BasketPositionService, BasketQuotePlannerService, LendingEventService, LendingReceiptReconciliationService],
 })

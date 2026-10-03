@@ -1,13 +1,13 @@
 import { createConfig, createStorage, http } from 'wagmi';
 import { base, foundry } from 'wagmi/chains';
 import { injected, coinbaseWallet } from 'wagmi/connectors';
-import { BASE_FORK_CHAIN_ID } from '@othelio/shared';
+import { BASE_FORK_CHAIN_ID } from '@/types/shared';
 
 const defaultChain = process.env.NEXT_PUBLIC_CHAIN_ID === String(BASE_FORK_CHAIN_ID) ? foundry : base;
 const configuredChains = defaultChain.id === foundry.id 
   ? ([foundry, base] as const)
   : ([base, foundry] as const);
-const baseRpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL;
+const baseRpcUrl = process.env.NEXT_PUBLIC_BASE_RPC_URL?.trim();
 
 if (process.env.NODE_ENV === 'production' && !baseRpcUrl) {
   throw new Error('NEXT_PUBLIC_BASE_RPC_URL must be configured for a production Base deployment.');
@@ -29,6 +29,9 @@ export const config = createConfig({
   ],
   transports: {
     [foundry.id]: http('http://127.0.0.1:8545'),
-    [base.id]: http(baseRpcUrl),
+    // Reads and receipt polling must use a deterministic Base transport during
+    // both SSR and browser hydration. Wallet connectors remain responsible for
+    // signing and sending transactions.
+    [base.id]: http(baseRpcUrl || 'https://mainnet.base.org'),
   },
 });

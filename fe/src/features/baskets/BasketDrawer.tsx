@@ -7,7 +7,7 @@ import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets, depositBasket, withdrawBasket, getSlippageTolerance, type Basket } from "@/lib/baskets";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { fetchSwapQuote } from "@/lib/api";
-import { useBasketDetails } from "@/hooks/useBaskets";
+import { useBasketDetails, useBasketActivity, useWalletUsdcBalance } from "@/hooks/useBaskets";
 import { toRawAmount, USDC_DECIMALS } from "@/types/shared";
 
 export type BasketAction = "mint" | "withdraw" | "rebalance" | null;
@@ -66,10 +66,9 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
   const hash = activeHash;
   const isPending = isSendPending;
   const { data: receipt, isError: isReceiptError, error: receiptError, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: hash ?? undefined });
-  const { data: indexedDetails } = useBasketDetails(basket.address, chainId);
-  const isAllocationIndexed = Boolean(isSuccess && receipt && indexedDetails?.data.assets.some(
-    (asset) => BigInt(asset.updated_block) >= receipt.blockNumber,
-  ));
+  const { data: indexedDetails } = useBasketDetails(basket.address, chainId, address, Boolean(isPending || isConfirming || isSuccess));
+  useBasketActivity(basket.address, chainId, address, Boolean(isPending || isConfirming || isSuccess));
+  const isAllocationIndexed = Boolean(isSuccess && receipt && indexedDetails?.data?.targets);
 
   const processedHash = useRef<string | null>(null);
   const [countdown, setCountdown] = useState<number>(10);
@@ -81,6 +80,8 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
         queryClient.invalidateQueries({ queryKey: ["basket", basket.address] }),
         queryClient.invalidateQueries({ queryKey: ["basket-positions", basket.address.toLowerCase()] }),
         queryClient.invalidateQueries({ queryKey: ["baskets"] }),
+        queryClient.invalidateQueries({ queryKey: ["portfolio-overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["all-activity"] }),
       ]);
     }
   }, [isSuccess, basket.address, hash, queryClient]);
@@ -480,16 +481,12 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
   const [actionError, setActionError] = useState<string | null>(null);
   const isCanonicalLiquidError = isCanonicalLiquidWithdrawalError(actionError, isMint);
 
-  const { data: usdcBalanceRaw, isLoading: isBalanceLoading, refetch: refetchDrawerUsdc } = useReadContract({
-    address: usdcAddress,
-    abi: [{ inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' }],
-    functionName: 'balanceOf',
-    args: userAddress ? [userAddress] : undefined,
-    query: {
-      enabled: Boolean(userAddress),
-      refetchInterval: 3000,
-    },
-  });
+  const {
+    data: usdcBalanceRaw,
+    isLoading: isBalanceLoading,
+    isError: isBalanceError,
+    refetch: refetchDrawerUsdc,
+  } = useWalletUsdcBalance();
 
   const { data: allowanceRaw, refetch: refetchAllowance } = useReadContract({
     address: usdcAddress,
@@ -508,10 +505,12 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
   const hash = activeHash;
   const isPending = isWritePending || isSendPending;
   const { isError: isReceiptError, error: receiptError, isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: hash ?? undefined });
+  useBasketDetails(basket.address, chainId, userAddress, Boolean(isPending || isConfirming || isSuccess));
+  useBasketActivity(basket.address, chainId, userAddress, Boolean(isPending || isConfirming || isSuccess));
 
   const formattedBalance = usdcBalanceRaw !== undefined && userAddress
     ? `${Number(formatUnits(usdcBalanceRaw as bigint, 6)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`
-    : "0.00 USDC";
+    : "Unavailable";
 
   const processedHash = useRef<string | null>(null);
   const [countdown, setCountdown] = useState<number>(10);
@@ -771,7 +770,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
               </div>
               <small>
                 {isMint
-                  ? `Available: ${isBalanceLoading ? "Loading..." : formattedBalance}`
+                  ? `Available: ${isBalanceLoading ? "Loading..." : isBalanceError ? "Unavailable" : formattedBalance}`
                   : `Basket Value: $${basket.value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               </small>
               {isCanonicalLiquidError && (

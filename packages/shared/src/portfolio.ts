@@ -245,3 +245,102 @@ export const transactionLifecycleSchema = z.object({
   reason: z.string().nullable(),
 });
 export type TransactionLifecycle = z.infer<typeof transactionLifecycleSchema>;
+
+// Read models are deliberately separate from database rows. Decimal and token
+// amounts remain strings at the API boundary so callers never lose precision.
+export const freshnessSchema = z.object({
+  positionBlockNumber: z.number().int().nonnegative().nullable(),
+  positionBlockHash: blockHashSchema.nullable(),
+  positionObservedAt: z.string().datetime().nullable(),
+  priceBlockNumber: z.number().int().nonnegative().nullable(),
+  priceBlockHash: blockHashSchema.nullable(),
+  priceObservedAt: z.string().datetime().nullable(),
+  status: z.enum(["FRESH", "STALE", "DEGRADED", "UNAVAILABLE"]),
+});
+export type Freshness = z.infer<typeof freshnessSchema>;
+
+export const basketSummarySchema = z.object({
+  chainId: chainIdSchema,
+  address: addressSchema,
+  controller: addressSchema,
+  name: z.string(),
+  symbol: z.string(),
+  createdAt: z.string().datetime(),
+  totalNavUsdcMicro: baseUnitAmountSchema.nullable(),
+  holdingCount: z.number().int().nonnegative(),
+  targetCount: z.number().int().nonnegative(),
+  freshness: freshnessSchema,
+});
+export type BasketSummary = z.infer<typeof basketSummarySchema>;
+
+export const holdingSchema = z.object({
+  assetAddress: addressSchema,
+  symbol: z.string().nullable(),
+  decimals: z.number().int().min(0).max(255),
+  quantityBaseUnits: baseUnitAmountSchema,
+  priceUsdE8: baseUnitAmountSchema.nullable(),
+  valueUsdcMicro: baseUnitAmountSchema.nullable(),
+  currentWeightBps: z.number().int().nonnegative().nullable(),
+  averageCostUsdcMicroPerBaseUnit: baseUnitAmountSchema.nullable(),
+  unrealizedPnlUsdcMicro: z.string().regex(/^-?(0|[1-9][0-9]*)$/).nullable(),
+  status: z.enum(["COMPLETE", "PARTIAL", "UNAVAILABLE", "STALE"]),
+});
+export type Holding = z.infer<typeof holdingSchema>;
+
+export const basketDetailSchema = z.object({
+  summary: basketSummarySchema,
+  targets: z.array(z.object({ assetAddress: addressSchema, targetWeightBps: z.number().int().min(0).max(10000) })),
+  holdings: z.array(holdingSchema),
+  valuation: z.object({ totalNavUsdcMicro: baseUnitAmountSchema.nullable(), status: z.enum(["COMPLETE", "PARTIAL", "UNAVAILABLE", "STALE"]) }),
+  accounting: z.object({ policy: z.string(), status: z.enum(["COMPLETE", "INCOMPLETE", "UNAVAILABLE"]), issue: z.string().nullable() }),
+  capabilities: basketCapabilitiesSchema,
+  freshness: freshnessSchema,
+});
+export type BasketDetail = z.infer<typeof basketDetailSchema>;
+
+export const portfolioOverviewSchema = z.object({
+  chainId: chainIdSchema,
+  controller: addressSchema,
+  totalNavUsdcMicro: baseUnitAmountSchema.nullable(),
+  baskets: z.array(basketSummarySchema),
+  holdings: z.array(holdingSchema),
+  freshness: freshnessSchema,
+  calculatedAt: z.string().datetime(),
+});
+export type PortfolioOverview = z.infer<typeof portfolioOverviewSchema>;
+
+export const assetCatalogItemSchema = z.object({
+  chainId: chainIdSchema,
+  assetAddress: addressSchema,
+  symbol: z.string().nullable(),
+  name: z.string().nullable(),
+  decimals: z.number().int().min(0).max(255).nullable(),
+  priceUsdE8: baseUnitAmountSchema.nullable(),
+  priceBlockNumber: z.number().int().nonnegative().nullable(),
+  priceBlockHash: blockHashSchema.nullable(),
+  priceObservedAt: z.string().datetime().nullable(),
+  status: z.enum(["FRESH", "STALE", "DEGRADED", "UNAVAILABLE"]),
+});
+export type AssetCatalogItem = z.infer<typeof assetCatalogItemSchema>;
+
+export const cursorPageSchema = z.object({
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean(),
+});
+
+/** Activity adapter contract consumed by the existing web activity rows. */
+export const activityEventSchema = z.object({
+  chainId: chainIdSchema,
+  txHash: z.string().min(1),
+  logIndex: z.number().int().nonnegative(),
+  blockNumber: z.number().int().nonnegative(),
+  blockHash: blockHashSchema,
+  basketAddress: addressSchema,
+  eventType: z.string().min(1),
+  actorAddress: addressSchema.nullable(),
+  payload: z.unknown(),
+  occurredAt: z.string().datetime(),
+});
+export type ActivityEvent = z.infer<typeof activityEventSchema>;
+export const activityPageSchema = z.object({ data: z.array(activityEventSchema), page: cursorPageSchema });
+export type ActivityPage = z.infer<typeof activityPageSchema>;

@@ -17,13 +17,13 @@ export default function ActivityPage() {
     (basketsRes?.data ?? []).map((basket): [string, string] => [basket.address.toLowerCase(), basket.symbol]),
   );
   const events = rawEvents.filter((event, index, all) => {
-    const hash = (event.tx_hash || "").toLowerCase();
-    const type = (event.event_type || "").toLowerCase();
+    const hash = (event.txHash || "").toLowerCase();
+    const type = (event.eventType || "").toLowerCase();
     return index === all.findIndex((other) => {
-      const sameHashAndType = hash.length > 0 && hash === (other.tx_hash || "").toLowerCase() && type === (other.event_type || "").toLowerCase();
-      const sameIndexedLog = type === (other.event_type || "").toLowerCase()
-        && (event.basket_address || "").toLowerCase() === (other.basket_address || "").toLowerCase()
-        && event.block_number === other.block_number && event.log_index === other.log_index;
+      const sameHashAndType = hash.length > 0 && hash === (other.txHash || "").toLowerCase() && type === (other.eventType || "").toLowerCase();
+      const sameIndexedLog = type === (other.eventType || "").toLowerCase()
+        && (event.basketAddress || "").toLowerCase() === (other.basketAddress || "").toLowerCase()
+        && event.blockNumber === other.blockNumber && event.logIndex === other.logIndex;
       return sameHashAndType || sameIndexedLog;
     });
   });
@@ -33,9 +33,9 @@ export default function ActivityPage() {
     <section className="activity-page-list" aria-label="Confirmed basket activity">
       {isWalletRestoring || isLoading ? <p className="activity-empty">{isWalletRestoring ? "Restoring your wallet…" : "Loading confirmed operations…"}</p> : events.length > 0 ? events.map((event, index) => (
         <ActivityEventRow
-          key={`${event.tx_hash}-${event.log_index ?? index}`}
+          key={`${event.txHash}-${event.logIndex ?? index}`}
           event={event}
-          basketSymbol={basketSymbols.get(event.basket_address?.toLowerCase() ?? "")}
+          basketSymbol={basketSymbols.get(event.basketAddress?.toLowerCase() ?? "")}
           olderEvents={events.slice(index + 1)}
           full
         />

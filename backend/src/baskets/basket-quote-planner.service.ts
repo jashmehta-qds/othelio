@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   ServiceUnavailableException,
@@ -11,7 +12,7 @@ import {
   executionPlanSchema,
   PositionSnapshot,
 } from '@othelio/shared';
-import { createPublicClient, encodeFunctionData, http, parseAbi } from 'viem';
+import { createPublicClient, encodeFunctionData, http, keccak256, parseAbi } from 'viem';
 import {
   BASE_AERODROME_SLIPSTREAM_ROUTER,
 } from '../dex/aerodrome-slipstream-routes';
@@ -73,6 +74,9 @@ interface NetTrade {
 
 @Injectable()
 export class BasketQuotePlannerService {
+  private readonly capabilityCache = new Map<string, { moduleVersion: bigint; supportsBoundedExecution: boolean }>();
+  private readonly routeCapabilityCache = new Map<string, { moduleVersion: bigint; bounded: boolean; adapterAddress: Address; adapterRouter: Address; routeRegistryAddress: Address }>();
+  private readonly approvedPoolCache = new Map<string, true>();
   constructor(
     @Inject(DexManagerService)
     private readonly dexManagerService: DexManagerService,
@@ -83,9 +87,14 @@ export class BasketQuotePlannerService {
   async quoteSwaps(basketAddressInput: string, body: BasketQuoteRequest) {
     const basketAddress = this.parseAddress(basketAddressInput, 'basketAddress');
     const action = body.action ?? 'mint';
-    if (action === 'rebalance') return this.quoteRebalance(basketAddress, body);
-    if (action === 'mint') return this.quoteSingleAssetFunding(basketAddress, body);
-    return this.quoteInKindWithdrawal(basketAddress, body);
+    try {
+      if (action === 'rebalance') return await this.quoteRebalance(basketAddress, body);
+      if (action === 'mint') return await this.quoteSingleAssetFunding(basketAddress, body);
+      return await this.quoteInKindWithdrawal(basketAddress, body);
+    } catch (error) {
+      if (error instanceof ConflictException || error instanceof BadRequestException || error instanceof UnprocessableEntityException) throw error;
+      throw new UnprocessableEntityException({ code: 'QUOTE_FAILED', error: 'QUOTE_FAILED' });
+    }
   }
 
   private async quoteInKindWithdrawal(basketAddress: Address, body: BasketQuoteRequest) {
@@ -94,7 +103,8 @@ export class BasketQuotePlannerService {
     const callerAddress = this.parseAddress(body.callerAddress, 'callerAddress');
     const recipientAddress = this.parseAddress(body.recipientAddress ?? body.callerAddress, 'recipientAddress');
     const requestedValueUsdE8 = this.parsePositiveAmount(body.withdrawValueUsdE8, 'withdrawValueUsdE8');
-    const { data: snapshot, capabilities } = await this.positions.getPositionSnapshot(basketAddress, chainId);
+    const { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId);
+    await this.positions.assertActionReadiness(chainId, basketAddress, snapshot.tokens.map((token) => token.assetAddress as Address));
     const capability = capabilities.actions.WITHDRAW_LIQUID;
     if (capability.availability === 'DISABLED') throw new UnprocessableEntityException(capability.reason);
     this.assertUsableLiquidWithdrawalSnapshot(snapshot, basketAddress, chainId);
@@ -173,7 +183,8 @@ export class BasketQuotePlannerService {
     const slippageBps = this.parseSlippage(body.slippageBps);
     const targetWeights = this.parseTargetWeights(body.targetWeights ?? body.holdings);
     const targetAssets = targetWeights.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'));
-    const { data: snapshot, capabilities } = await this.positions.getPositionSnapshot(basketAddress, chainId, targetAssets);
+    const { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId);
+    await this.positions.assertActionReadiness(chainId, basketAddress, [...targetAssets, ...snapshot.tokens.map((token) => token.assetAddress as Address)]);
     const spotCapability = capabilities.actions.SPOT_REBALANCE;
     if (spotCapability.availability === 'DISABLED') {
       throw new UnprocessableEntityException(spotCapability.reason);
@@ -464,7 +475,8 @@ export class BasketQuotePlannerService {
       throw new UnprocessableEntityException('No valid targets with targetWeightBps > 0 were specified for funding.');
     }
 
-    const { data: snapshot, capabilities } = await this.positions.getPositionSnapshot(basketAddress, chainId);
+    const { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId);
+    await this.positions.assertActionReadiness(chainId, basketAddress, [inputAsset, ...targets.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'))]);
     if (capabilities.actions.FUND.availability === 'DISABLED') {
       throw new UnprocessableEntityException(capabilities.actions.FUND.reason);
     }
@@ -721,7 +733,7 @@ export class BasketQuotePlannerService {
     if (snapshot.chainId !== chainId || snapshot.basketAddress.toLowerCase() !== basketAddress.toLowerCase()) {
       throw new UnprocessableEntityException('The canonical snapshot does not match the requested basket and chain.');
     }
-    if (snapshot.readCompleteness === 'UNAVAILABLE' || snapshot.valuationStatus === 'UNAVAILABLE' || snapshot.valuationStatus === 'STALE') {
+    if (snapshot.readCompleteness === 'UNAVAILABLE' || snapshot.valuationStatus === 'UNAVAILABLE') {
       throw new UnprocessableEntityException('Current liquid balances and prices are required for every planned asset.');
     }
   }
@@ -730,7 +742,7 @@ export class BasketQuotePlannerService {
     if (snapshot.chainId !== chainId || snapshot.basketAddress.toLowerCase() !== basketAddress.toLowerCase()) {
       throw new UnprocessableEntityException('The canonical snapshot does not match the requested basket and chain.');
     }
-    if (snapshot.readCompleteness === 'UNAVAILABLE' || snapshot.valuationStatus === 'UNAVAILABLE' || snapshot.valuationStatus === 'STALE') {
+    if (snapshot.readCompleteness === 'UNAVAILABLE' || snapshot.valuationStatus === 'UNAVAILABLE') {
       throw new UnprocessableEntityException('Current liquid balances and prices are required for every planned asset.');
     }
     const heldTokens = snapshot.tokens.filter((token) => token.liquidAmountBaseUnits !== null && BigInt(token.liquidAmountBaseUnits) > 0n);
@@ -777,57 +789,48 @@ export class BasketQuotePlannerService {
 
     try {
       const client = createPublicClient({ transport: http(rpcUrl) });
-      const [moduleVersion, bounded, adapterAddress] = await Promise.all([
-        client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'moduleVersion' }),
-        client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'supportsBoundedExecution' }),
-        client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'aerodromeAdapter' }),
-      ]);
+      const bytecode = await client.getBytecode({ address: moduleAddress });
+      if (!bytecode || bytecode === '0x') throw new Error('module bytecode unavailable');
+      const routeCacheKey = `${chainId}:${moduleAddress.toLowerCase()}:${keccak256(bytecode)}`;
+      let routeCapabilities = this.routeCapabilityCache.get(routeCacheKey);
+      if (!routeCapabilities) {
+        const [moduleVersion, bounded, adapterAddress] = await Promise.all([
+          client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'moduleVersion' }),
+          client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'supportsBoundedExecution' }),
+          client.readContract({ address: moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'aerodromeAdapter' }),
+        ]);
+        const adapterRouter = await client.readContract({ address: adapterAddress, abi: AERODROME_ADAPTER_ABI, functionName: 'router' });
+        const routeRegistryAddress = await client.readContract({ address: adapterAddress, abi: parseAbi(['function routeRegistry() external view returns (address)']), functionName: 'routeRegistry' });
+        routeCapabilities = { moduleVersion, bounded, adapterAddress, adapterRouter, routeRegistryAddress };
+        this.routeCapabilityCache.set(routeCacheKey, routeCapabilities);
+      }
+      const { moduleVersion, bounded, adapterRouter, routeRegistryAddress } = routeCapabilities;
       if (moduleVersion !== 3n || !bounded) {
         throw new UnprocessableEntityException(
           `UNSUPPORTED_MODULE_VERSION: bounded v3 execution requires moduleVersion=3; received ${moduleVersion.toString()} with supportsBoundedExecution=${bounded}.`,
         );
       }
-      const adapterRouter = await client.readContract({
-        address: adapterAddress,
-        abi: AERODROME_ADAPTER_ABI,
-        functionName: 'router',
-      });
       if (adapterRouter.toLowerCase() !== approvedRouter.toLowerCase()) {
         throw new UnprocessableEntityException(
           'UNAPPROVED_AERODROME_ROUTER: the deployed portfolio module is not pinned to the reviewed Aerodrome router.',
         );
       }
-      const routeRegistryAddress = await client.readContract({
-        address: adapterAddress,
-        abi: parseAbi(['function routeRegistry() external view returns (address)']),
-        functionName: 'routeRegistry',
-      });
-
       const ROUTE_REGISTRY_ABI = parseAbi([
         'function requireApprovedPool(uint256 chainId, address tokenA, address tokenB, int24 tickSpacing) external view returns (address factory, address pool)',
       ]);
+      const checkPool = async (tokenA: string, tokenB: string, spacing: number) => {
+        const key = `${routeCacheKey}:${tokenA.toLowerCase()}:${tokenB.toLowerCase()}:${spacing}`;
+        if (this.approvedPoolCache.has(key)) return;
+        await client.readContract({ address: routeRegistryAddress, abi: ROUTE_REGISTRY_ABI, functionName: 'requireApprovedPool', args: [BigInt(chainId), tokenA as Address, tokenB as Address, spacing] });
+        this.approvedPoolCache.set(key, true);
+      };
 
       try {
         if (route.kind === 'DIRECT') {
-          await client.readContract({
-            address: routeRegistryAddress,
-            abi: ROUTE_REGISTRY_ABI,
-            functionName: 'requireApprovedPool',
-            args: [BigInt(chainId), route.sellToken as Address, route.buyToken as Address, route.firstTickSpacing],
-          });
+          await checkPool(route.sellToken, route.buyToken, route.firstTickSpacing);
         } else if (route.kind === 'VIA_USDC') {
-          await client.readContract({
-            address: routeRegistryAddress,
-            abi: ROUTE_REGISTRY_ABI,
-            functionName: 'requireApprovedPool',
-            args: [BigInt(chainId), route.sellToken as Address, BASE_USDC as Address, route.firstTickSpacing],
-          });
-          await client.readContract({
-            address: routeRegistryAddress,
-            abi: ROUTE_REGISTRY_ABI,
-            functionName: 'requireApprovedPool',
-            args: [BigInt(chainId), BASE_USDC as Address, route.buyToken as Address, route.secondTickSpacing],
-          });
+          await checkPool(route.sellToken, BASE_USDC, route.firstTickSpacing);
+          await checkPool(BASE_USDC, route.buyToken, route.secondTickSpacing);
         }
       } catch (poolErr) {
         throw new UnprocessableEntityException(
@@ -865,10 +868,18 @@ export class BasketQuotePlannerService {
     let moduleVersion: bigint;
     let supportsBoundedExecution: boolean;
     try {
-      [moduleVersion, supportsBoundedExecution] = await Promise.all([
-        client.readContract({ address: input.moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'moduleVersion', blockNumber: input.snapshot ? BigInt(input.snapshot.blockNumber) : undefined }),
-        client.readContract({ address: input.moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'supportsBoundedExecution', blockNumber: input.snapshot ? BigInt(input.snapshot.blockNumber) : undefined }),
-      ]);
+      const bytecode = await client.getBytecode({ address: input.moduleAddress, blockNumber: input.snapshot ? BigInt(input.snapshot.blockNumber) : undefined });
+      if (!bytecode || bytecode === '0x') throw new Error('module bytecode unavailable');
+      const cacheKey = `${input.chainId}:${input.moduleAddress.toLowerCase()}:${keccak256(bytecode)}`;
+      const cached = this.capabilityCache.get(cacheKey);
+      if (cached) ({ moduleVersion, supportsBoundedExecution } = cached);
+      else {
+        [moduleVersion, supportsBoundedExecution] = await Promise.all([
+          client.readContract({ address: input.moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'moduleVersion', blockNumber: input.snapshot ? BigInt(input.snapshot.blockNumber) : undefined }),
+          client.readContract({ address: input.moduleAddress, abi: MODULE_CAPABILITY_ABI, functionName: 'supportsBoundedExecution', blockNumber: input.snapshot ? BigInt(input.snapshot.blockNumber) : undefined }),
+        ]);
+        this.capabilityCache.set(cacheKey, { moduleVersion, supportsBoundedExecution });
+      }
     } catch {
       throw new UnprocessableEntityException(
         'UNKNOWN_MODULE_CAPABILITY: moduleVersion and supportsBoundedExecution could not be verified at the snapshot block.',
@@ -894,7 +905,7 @@ export class BasketQuotePlannerService {
       };
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'The exact module call reverted.';
-      throw new UnprocessableEntityException(`ROUTE_SIMULATION_FAILED: ${reason}`);
+      throw new UnprocessableEntityException({ code: 'SIMULATION_FAILED', error: 'SIMULATION_FAILED', reason });
     }
   }
 

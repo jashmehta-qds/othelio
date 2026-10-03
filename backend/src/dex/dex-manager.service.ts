@@ -94,7 +94,7 @@ export class DexManagerService {
 
   async getRouteHistory(basketAddress?: string) {
     try {
-      let sql = 'SELECT * FROM swap_route_logs';
+      let sql = 'SELECT id,chain_id,basket_address,taker_address,operation_type,sell_token,buy_token,sell_amount,provider,router_address,expected_buy_amount,estimated_gas_usd,net_buy_amount_usd,quotes,slippage_bps,created_at FROM swap_route_logs';
       const params: any[] = [];
       if (basketAddress) {
         sql += ' WHERE basket_address = $1';

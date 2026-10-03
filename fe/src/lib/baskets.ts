@@ -28,15 +28,15 @@ export type Basket = {
 };
 
 export type BasketActivity = {
-  event_type: string;
-  actor_address: string;
-  tx_hash: string;
-  chain_id?: number | string;
-  basket_address?: string;
-  log_index?: number;
+  eventType: string;
+  actorAddress: string | null;
+  txHash: string;
+  chainId?: number | string;
+  basketAddress?: string;
+  logIndex?: number;
   payload?: unknown;
-  block_number?: number;
-  occurred_at: string;
+  blockNumber?: number;
+  occurredAt: string;
 };
 
 export function recordLocalActivity(basketAddress: string, event_type: string, txHash?: string) {
@@ -394,8 +394,8 @@ export function formatAddress(address: string) {
 }
 
 export function isUserFacingActivity(evt: BasketActivity): boolean {
-  if (!evt || !evt.event_type) return false;
-  const type = evt.event_type.toUpperCase();
+  if (!evt || !evt.eventType) return false;
+  const type = evt.eventType.toUpperCase();
   if (["DEX_ROUTE_EXECUTED", "AERODROMEROUTEEXECUTED"].includes(type)) return false;
   return true;
 }
@@ -412,7 +412,7 @@ export function formatEventLabel(eventType: string): string {
 
 export function formatEventMetadata(evt: any): { amountText: string; isPositive?: boolean } {
   if (!evt) return { amountText: "" };
-  const type = (evt.event_type || "").toUpperCase();
+  const type = (evt.eventType || "").toUpperCase();
   const payload = typeof evt.payload === "string" ? JSON.parse(evt.payload || "{}") : (evt.payload || {});
 
   if (type === "BASKETFUNDED" || type === "FUNDED" || type === "MINTED") {
@@ -426,19 +426,6 @@ export function formatEventMetadata(evt: any): { amountText: string; isPositive?
   if (type === "BASKETWITHDRAWN" || type === "WITHDRAWN") {
     const withdrawnAssets = Array.isArray(payload?.withdrawnAssets) ? payload.withdrawnAssets : [];
     const withdrawnAmounts = Array.isArray(payload?.withdrawnAmounts) ? payload.withdrawnAmounts : [];
-    if (Number(evt.chain_id) === 31337 && withdrawnAssets.length > 0 && withdrawnAssets.length === withdrawnAmounts.length) {
-      const localValue = withdrawnAssets.reduce((sum: number, assetAddress: unknown, index: number) => {
-        const asset = supportedAssets.find((candidate) => candidate.address?.toLowerCase() === String(assetAddress).toLowerCase());
-        const price = asset ? assetPrices[asset.symbol] : undefined;
-        if (!price || !/^\d+$/.test(String(withdrawnAmounts[index]))) return sum;
-        const isB20 = String(assetAddress).toLowerCase().startsWith("0xb200000000000000000000") || (asset?.symbol ?? "").endsWith("c");
-        const decimals = isB20 ? 8 : (asset?.symbol === "USDC" ? 6 : 18);
-        return sum + Number(formatUnits(BigInt(String(withdrawnAmounts[index])), decimals)) * price;
-      }, 0);
-      if (localValue > 0) {
-        return { amountText: `-$${localValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, isPositive: false };
-      }
-    }
     if (payload?.navRedeemed) {
       const val = Number(payload.navRedeemed) / 1_000_000;
       return { amountText: `-$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, isPositive: false };

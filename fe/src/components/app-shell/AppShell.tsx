@@ -4,13 +4,12 @@ import Link from "next/link";
 import { OthelioLogo } from "@/components/brand/OthelioLogo";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
-import { useAccount, useConnect, useDisconnect, useBalance, useChainId, useSwitchChain, useReadContract } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
 import { formatUnits } from "viem";
 import { AppIcon, type AppNavId } from "./AppIcon";
-import { useBasketsList } from "@/hooks/useBaskets";
+import { useBasketsList, useWalletUsdcBalance } from "@/hooks/useBaskets";
 import { useQueryClient } from "@tanstack/react-query";
-import { formatAddress, formatCompactNumber, type Basket } from "@/lib/baskets";
-import { canonicalSpotNav } from "@/lib/valuation";
+import { formatAddress, formatCompactNumber } from "@/lib/baskets";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { useWalletRestoring } from "@/hooks/useWalletRestoring";
 
@@ -87,26 +86,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const usdcAddr = (CONTRACT_ADDRESSES[currentChainId as keyof typeof CONTRACT_ADDRESSES]?.usdc || CONTRACT_ADDRESSES[8453].usdc) as `0x${string}`;
 
   // On-chain USDC balance query for connected wallet
-  const { data: usdcBalanceRaw, refetch: refetchUsdc } = useReadContract({
-    address: usdcAddr,
-    abi: [{ inputs: [{ name: 'account', type: 'address' }], name: 'balanceOf', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' }],
-    functionName: 'balanceOf',
-    args: address ? [address] : undefined,
-    query: {
-      enabled: Boolean(address),
-      refetchInterval: 3000,
-    },
-  });
-
-  useEffect(() => {
-    const handleUpdate = () => {
-      refetchUsdc();
-    };
-    if (typeof window !== "undefined") {
-      window.addEventListener("usdc_balance_updated", handleUpdate);
-      return () => window.removeEventListener("usdc_balance_updated", handleUpdate);
-    }
-  }, [refetchUsdc]);
+  const { data: usdcBalanceRaw, refetch: refetchUsdc } = useWalletUsdcBalance();
 
   const formattedUsdcBalance = useMemo(() => {
     if (usdcBalanceRaw !== undefined && usdcBalanceRaw !== null) {
@@ -230,7 +210,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (ib.controller && ib.controller.toLowerCase() !== address.toLowerCase()) {
           return;
         }
-        total += canonicalSpotNav(ib.snapshot) ?? 0;
+        total += ib.totalNavUsdcMicro === null ? 0 : Number(ib.totalNavUsdcMicro) / 1e6;
       });
     }
 

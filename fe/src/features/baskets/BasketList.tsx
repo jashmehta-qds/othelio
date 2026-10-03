@@ -6,8 +6,8 @@ import { useAccount, useChainId } from "wagmi";
 import { useBasketsList } from "@/hooks/useBaskets";
 import { useHydrated } from "@/hooks/useHydrated";
 import { useWalletRestoring } from "@/hooks/useWalletRestoring";
+import { networkLabelForChainId } from "@/lib/network";
 import { formatCompactNumber } from "@/lib/baskets";
-import { canonicalSpotNav } from "@/lib/valuation";
 import { BasketLogo } from "./BasketLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { CreateBasketModal } from "@/components/CreateBasketModal";
@@ -29,11 +29,11 @@ export function BasketList() {
     return (apiResponse?.data ?? []).map((ib) => ({
       name: ib.name,
       symbol: ib.symbol || 'OTH',
-      value: canonicalSpotNav(ib.snapshot) ?? 0,
+      value: ib.totalNavUsdcMicro === null ? 0 : Number(ib.totalNavUsdcMicro) / 1e6,
       change: 0,
       updated: "Just now",
       address: ib.address,
-      holdingsCount: ib.assets ? ib.assets.length : 0,
+      holdingsCount: ib.holdingCount,
       isIndexed: true,
     }));
   }, [hasConnectedWallet, address, apiResponse]);
@@ -116,7 +116,7 @@ export function BasketList() {
                 <BasketLogo name={basket.name} size="small" />
                 <span>
                   <strong>{basket.name}</strong>
-                  <small>{basket.symbol} · Base Local</small>
+                <small>{basket.symbol} · {networkLabelForChainId(chainId)}</small>
                 </span>
               </span>
               <strong>${formatCompactNumber(basket.value)}</strong>

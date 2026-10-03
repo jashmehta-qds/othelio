@@ -43,13 +43,13 @@ export default function LendingRecoveryPage() {
 
         {isLoading && <p role="status">Loading your baskets…</p>}
         {error && <p role="alert">Baskets could not be loaded. Existing positions may still exist onchain.</p>}
-        {!isLoading && !error && (data?.data.length ?? 0) === 0 && (
+        {!isLoading && !error && (data?.data?.length ?? 0) === 0 && (
           <p style={{ color: "var(--muted-ink)" }}>No baskets are available for this connected wallet.</p>
         )}
         <div style={{ display: "grid", gap: "10px", marginTop: "16px" }}>
           {(data?.data ?? []).map((basket) => (
             <Link
-              key={`${basket.chain_id}:${basket.address}`}
+              key={`${basket.chainId}:${basket.address}`}
               href={`/app/borrow/${basket.address}`}
               className="button-link"
               style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px", padding: "16px", border: "1px solid var(--line)", borderRadius: "12px", color: "var(--ink)", textDecoration: "none" }}

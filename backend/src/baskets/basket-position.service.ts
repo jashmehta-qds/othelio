@@ -104,6 +104,51 @@ export class BasketPositionService {
     return { data: unavailable, capabilities: this.getCapabilities(chainId) };
   }
 
+  /** Action gate: page reads never call this method. */
+  async assertActionReadiness(chainId: number, basketAddress: Address, assets: Address[] = []): Promise<void> {
+    const checkpoint = await this.db.query('SELECT next_block FROM indexer_state WHERE chain_id=$1 LIMIT 1', [chainId]);
+    const head = checkpoint.rows[0]?.next_block == null ? null : Number(checkpoint.rows[0].next_block) - 1;
+    if (head == null) throw new ConflictException({ code: 'INDEXER_LAGGING', error: 'INDEXER_LAGGING' });
+    const client = this.getClient(chainId);
+    if (!client) throw new ConflictException({ code: 'INDEXER_LAGGING', error: 'INDEXER_LAGGING' });
+    let chainHead: number;
+    try {
+      chainHead = Number(await client.getBlockNumber());
+    } catch {
+      throw new ConflictException({ code: 'INDEXER_LAGGING', error: 'INDEXER_LAGGING' });
+    }
+    if (chainHead - head > 3) {
+      throw new ConflictException({ code: 'INDEXER_LAGGING', error: 'INDEXER_LAGGING' });
+    }
+    if (assets.length > 0) {
+      const prices = await this.db.query(`SELECT asset_address,MAX(block_number) AS block_number FROM asset_price_observations WHERE chain_id=$1 AND LOWER(asset_address)=ANY($2::text[]) GROUP BY asset_address`, [chainId, assets.map((asset) => asset.toLowerCase())]);
+      const byAsset = new Map(prices.rows.map((row) => [String(row.asset_address).trim().toLowerCase(), Number(row.block_number)]));
+      if (assets.some((asset) => !byAsset.has(asset.toLowerCase()) || head - byAsset.get(asset.toLowerCase())! > 10)) {
+        throw new ConflictException({ code: 'PRICE_SNAPSHOT_STALE', error: 'PRICE_SNAPSHOT_STALE' });
+      }
+    }
+    const reconciliation = await this.db.query(`SELECT asset_address,last_checked_block,status FROM indexer_reconciliation_state WHERE chain_id=$1 AND basket_address=$2 AND LOWER(asset_address)=ANY($3::text[])`, [chainId, basketAddress, assets.map((asset) => asset.toLowerCase())]);
+    const byAsset = new Map(reconciliation.rows.map((row) => [String(row.asset_address).trim().toLowerCase(), { block: Number(row.last_checked_block), status: String(row.status) }]));
+    if (assets.some((asset) => !byAsset.has(asset.toLowerCase()))) throw new ConflictException({ code: 'BALANCE_REFRESH_FAILED', error: 'BALANCE_REFRESH_FAILED', reason: 'RECONCILIATION_STATE_UNKNOWN' });
+    if (assets.some((asset) => byAsset.get(asset.toLowerCase())!.status === 'PENDING')) throw new ConflictException({ code: 'BALANCE_REFRESH_FAILED', error: 'BALANCE_REFRESH_FAILED', reason: 'RECONCILIATION_STATE_UNKNOWN' });
+    const needsRefresh = assets.filter((asset) => { const state = byAsset.get(asset.toLowerCase())!; return state.status === 'DEGRADED' || head - state.block > 150; });
+    if (needsRefresh.length === 0) return;
+    try {
+      const refreshed = await client.multicall({ contracts: needsRefresh.map((asset) => ({ address: asset, abi: ERC20_ABI, functionName: 'balanceOf', args: [basketAddress] })) });
+      const indexed = await this.db.query(`SELECT DISTINCT ON (asset_address) asset_address,quantity_base_units FROM basket_positions WHERE chain_id=$1 AND basket_address=$2 AND LOWER(asset_address)=ANY($3::text[]) ORDER BY asset_address,block_number DESC,observed_at DESC,block_hash DESC`, [chainId, basketAddress, needsRefresh.map((asset) => asset.toLowerCase())]);
+      const indexedByAsset = new Map(indexed.rows.map((row) => [String(row.asset_address).trim().toLowerCase(), BigInt(row.quantity_base_units)]));
+      for (let index = 0; index < needsRefresh.length; index += 1) {
+        const result = refreshed[index];
+        const indexedValue = indexedByAsset.get(needsRefresh[index].toLowerCase()) ?? 0n;
+        if (result.status !== 'success' || indexedValue !== BigInt(result.result as unknown as bigint)) {
+          throw new Error('targeted balance differs from indexed position');
+        }
+      }
+    } catch {
+      throw new ConflictException({ code: 'BALANCE_REFRESH_FAILED', error: 'BALANCE_REFRESH_FAILED' });
+    }
+  }
+
   async getPositionSnapshot(
     basketAddressInput: string,
     chainIdInput: string | number,
@@ -405,20 +450,20 @@ export class BasketPositionService {
            SELECT block_number, block_hash, block_timestamp, position_block_number, nav_usdc
            FROM basket_nav_observations
            WHERE chain_id = $1 AND basket_address = $2 AND valuation_status = 'COMPLETE'
-           ORDER BY block_number DESC
+           ORDER BY block_number DESC, kind DESC, observed_at DESC, block_hash DESC
            LIMIT 1
          ), latest_positions AS (
            SELECT DISTINCT ON (bp.asset_address)
              bp.asset_address, bp.quantity_base_units, bp.decimals
            FROM basket_positions bp, latest_nav nav
            WHERE bp.chain_id = $1 AND bp.basket_address = $2 AND bp.block_number <= nav.position_block_number
-           ORDER BY bp.asset_address, bp.block_number DESC
+           ORDER BY bp.asset_address, bp.block_number DESC, bp.observed_at DESC, bp.block_hash DESC
          ), latest_prices AS (
            SELECT DISTINCT ON (apo.asset_address)
              apo.asset_address, apo.price_usd_e8
            FROM asset_price_observations apo
            WHERE apo.chain_id = $1
-           ORDER BY apo.asset_address, apo.block_number DESC
+           ORDER BY apo.asset_address, apo.block_number DESC, apo.observed_at DESC, apo.block_hash DESC
          )
          SELECT nav.block_number, nav.block_hash, nav.block_timestamp,
                 nav.nav_usdc,
@@ -457,7 +502,7 @@ export class BasketPositionService {
         equityUsdE8: navUsdE8,
         aaveHealthFactorRay: null,
         readCompleteness: 'COMPLETE',
-        valuationStatus: 'STALE',
+        valuationStatus: tokens.every((token) => token.priceUsdE8 !== null) ? 'COMPLETE' : 'PARTIAL',
         issues: [issue, 'LAST_KNOWN_GOOD_SNAPSHOT'],
       });
     } catch (error) {

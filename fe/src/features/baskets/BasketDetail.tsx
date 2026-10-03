@@ -7,15 +7,14 @@ import { useAccount, useChainId } from "wagmi";
 import AllocationSankey from "@/components/AllocationSankey";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { assetPrices, asset30dChanges, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
-import { useAccountingSummary, useBasketDetails, useBasketActivity, useBasketsList, useAssetPrices, usePortfolioPositions } from "@/hooks/useBaskets";
-import { canonicalSpotNav } from "@/lib/valuation";
-import { currentHoldingsFromSnapshot, liveAllocation } from "@/lib/live-allocation";
+import { asset30dChanges, formatAddress, getBasket, getCreatedBaskets, getLocalActivity, supportedAssets, type Basket, type BasketActivity, type Holding } from "@/lib/baskets";
+import { useBasketDetails, useBasketActivity, type IndexedHolding } from "@/hooks/useBaskets";
 import { BasketDrawer, type BasketAction } from "./BasketDrawer";
 import { BasketLogo } from "./BasketLogo";
 import { PortfolioDrift } from "./PortfolioDrift";
 import { ActivityEventRow } from "./ActivityEventRow";
 import { useWalletRestoring } from "@/hooks/useWalletRestoring";
+import { networkLabelForChainId } from "@/lib/network";
 
 const USDC_MICRO_DECIMALS = 6;
 
@@ -38,12 +37,21 @@ function displayUsdcMicro(rawAmount: string | null): number | null {
     : null;
 }
 
-function displayAverageCost(rawMicroPerBaseUnit: string | null, decimals: number): number | null {
-  if (rawMicroPerBaseUnit === null) return null;
-  const parsed = decimalStringParts(rawMicroPerBaseUnit);
+function displayAverageCost(rawMicroPerToken: string | null): number | null {
+  if (rawMicroPerToken === null) return null;
+  const parsed = decimalStringParts(rawMicroPerToken);
   if (!parsed) return null;
-  const perWholeTokenMicro = parsed.value * (BigInt(10) ** BigInt(decimals));
-  return Number(formatUnits(perWholeTokenMicro, USDC_MICRO_DECIMALS + parsed.fractionalDigits));
+  return Number(formatUnits(parsed.value, USDC_MICRO_DECIMALS + parsed.fractionalDigits));
+}
+
+function formatUsdPrice(val: number): string {
+  if (!Number.isFinite(val) || val === 0) return "$0.00";
+  const absVal = Math.abs(val);
+  const maxDigits = absVal < 0.0001 ? 8 : absVal < 0.01 ? 6 : 2;
+  return `${val < 0 ? "-" : ""}$${absVal.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: maxDigits,
+  })}`;
 }
 
 export function BasketDetail({ basket: fallbackBasket, initialAction = null }: { basket: Basket; initialAction?: BasketAction }) {
@@ -54,24 +62,11 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
   const [action, setAction] = useState<BasketAction>(initialAction);
   const [localBasket, setLocalBasket] = useState<Basket | null>(null);
 
-  // Live queries for basket details and activity by contract address
-  const { data: ownedBasketsResponse } = useBasketsList(chainId, isConnected ? address : undefined);
-  const ownedBasket = ownedBasketsResponse?.data.find((candidate) =>
-    candidate.address.toLowerCase() === fallbackBasket.address.toLowerCase()
-    && candidate.controller.toLowerCase() === address?.toLowerCase(),
-  );
-  const canManageBasket = Boolean(ownedBasket);
-  const { data: apiDetails, isLoading: isBasketDetailsLoading } = useBasketDetails(fallbackBasket.address, chainId);
-  const { data: fetchedActivity } = useBasketActivity(fallbackBasket.address, chainId, canManageBasket);
-  const { data: priceMap } = useAssetPrices();
-  const { data: portfolioResponse } = usePortfolioPositions(fallbackBasket.address, chainId);
-  const { data: accountingResponse } = useAccountingSummary(
-    fallbackBasket.address,
-    chainId,
-    canManageBasket ? address : undefined,
-  );
-  const apiActivity = canManageBasket ? fetchedActivity : undefined;
-  const portfolioSnapshot = portfolioResponse?.data;
+  const { data: apiDetails, isLoading: isBasketDetailsLoading } = useBasketDetails(fallbackBasket.address, chainId, isConnected ? address : undefined);
+  const detail = apiDetails?.data;
+  const canManageBasket = Boolean(detail?.summary.controller && detail.summary.controller.toLowerCase() === address?.toLowerCase());
+  const { data: fetchedActivity } = useBasketActivity(fallbackBasket.address, chainId, isConnected ? address : undefined);
+  const apiActivity = fetchedActivity;
 
   useEffect(() => {
     const loadBasket = () => {
@@ -91,8 +86,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     return () => window.removeEventListener("basket_updated", loadBasket);
   }, [fallbackBasket.address, fallbackBasket.name, canManageBasket]);
 
-  const indexedBasket = apiDetails?.data ?? ownedBasket;
-  const isBasketIndexed = Boolean(indexedBasket) || Boolean(localBasket);
+  const isBasketIndexed = Boolean(detail) || Boolean(localBasket);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -103,20 +97,26 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
 
   const localEvents = mounted && canManageBasket ? getLocalActivity(fallbackBasket.address) : [];
   const apiEvents: BasketActivity[] = (apiActivity?.data ?? []).map((evt) => ({
-    ...evt,
-    event_type: evt.event_type === "FUNDED" ? "BasketFunded" : evt.event_type === "CREATED" ? "BasketCreated" : evt.event_type,
-    actor_address: evt.actor_address || "Wallet execution",
-    block_number: evt.block_number ? Number(evt.block_number) : undefined,
+    eventType: evt.eventType === "FUNDED" ? "BasketFunded" : evt.eventType === "CREATED" ? "BasketCreated" : evt.eventType,
+    actorAddress: evt.actorAddress || "Wallet execution",
+    txHash: evt.txHash,
+    chainId: evt.chainId,
+    basketAddress: evt.basketAddress,
+    logIndex: evt.logIndex,
+    blockNumber: evt.blockNumber ? Number(evt.blockNumber) : undefined,
+    blockHash: evt.blockHash,
+    payload: evt.payload,
+    occurredAt: evt.occurredAt,
   }));
 
   const combinedEvents = [...apiEvents, ...localEvents];
   const events = combinedEvents.filter((evt, idx, self) => {
-    const normType = evt.event_type.toLowerCase();
-    const normHash = (evt.tx_hash || "").toLowerCase();
+    const normType = evt.eventType.toLowerCase();
+    const normHash = (evt.txHash || "").toLowerCase();
     const zeroHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
     return idx === self.findIndex((other) => {
-      const otherHash = (other.tx_hash || "").toLowerCase();
-      const otherType = other.event_type.toLowerCase();
+      const otherHash = (other.txHash || "").toLowerCase();
+      const otherType = other.eventType.toLowerCase();
       if (normHash && normHash !== zeroHash && normHash === otherHash && normType === otherType) {
         return true;
       }
@@ -129,84 +129,38 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
       return false;
     });
   }).sort((a, b) => {
-    const blockA = a.block_number ? Number(a.block_number) : 0;
-    const blockB = b.block_number ? Number(b.block_number) : 0;
+    const blockA = a.blockNumber ? Number(a.blockNumber) : 0;
+    const blockB = b.blockNumber ? Number(b.blockNumber) : 0;
     if (blockA !== blockB) return blockB - blockA;
-    return new Date(b.occurred_at || 0).getTime() - new Date(a.occurred_at || 0).getTime();
+    return new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime();
   });
 
-  const indexedSpotNav = canonicalSpotNav((indexedBasket as any)?.snapshot);
+  const mappedIndexedHoldings: Holding[] = (detail?.holdings ?? []).map((holding: IndexedHolding) => {
+    const quantity = Number(formatUnits(BigInt(holding.quantityBaseUnits), holding.decimals));
+    const value = holding.valueUsdcMicro === null ? 0 : Number(holding.valueUsdcMicro) / 1e6;
+    const target = (detail?.targets ?? []).find((targetAsset) => targetAsset.assetAddress.toLowerCase() === holding.assetAddress.toLowerCase());
+    const symbol = holding.symbol ?? supportedAssets.find((asset) => asset.address?.toLowerCase() === holding.assetAddress.toLowerCase())?.symbol ?? formatAddress(holding.assetAddress);
+    const metadata = supportedAssets.find((asset) => asset.address?.toLowerCase() === holding.assetAddress.toLowerCase());
+    return {
+      symbol,
+      name: metadata?.name || symbol,
+      address: holding.assetAddress,
+      target: (target?.targetWeightBps ?? 0) / 100,
+      current: (holding.currentWeightBps ?? 0) / 100,
+      quantity,
+      value,
+      color: metadata?.color || "#8aa4ff",
+    };
+  });
 
-  const canonicalEquity = portfolioSnapshot?.equityUsdE8 === null || portfolioSnapshot?.equityUsdE8 === undefined
-    ? null
-    : Number(formatUnits(BigInt(portfolioSnapshot.equityUsdE8), 8));
-  const activeBasketValue = canonicalEquity !== null
-    ? canonicalEquity
-    : indexedSpotNav !== null
-    ? indexedSpotNav
-    : (localBasket && localBasket.value > 0)
-      ? localBasket.value
-      : (fallbackBasket.value || 0);
-
-  const indexedAssets = (indexedBasket as any)?.assets;
-  const mappedIndexedHoldings: Holding[] = indexedAssets && Array.isArray(indexedAssets) && indexedAssets.length > 0
-    ? indexedAssets.map((ast: any) => {
-      const rawAddr = ast.asset_address ? String(ast.asset_address).trim() : "";
-      const knownMeta = supportedAssets.find((sa) =>
-        sa.symbol.toLowerCase() === rawAddr.toLowerCase() ||
-        (sa.address && sa.address.toLowerCase() === rawAddr.toLowerCase())
-      );
-      const symbolStr = knownMeta?.symbol || (rawAddr.startsWith("0x") ? `${rawAddr.slice(0, 6)}…` : rawAddr || "USDC");
-      const targetWeight = (ast.target_weight_bps || 0) / 100;
-      const val = (activeBasketValue * targetWeight) / 100;
-      const price = priceMap?.[symbolStr] ?? assetPrices[symbolStr] ?? 100;
-      const qty = price > 0 ? Number((val / price).toFixed(4)) : 0;
-      return {
-        symbol: symbolStr,
-        name: knownMeta?.name || symbolStr,
-        address: rawAddr || knownMeta?.address,
-        target: targetWeight,
-        current: targetWeight,
-        quantity: qty,
-        value: val,
-        color: knownMeta?.color || "#8aa4ff",
-      };
-    })
-    : [];
-
-  const basket: Basket = {
-    name: localBasket?.name ?? indexedBasket?.name ?? fallbackBasket.name,
-    symbol: localBasket?.symbol ?? indexedBasket?.symbol ?? fallbackBasket.symbol,
-    value: activeBasketValue,
-    change: localBasket?.change ?? fallbackBasket.change,
-    updated: localBasket?.updated ?? fallbackBasket.updated,
-    address: localBasket?.address ?? indexedBasket?.address ?? fallbackBasket.address,
-    holdings: (mappedIndexedHoldings.length > 0)
-      ? mappedIndexedHoldings
-      : (localBasket && localBasket.holdings && localBasket.holdings.length > 0)
-        ? localBasket.holdings
-        : (fallbackBasket.holdings || []),
-  };
-  const allocation = liveAllocation(mappedIndexedHoldings, portfolioSnapshot);
-
-  let calculatedTotalValue = 0;
-  const accountingByAsset = new Map(
-    (accountingResponse?.data.assets ?? []).map((asset) => [asset.assetAddress.toLowerCase(), asset]),
-  );
-
-  const liveHoldings = currentHoldingsFromSnapshot(portfolioSnapshot);
-  const holdingsCalculated = (liveHoldings ?? []).map((h) => {
-    const accounting = h.address ? accountingByAsset.get(h.address.toLowerCase()) : undefined;
-    const tokenPrice = h.quantity > 0 ? h.value / h.quantity : 0;
+  const holdingsCalculated = (detail?.holdings ?? []).map((indexedHolding) => {
+    const h = mappedIndexedHoldings.find((holding) => holding.address?.toLowerCase() === indexedHolding.assetAddress.toLowerCase());
+    if (!h) return null;
+    const priceFromE8 = indexedHolding.priceUsdE8 != null ? Number(BigInt(indexedHolding.priceUsdE8)) / 1e8 : null;
+    const tokenPrice = priceFromE8 ?? (h.quantity > 0 ? h.value / h.quantity : 0);
     const assetValue = h.value;
-    const averageCost = accounting?.accountingStatus === 'COMPLETE'
-      ? displayAverageCost(accounting.weightedAverageCostUsdcMicroPerBaseUnit, accounting.decimals)
-      : null;
-    const unrealisedPnl = accounting?.accountingStatus === 'COMPLETE'
-      ? displayUsdcMicro(accounting.unrealisedPnlUsdcMicro)
-      : null;
-    calculatedTotalValue += assetValue;
-
+    const averageCost = indexedHolding.averageCostUsdcMicroPerBaseUnit === null ? null : displayAverageCost(indexedHolding.averageCostUsdcMicroPerBaseUnit);
+    const unrealisedPnl = indexedHolding.unrealizedPnlUsdcMicro === null ? null : displayUsdcMicro(indexedHolding.unrealizedPnlUsdcMicro);
     return {
       ...h,
       quantity: h.quantity,
@@ -214,17 +168,62 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
       assetValue,
       averageCost,
       unrealisedPnl,
-      accountingIssue: accounting?.issue ?? null,
+      accountingIssue: indexedHolding.status === 'COMPLETE' ? null : indexedHolding.status,
     };
-  });
+  }).filter((holding): holding is NonNullable<typeof holding> => holding !== null);
+
+  const fallbackHoldings = (localBasket && localBasket.holdings && localBasket.holdings.length > 0)
+    ? localBasket.holdings
+    : (fallbackBasket.holdings || []);
+
+  const displayHoldings = holdingsCalculated.length > 0
+    ? holdingsCalculated
+    : fallbackHoldings.map((h) => {
+        const tokenPrice = h.quantity > 0 ? h.value / h.quantity : 0;
+        return {
+          ...h,
+          tokenPrice,
+          assetValue: h.value,
+          averageCost: null,
+          unrealisedPnl: null,
+          accountingIssue: null,
+        };
+      });
+
+  const calculatedTotalValue = displayHoldings.reduce((total, holding) => total + holding.assetValue, 0);
+
+  const navFromDetail = detail?.valuation?.totalNavUsdcMicro != null
+    ? Number(detail.valuation.totalNavUsdcMicro) / 1e6
+    : null;
+
+  const activeBasketValue = (navFromDetail !== null && navFromDetail > 0)
+    ? navFromDetail
+    : calculatedTotalValue > 0
+      ? calculatedTotalValue
+      : (localBasket && localBasket.value > 0)
+        ? localBasket.value
+        : (fallbackBasket.value || 0);
+
+  const basket: Basket = {
+    name: localBasket?.name ?? detail?.summary.name ?? fallbackBasket.name,
+    symbol: localBasket?.symbol ?? detail?.summary.symbol ?? fallbackBasket.symbol,
+    value: activeBasketValue,
+    change: localBasket?.change ?? fallbackBasket.change,
+    updated: localBasket?.updated ?? fallbackBasket.updated,
+    address: localBasket?.address ?? detail?.summary.address ?? fallbackBasket.address,
+    holdings: (mappedIndexedHoldings.length > 0)
+      ? mappedIndexedHoldings
+      : fallbackHoldings,
+  };
+  const allocation = mappedIndexedHoldings.length > 0 ? mappedIndexedHoldings : (fallbackHoldings.length > 0 ? fallbackHoldings : null);
 
   // A partial total would look authoritative while omitting assets whose accounting
   // reconciliation is incomplete. Keep the aggregate unavailable until all displayed
   // holdings have a complete weighted-average basis.
-  const totalUnrealisedPnl = holdingsCalculated.length > 0 && holdingsCalculated.every(
+  const totalUnrealisedPnl = displayHoldings.length > 0 && displayHoldings.every(
     (holding) => holding.unrealisedPnl !== null,
   )
-    ? holdingsCalculated.reduce((total, holding) => total + (holding.unrealisedPnl ?? 0), 0)
+    ? displayHoldings.reduce((total, holding) => total + (holding.unrealisedPnl ?? 0), 0)
     : null;
 
   const targetWeightSum = basket.holdings.reduce((sum, h) => sum + (h.target || 0), 0);
@@ -303,7 +302,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                   )}
                 </h1>
                 <p>
-                  Base Local <i /> {formatAddress(basket.address)}
+                  {networkLabelForChainId(chainId)} <i /> {formatAddress(basket.address)}
                 </p>
               </div>
             </div>
@@ -357,37 +356,52 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
               </tr>
             </thead>
             <tbody>
-              {holdingsCalculated.length === 0 && <tr><td colSpan={6} style={{ padding: "28px 16px", textAlign: "center", color: "var(--ink-3)" }}>
-                {liveHoldings === null ? "Live onchain holdings are unavailable right now." : "This basket has no current holdings."}
-              </td></tr>}
-              {holdingsCalculated.map((h) => {
-                return (
-                  <tr key={h.symbol} style={{ borderBottom: "1px solid var(--line)" }}>
-                    <td style={{ padding: "12px 16px", fontWeight: 600, display: "flex", alignItems: "center", gap: "10px" }}>
-                      <StockLogo symbol={h.symbol} size={24} />
-                      <div>
-                        <span>{h.name}</span>
-                        <small style={{ display: "block", color: "var(--ink-3)", fontSize: "11px", fontWeight: 400 }}>{h.symbol}</small>
-                      </div>
-                    </td>
-                    <td style={{ padding: "12px 16px", fontWeight: 600 }}>
-                      ${h.tokenPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td style={{ padding: "12px 16px", color: h.averageCost === null ? "var(--ink-3)" : "var(--ink-1)" }}>
-                      {h.averageCost === null ? "—" : `$${h.averageCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                    </td>
-                    <td style={{ padding: "12px 16px", fontWeight: 600 }}>
-                      {h.quantity.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {h.symbol}
-                    </td>
-                    <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600 }}>
-                      ${h.assetValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td style={{ padding: "12px 16px", textAlign: "right", color: h.unrealisedPnl === null ? "var(--ink-3)" : h.unrealisedPnl >= 0 ? "#10b981" : "#ef4444" }}>
-                      {h.unrealisedPnl === null ? "—" : `${h.unrealisedPnl >= 0 ? "+" : "-"}$${Math.abs(h.unrealisedPnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                    </td>
-                  </tr>
-                );
-              })}
+              {isBasketDetailsLoading && !detail ? (
+                <tr>
+                  <td colSpan={6} style={{ padding: "28px 16px", textAlign: "center", color: "var(--ink-3)" }}>
+                    Loading live holdings...
+                  </td>
+                </tr>
+              ) : displayHoldings.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ padding: "28px 16px", textAlign: "center", color: "var(--ink-3)" }}>
+                    This basket has no current holdings.
+                  </td>
+                </tr>
+              ) : (
+                displayHoldings.map((h) => {
+                  return (
+                    <tr key={h.symbol} style={{ borderBottom: "1px solid var(--line)" }}>
+                      <td style={{ padding: "12px 16px", fontWeight: 600, display: "flex", alignItems: "center", gap: "10px" }}>
+                        <StockLogo symbol={h.symbol} size={24} />
+                        <div>
+                          <span>{h.name}</span>
+                          <small style={{ display: "block", color: "var(--ink-3)", fontSize: "11px", fontWeight: 400 }}>{h.symbol}</small>
+                        </div>
+                      </td>
+                      <td style={{ padding: "12px 16px", fontWeight: 600 }}>
+                        {formatUsdPrice(h.tokenPrice)}
+                      </td>
+                      <td style={{ padding: "12px 16px", color: h.averageCost === null ? "var(--ink-3)" : "var(--ink-1)" }}>
+                        {h.averageCost === null ? "—" : formatUsdPrice(h.averageCost)}
+                      </td>
+                      <td style={{ padding: "12px 16px", fontWeight: 600 }}>
+                        {h.quantity > 0 && h.quantity < 0.0001
+                          ? h.quantity.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 })
+                          : h.quantity > 0 && h.quantity < 1
+                            ? h.quantity.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 })
+                            : h.quantity.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {h.symbol}
+                      </td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600 }}>
+                        ${h.assetValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ padding: "12px 16px", textAlign: "right", color: h.unrealisedPnl === null ? "var(--ink-3)" : h.unrealisedPnl >= 0 ? "#10b981" : "#ef4444" }}>
+                        {h.unrealisedPnl === null ? "—" : `${h.unrealisedPnl >= 0 ? "+" : "-"}$${Math.abs(h.unrealisedPnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
             <tfoot>
               <tr style={{ borderTop: "2px solid var(--line)", background: "rgba(255,255,255,0.02)" }}>
@@ -396,7 +410,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                 <td style={{ padding: "14px 16px", color: "var(--ink-3)" }}>—</td>
                 <td style={{ padding: "14px 16px", color: "var(--ink-3)" }}>—</td>
                 <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 700, fontSize: "14px", color: "var(--ink)" }}>
-                  {liveHoldings === null ? "—" : `$${calculatedTotalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  {`$${calculatedTotalValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </td>
                 <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 700, fontSize: "14px", color: totalUnrealisedPnl === null ? "var(--ink-3)" : totalUnrealisedPnl >= 0 ? "#10b981" : "#ef4444" }}>
                   {totalUnrealisedPnl === null ? "—" : `${totalUnrealisedPnl >= 0 ? "+" : "-"}$${Math.abs(totalUnrealisedPnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -424,7 +438,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
 
         <footer className="allocation-footer">
           <span>{allocation ? "Target vs. current allocation" : "Allocation unavailable"}</span>
-          <span>{allocation ? `Live as of ${new Date(portfolioSnapshot!.observedAt).toLocaleString()}` : "Awaiting onchain data"}</span>
+          <span>{allocation && detail?.freshness?.priceObservedAt ? `Live as of ${new Date(detail.freshness.priceObservedAt).toLocaleString()}` : "Awaiting onchain data"}</span>
         </footer>
       </section>
 
@@ -439,7 +453,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         <div className="activity-table">
           {events.length > 0 ? (
             events.slice(0, 5).map((evt, idx) => (
-              <ActivityEventRow key={`${evt.tx_hash}-${idx}`} event={evt} olderEvents={events.slice(idx + 1)} />
+              <ActivityEventRow key={`${evt.txHash}-${idx}`} event={evt} olderEvents={events.slice(idx + 1)} />
             ))
           ) : (
             <p className="activity-empty">No confirmed basket operations yet.</p>
