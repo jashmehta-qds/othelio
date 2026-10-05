@@ -1,669 +1,129 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useAccount, useChainId } from "wagmi";
 import { formatUnits } from "viem";
 import { useAllActivity, usePortfolioOverview, usePortfolioValuationHistory } from "@/hooks/useBaskets";
-import {
-  formatAddress,
-  formatCompactNumber,
-  getAssetChange,
-  getAssetSector,
-  getCreatedBaskets,
-  getLocalActivity,
-  isUserFacingActivity,
-  SECTOR_COLORS,
-  supportedAssets,
-  type Basket,
-} from "@/lib/baskets";
-import { SectorDonutChart, type SectorAllocation } from "./SectorDonutChart";
-import { PortfolioPerformanceGraph } from "./PortfolioPerformanceGraph";
+import { formatAddress, getAssetSector, isUserFacingActivity, supportedAssets } from "@/lib/baskets";
+import { networkLabelForChainId } from "@/lib/network";
 import { useWalletRestoring } from "@/hooks/useWalletRestoring";
+import { AppIcon } from "@/components/app-shell/AppIcon";
 import StockLogo from "@/components/StockLogo";
+import { ActivityEventRow } from "@/features/baskets/ActivityEventRow";
+import { PortfolioPerformanceGraph, type Timeframe } from "./PortfolioPerformanceGraph";
+import { summarizeUnrealized } from "./portfolio-summary";
+import styles from "./OverviewDashboard.module.css";
 
-type Timeframe = "1D" | "7D" | "30D";
-
-const SECTOR_CATEGORIES = [
-  "Big Tech & AI",
-  "Fintech & Crypto Infrastructure",
-  "Semiconductors & Hardware",
-  "Aerospace & Next-Gen",
-  "USD & Cash Equiv",
-] as const;
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const signedUsd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", signDisplay: "exceptZero" });
 
 export function OverviewDashboard() {
-  const defaultChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 31337);
-  const chainId = useChainId() || defaultChainId;
+  const chainId = useChainId() || Number(process.env.NEXT_PUBLIC_CHAIN_ID || 31337);
   const { address, isConnected } = useAccount();
-  const isWalletRestoring = useWalletRestoring();
-  const [localBaskets, setLocalBaskets] = useState<Basket[]>([]);
+  const restoring = useWalletRestoring();
+  const connected = Boolean(isConnected && address);
+  const overviewQuery = usePortfolioOverview(chainId, connected ? address : undefined);
+  const overview = connected ? overviewQuery.data?.data : undefined;
   const [timeframe, setTimeframe] = useState<Timeframe>("30D");
+  const history = usePortfolioValuationHistory(chainId, connected ? address : undefined, timeframe);
+  const activity = useAllActivity(chainId, connected);
+  const [choosingBasket, setChoosingBasket] = useState(false);
+  const [selectedBasket, setSelectedBasket] = useState("");
+  const holdingsRef = useRef<HTMLElement>(null);
+  const baskets = overview?.baskets ?? [];
+  const loading = restoring || (connected && overviewQuery.isLoading);
+  const nav = overview?.totalNavUsdcMicro == null ? null : Number(overview.totalNavUsdcMicro) / 1e6;
+  const unrealized = overview ? summarizeUnrealized(overview.holdings) : null;
+  const chosenBasket = baskets.find((basket) => basket.address === selectedBasket) ?? baskets[0];
 
-  // Load created baskets from local storage
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setLocalBaskets(getCreatedBaskets());
-      const handleStorage = () => {
-        setLocalBaskets(getCreatedBaskets());
-      };
-      window.addEventListener("storage", handleStorage);
-      window.addEventListener("basket_updated", handleStorage);
-      return () => {
-        window.removeEventListener("storage", handleStorage);
-        window.removeEventListener("basket_updated", handleStorage);
-      };
-    }
-  }, []);
-
-  const { data: overviewResponse } = usePortfolioOverview(chainId, isConnected ? address : undefined);
-  const indexedBaskets = overviewResponse?.data?.baskets || [];
-  const { data: valuationHistory, isLoading: isValuationHistoryLoading } = usePortfolioValuationHistory(
-    chainId,
-    isConnected ? address : undefined,
-    timeframe,
-  );
-
-  // Fetch recent activity feed
-  const { data: activityRes } = useAllActivity(chainId, Boolean(isConnected && address));
-  const indexedEvents = activityRes?.data || [];
-
-  // Combine active baskets (User Created -> Backend Indexed) - Strict 0 when disconnected
-  // Combine active baskets (Backend Indexed -> User Created Fallback) - Strict 0 when disconnected
-  const candidateBaskets = useMemo<Basket[]>(() => {
-    if (!isConnected || !address) return [];
-
-    const basketMap = new Map<string, Basket>();
-
-    // 1. Process indexed baskets first (authoritative on-chain / backend state)
-    indexedBaskets.forEach((ib) => {
-      if (ib.controller && ib.controller.toLowerCase() !== address.toLowerCase()) {
-        return;
-      }
-      const basketObj: Basket = {
-        name: ib.name,
-        symbol: ib.symbol || "OTH",
-        value: 0,
-        change: 0.0,
-        updated: ib.createdAt ? new Date(ib.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Recently",
-        address: ib.address,
-        holdings: [],
-        isIndexed: true,
-        owner: ib.controller,
-      };
-
-      basketMap.set(ib.address.toLowerCase(), basketObj);
-      if (ib.name) basketMap.set(ib.name.toLowerCase(), basketObj);
-    });
-
-    // 2. Supplement with local baskets only if not present in indexed state
-    localBaskets.forEach((b) => {
-      if (b.owner && b.owner.toLowerCase() === address.toLowerCase()) {
-        const matchByAddr = basketMap.get(b.address.toLowerCase());
-        const matchByName = b.name ? basketMap.get(b.name.toLowerCase()) : undefined;
-        if (!matchByAddr && !matchByName) {
-          basketMap.set(b.address.toLowerCase(), b);
-        }
-      }
-    });
-
-    const unique = Array.from(basketMap.values());
-    const deduped: Basket[] = [];
-    const seen = new Set<string>();
-    for (const b of unique) {
-      const key = b.address.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduped.push(b);
-      }
-    }
-    return deduped;
-  }, [isConnected, address, localBaskets, indexedBaskets]);
-
-  const overviewHoldings = overviewResponse?.data?.holdings ?? [];
-  const activeBaskets = candidateBaskets.map((basket): Basket => {
-    const indexed = indexedBaskets.find((item) => item.address.toLowerCase() === basket.address.toLowerCase());
-    const indexedValue = indexed?.totalNavUsdcMicro === null || indexed?.totalNavUsdcMicro === undefined
-      ? basket.value
-      : Number(indexed.totalNavUsdcMicro) / 1e6;
-    return { ...basket, value: indexedValue, holdings: [] };
-  });
-  const livePositionsLoading = !overviewResponse && candidateBaskets.length > 0;
-  const livePositionsUnavailable = false;
-
-  // Executive Hero Metrics
-  const totalNAV = useMemo(() => {
-    const rawMicro = overviewResponse?.data?.totalNavUsdcMicro;
-    return rawMicro !== null && rawMicro !== undefined
-      ? Number(rawMicro) / 1e6
-      : activeBaskets.reduce((sum, b) => sum + (b.value || 0), 0);
-  }, [activeBaskets, overviewResponse]);
-
-  const totalRealizedGains = useMemo(() => {
-    return activeBaskets.reduce((sum, b) => sum + (b.realizedGains || 0), 0);
-  }, [activeBaskets]);
-
-  // Master Aggregated Holdings
-  const aggregatedHoldings = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        symbol: string;
-        name: string;
-        color: string;
-        currentPrice: number;
-        totalUnits: number;
-        totalValue: number;
-        totalCostBasis: number;
-        baskets: Set<string>;
-      }
-    >();
-
-    overviewHoldings.forEach((h) => {
-        const meta = supportedAssets.find((a) =>
-          h.symbol !== null && a.symbol.toLowerCase() === h.symbol.toLowerCase() ||
-          (a.address && h.assetAddress && a.address.toLowerCase() === h.assetAddress.toLowerCase())
-        );
-        const symbolKey = meta?.symbol || h.symbol || h.assetAddress.slice(0, 10);
-        const qty = Number(formatUnits(BigInt(h.quantityBaseUnits), h.decimals));
-        const val = h.valueUsdcMicro === null ? 0 : Number(h.valueUsdcMicro) / 1e6;
-        const price = qty > 0 ? val / qty : 0;
-        // Do not manufacture a gain from a market-return window when no
-        // acquisition basis is available. A missing basis is neutral until
-        // the indexer provides the position's average cost.
-        const avgCost = h.averageCostUsdcMicroPerBaseUnit === null ? 0 : Number(h.averageCostUsdcMicroPerBaseUnit) / 1e6 * 10 ** h.decimals;
-        const costBasis = avgCost > 0 ? qty * avgCost : val;
-
-        const existing = map.get(symbolKey);
-        if (existing) {
-          existing.totalUnits += qty;
-          existing.totalValue += val;
-          existing.totalCostBasis += costBasis;
-          existing.baskets.add("Portfolio");
-        } else {
-          map.set(symbolKey, {
-            symbol: symbolKey,
-            name: meta?.name || symbolKey,
-            color: meta?.color || "#8aa4ff",
-            currentPrice: price,
-            totalUnits: qty,
-            totalValue: val,
-            totalCostBasis: costBasis,
-            baskets: new Set(["Portfolio"]),
-          });
-        }
-      });
-
-    const result = Array.from(map.values()).map((item) => ({
-      ...item,
-      portfolioShare: totalNAV > 0 ? (item.totalValue / totalNAV) * 100 : 0,
-      basketNames: Array.from(item.baskets),
-    }));
-
-    // Default sorted descending by Total USD Value
-    return result.sort((a, b) => b.totalValue - a.totalValue);
-  }, [overviewHoldings, totalNAV]);
-
-  // Aggregate Unrealized P&L Calculation
-  const { totalUnrealizedDollar, totalUnrealizedPercent } = useMemo(() => {
-    const currentValue = aggregatedHoldings.reduce((sum, holding) => sum + holding.totalValue, 0);
-    const costBasis = aggregatedHoldings.reduce((sum, holding) => sum + holding.totalCostBasis, 0);
-    const totalUnrealizedGainUSD = currentValue - costBasis;
-    const percent = costBasis > 0 ? (totalUnrealizedGainUSD / costBasis) * 100 : 0;
+  const holdings = useMemo(() => (overview?.holdings ?? []).map((holding) => {
+    const metadata = supportedAssets.find((asset) => asset.address?.toLowerCase() === holding.assetAddress.toLowerCase());
+    const symbol = metadata?.symbol ?? holding.symbol ?? formatAddress(holding.assetAddress);
+    const quantity = Number(formatUnits(BigInt(holding.quantityBaseUnits), holding.decimals));
+    const value = holding.valueUsdcMicro === null ? null : Number(holding.valueUsdcMicro) / 1e6;
+    const pnl = holding.unrealizedPnlUsdcMicro === null ? null : Number(holding.unrealizedPnlUsdcMicro) / 1e6;
     return {
-      totalUnrealizedDollar: totalUnrealizedGainUSD,
-      totalUnrealizedPercent: percent,
+      ...holding, symbol, name: metadata?.name ?? symbol, quantity, value, pnl,
+      basis: value !== null && pnl !== null ? value - pnl : null,
+      price: holding.priceUsdE8 === null ? null : Number(holding.priceUsdE8) / 1e8,
+      weight: nav === null ? null : nav > 0 && value !== null ? value / nav * 100 : 0,
     };
-  }, [aggregatedHoldings]);
-
-  // Sector Allocation Breakdown for Hollow Donut Chart
-  const sectorAllocations = useMemo<SectorAllocation[]>(() => {
-    const sectorValues: Record<string, { value: number; count: number; color: string }> = {};
-
-    SECTOR_CATEGORIES.forEach((sector) => {
-      sectorValues[sector] = { value: 0, count: 0, color: SECTOR_COLORS[sector] || "#8aa4ff" };
+  }).sort((a, b) => (b.value ?? -1) - (a.value ?? -1)), [overview, nav]);
+  const largest = holdings.find((holding) => holding.symbol !== "USDC" && (holding.value ?? 0) > 0);
+  const cashValue = holdings.filter((holding) => holding.symbol === "USDC").reduce((sum, holding) => sum + (holding.value ?? 0), 0);
+  const cashWeight = nav !== null && nav > 0 ? cashValue / nav * 100 : null;
+  const allocations = useMemo(() => {
+    const sectors = new Map<string, number>();
+    holdings.forEach((holding) => {
+      const sector = supportedAssets.some((asset) => asset.symbol === holding.symbol) ? getAssetSector(holding.symbol) : "Other assets";
+      sectors.set(sector, (sectors.get(sector) ?? 0) + (holding.value ?? 0));
     });
+    return [...sectors].sort((a, b) => b[1] - a[1]);
+  }, [holdings]);
+  const events = connected ? (activity.data?.data ?? []).filter(isUserFacingActivity) : [];
+  const recentEvents = events.slice(0, 5);
+  const metricHint = loading ? "Loading your portfolio…" : !connected ? "Connect your wallet to view your portfolio" : overviewQuery.isError && !overview ? "Portfolio data is unavailable" : "Across your baskets";
+  const priceTime = overview?.freshness.priceObservedAt;
+  const positionTime = overview?.freshness.positionObservedAt;
+  const formatUpdateTime = (timestamp: string) => new Date(timestamp).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const updateLabel = priceTime ? `Prices checked ${formatUpdateTime(priceTime)}` : "Price updates unavailable";
+  const inspectExposure = () => {
+    const section = holdingsRef.current;
+    const row = [...(section?.querySelectorAll<HTMLDetailsElement>("details") ?? [])].find((detail) => detail.dataset.assetAddress === largest?.assetAddress);
+    if (row) row.open = true;
+    section?.scrollIntoView({ behavior: "auto", block: "start" });
+    row?.querySelector("summary")?.focus();
+  };
 
-    aggregatedHoldings.forEach((item) => {
-      const sector = getAssetSector(item.symbol);
-      if (sectorValues[sector]) {
-        sectorValues[sector].value += item.totalValue;
-        sectorValues[sector].count += 1;
-      }
-    });
+  return <div className={`app-page-frame ${styles.page}`}>
+    <header className={styles.pageHeading}><h1 className="page-title">Your portfolio</h1><span>{networkLabelForChainId(chainId)} · USD</span></header>
 
-    return SECTOR_CATEGORIES.map((sector) => {
-      const val = sectorValues[sector].value;
-      const share = totalNAV > 0 ? (val / totalNAV) * 100 : 0;
-      return {
-        sector,
-        value: val,
-        share,
-        color: SECTOR_COLORS[sector] || "#8aa4ff",
-        count: sectorValues[sector].count,
-      };
-    }).filter((item) => item.count > 0 || item.value > 0);
-  }, [aggregatedHoldings, totalNAV]);
-
-  // Performance Switcher Data (Top vs Lowest Performers)
-  const { topGainers, lowestPerformers } = useMemo(() => {
-    const evaluated = aggregatedHoldings.map((h) => ({
-      symbol: h.symbol,
-      name: h.name,
-      color: h.color,
-      change: getAssetChange(h.symbol, timeframe),
-      value: h.totalValue,
-    }));
-
-    const sortedHighToLow = [...evaluated].sort((a, b) => b.change - a.change);
-    const sortedLowToHigh = [...evaluated].sort((a, b) => a.change - b.change);
-
-    const gainers = sortedHighToLow.filter((a) => a.change > 0).slice(0, 4);
-    const topList = gainers.length > 0 ? gainers : sortedHighToLow.slice(0, 4);
-
-    const losers = sortedLowToHigh.filter((a) => a.change < 0).slice(0, 4);
-    const lowestList = losers.length > 0 ? losers : sortedLowToHigh.slice(0, 4);
-
-    return {
-      topGainers: topList,
-      lowestPerformers: lowestList,
-    };
-  }, [aggregatedHoldings, timeframe]);
-
-  // Combined Unified Activity Feed (Cross-basket recent activities)
-  const recentActivities = useMemo(() => {
-    if (!isConnected || !address) return [];
-    const local = activeBaskets.flatMap((b) => getLocalActivity(b.address));
-    const combined = [...local, ...indexedEvents];
-
-    if (combined.length === 0) return [];
-
-    // Remove duplicates by normalized transaction hash and event type.
-    const uniqueMap = new Map<string, any>();
-    combined.forEach((item) => {
-      const key = item.txHash ? item.txHash.toLowerCase() : `${item.eventType}-${item.occurredAt}`;
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, item);
-      }
-    });
-
-    return Array.from(uniqueMap.values()).slice(0, 5);
-  }, [isConnected, address, activeBaskets, indexedEvents]);
-
-  return (
-    <div className="app-page-frame">
-      {/* Header */}
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: "24px",
-        }}
-      >
-        <div>
-          <h1 className="page-title">
-            Portfolio Overview
-          </h1>
-          <p className="page-description">
-            Portfolio overview across active basket safes.
-          </p>
-        </div>
-      </header>
-
-      {/* 0. Asset & Portfolio Performance Interactive Graph */}
-      <PortfolioPerformanceGraph
-        points={valuationHistory?.data.points || []}
-        isLoading={isValuationHistoryLoading}
-        topGainers={topGainers}
-        lowestPerformers={lowestPerformers}
-        timeframe={timeframe}
-        onTimeframeChange={setTimeframe}
-      />
-
-      {/* 1. Portfolio Summary Hero Bar Chart Card */}
-      <div
-        style={{
-          background: "var(--surface-1)",
-          border: "1px solid var(--line)",
-          borderRadius: "20px",
-          padding: "24px 28px",
-          marginBottom: "28px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "20px",
-        }}
-      >
-        <div>
-          <h2 style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)", margin: 0, letterSpacing: "-0.2px" }}>
-            Portfolio Summary
-          </h2>
-          <p style={{ fontSize: "12px", color: "var(--ink-3)", margin: "2px 0 0 0" }}>
-            Net asset value breakdown, unrealized returns, and locked-in profits across active safes.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          {/* Row 1: Total Portfolio NAV */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", alignItems: "center", gap: "20px" }}>
-            <div
-              style={{
-                position: "relative",
-                height: "40px",
-                background: "rgba(255, 255, 255, 0.04)",
-                border: "1px solid var(--line)",
-                borderRadius: "10px",
-                overflow: "hidden",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: "100%",
-                  background: "linear-gradient(90deg, #10b981 0%, #34d399 100%)",
-                  borderRadius: "9px",
-                  transform: `scaleX(${totalNAV > 0 ? 1 : 0})`,
-                  transformOrigin: "left center",
-                  transition: "transform 0.4s ease",
-                  opacity: 0.85,
-                }}
-              />
-              <span
-                style={{
-                  position: "relative",
-                  zIndex: 2,
-                  paddingLeft: "16px",
-                  fontSize: "14px",
-                  fontWeight: 800,
-                  fontFamily: "monospace",
-                  color: "#ffffff",
-                  textShadow: "0 1px 2px rgba(0, 0, 0, 0.6)",
-                }}
-              >
-                ${formatCompactNumber(totalNAV)}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)" }}>
-                Total Portfolio NAV
-              </span>
-              <span style={{ fontSize: "11px", color: "var(--ink-3)" }}>Across active safes</span>
-            </div>
-          </div>
-
-          {/* Row 2: Unrealized P&L */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", alignItems: "center", gap: "20px" }}>
-            <div
-              style={{
-                position: "relative",
-                height: "40px",
-                background: "rgba(255, 255, 255, 0.04)",
-                border: "1px solid var(--line)",
-                borderRadius: "10px",
-                overflow: "hidden",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: totalUnrealizedDollar < 0 ? "flex-end" : "flex-start",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  left: totalUnrealizedDollar >= 0 ? 0 : "auto",
-                  right: totalUnrealizedDollar < 0 ? 0 : "auto",
-                  width: "100%",
-                  background: Math.abs(totalUnrealizedDollar) < 0.001
-                    ? "rgba(255, 255, 255, 0.08)"
-                    : totalUnrealizedDollar > 0
-                    ? "linear-gradient(90deg, #10b981 0%, #34d399 100%)"
-                    : "linear-gradient(270deg, #ef4444 0%, #f87171 100%)",
-                  borderRadius: "9px",
-                  transform: `scaleX(${Math.abs(totalUnrealizedDollar) < 0.001 ? 0 : Math.min(100, Math.max(12, Math.abs(totalUnrealizedPercent) * 5)) / 100})`,
-                  transformOrigin: totalUnrealizedDollar < 0 ? "right center" : "left center",
-                  transition: "transform 0.4s ease",
-                  opacity: 0.85,
-                }}
-              />
-              <span
-                style={{
-                  position: "relative",
-                  zIndex: 2,
-                  padding: totalUnrealizedDollar < 0 ? "0 16px 0 0" : "0 0 0 16px",
-                  fontSize: "14px",
-                  fontWeight: 800,
-                  fontFamily: "monospace",
-                  color: Math.abs(totalUnrealizedDollar) < 0.001 ? "var(--ink-3)" : "#ffffff",
-                  textShadow: Math.abs(totalUnrealizedDollar) < 0.001 ? "none" : "0 1px 2px rgba(0, 0, 0, 0.6)",
-                }}
-              >
-                {Math.abs(totalUnrealizedDollar) < 0.001
-                  ? "+$0.00 (+0.00%)"
-                  : `${totalUnrealizedDollar > 0 ? "+" : ""}$${formatCompactNumber(totalUnrealizedDollar)} (${totalUnrealizedPercent > 0 ? "+" : ""}${totalUnrealizedPercent.toFixed(2)}%)`
-                }
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)" }}>
-                Unrealized P&L
-              </span>
-              <span style={{ fontSize: "11px", color: "var(--ink-3)" }}>Current value vs. cost basis</span>
-            </div>
-          </div>
-
-          {/* Row 3: Realized P&L */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", alignItems: "center", gap: "20px" }}>
-            <div
-              style={{
-                position: "relative",
-                height: "40px",
-                background: "rgba(255, 255, 255, 0.04)",
-                border: "1px solid var(--line)",
-                borderRadius: "10px",
-                overflow: "hidden",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: "100%",
-                  background: "linear-gradient(90deg, #10b981 0%, #34d399 100%)",
-                  borderRadius: "9px",
-                  transform: `scaleX(${totalRealizedGains > 0 ? 1 : 0})`,
-                  transformOrigin: "left center",
-                  transition: "transform 0.4s ease",
-                  opacity: 0.85,
-                }}
-              />
-              <span
-                style={{
-                  position: "relative",
-                  zIndex: 2,
-                  paddingLeft: "16px",
-                  fontSize: "14px",
-                  fontWeight: 800,
-                  fontFamily: "monospace",
-                  color: totalRealizedGains > 0 ? "#ffffff" : "var(--ink-3)",
-                  textShadow: totalRealizedGains > 0 ? "0 1px 2px rgba(0, 0, 0, 0.6)" : "none",
-                }}
-              >
-                {totalRealizedGains > 0 ? "+" : ""}${formatCompactNumber(totalRealizedGains)}
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink)" }}>
-                Realized P&L
-              </span>
-              <span style={{ fontSize: "11px", color: "var(--ink-3)" }}>Locked-in profits</span>
-            </div>
-          </div>
+    <section className={styles.actionCenter} aria-labelledby="overview-action-title">
+      <div><h2 id="overview-action-title">Action center</h2><p>{!connected ? "Connect your wallet to bring your baskets into view." : baskets.length === 0 && !loading ? "Create your first basket, then add funds when you’re ready." : "Your next move, without losing sight of your portfolio."}</p>
+        <div className={styles.actions}>
+          {baskets.length === 1 ? <Link className={styles.primary} href={`/app/baskets/${baskets[0].address}?action=mint`}>Add funds <AppIcon type="arrow" /></Link> : <button className={styles.primary} disabled={!connected || loading || baskets.length === 0} aria-expanded={choosingBasket} aria-controls="overview-fund-picker" onClick={() => setChoosingBasket(!choosingBasket)}>Add funds <AppIcon type="arrow" /></button>}
+          <Link className={styles.secondary} href="/app/baskets">Manage baskets</Link>
+          <Link className={styles.textAction} href="/app/baskets/create">Create basket <AppIcon type="plus" /></Link>
         </div>
       </div>
-
-      {/* Sector Allocation Donut Chart */}
-      <div style={{ marginBottom: "28px" }}>
-        <SectorDonutChart allocations={sectorAllocations} totalValue={totalNAV} />
+      <div className={styles.review}><span className={styles.label}>{largest ? "Worth reviewing" : "Your next step"}</span><strong>{largest?.weight != null ? `${largest.symbol} is ${largest.weight.toFixed(1)}% of your holdings` : loading ? "Bringing your portfolio into view…" : baskets.length > 0 ? "Your baskets are ready to explore" : "Build a basket around the assets you choose"}</strong>
+        {largest ? <button className={styles.textAction} onClick={inspectExposure}>Inspect exposure <AppIcon type="arrow" /></button> : <Link className={styles.textAction} href={baskets.length > 0 ? "/app/baskets" : "/app/baskets/create"}>{baskets.length > 0 ? "Explore baskets" : "Start a basket"} <AppIcon type="arrow" /></Link>}
       </div>
+      {choosingBasket && baskets.length > 1 && <div id="overview-fund-picker" className={styles.fundPicker}><label htmlFor="overview-basket">Choose a basket to fund</label><select id="overview-basket" value={chosenBasket?.address ?? ""} onChange={(event) => setSelectedBasket(event.target.value)}>{baskets.map((basket) => <option key={basket.address} value={basket.address}>{basket.name} · {basket.symbol}</option>)}</select><Link className={styles.secondary} href={`/app/baskets/${chosenBasket.address}?action=mint`}>Continue <AppIcon type="arrow" /></Link></div>}
+    </section>
 
-      {/* 5. Master Aggregated Holdings Table */}
-      <section style={{ marginBottom: "32px" }}>
-        <div
-          style={{
-            background: "var(--surface-1)",
-            border: "1px solid var(--line)",
-            borderRadius: "20px",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "20px 24px",
-              borderBottom: "1px solid var(--line)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <div>
-              <h2 style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)", margin: 0, letterSpacing: "-0.2px" }}>
-                Holdings
-              </h2>
-              <p style={{ fontSize: "12px", color: "var(--ink-3)", margin: "2px 0 0 0" }}>
-                Aggregated asset positions across active basket safes.
-              </p>
-            </div>
-          </div>
+    {overviewQuery.isError && connected && <div className={styles.notice} role="status"><span>{overview ? "Couldn’t refresh your portfolio. Showing the last indexed values." : "Couldn’t load your portfolio. Try again in a moment."}</span><button className={styles.textAction} onClick={() => void overviewQuery.refetch()} disabled={overviewQuery.isFetching}>Try again <AppIcon type="sync" /></button></div>}
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1.25fr) minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.8fr) minmax(0, 1.1fr)",
-              padding: "12px 24px",
-              background: "rgba(255, 255, 255, 0.02)",
-              borderBottom: "1px solid var(--line)",
-              fontSize: "12px",
-              fontWeight: 600,
-              color: "var(--ink-3)",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            <span>Asset</span>
-            <span style={{ paddingLeft: "16px" }}>Share %</span>
-            <span style={{ textAlign: "right" }}>Price / Units</span>
-            <span style={{ textAlign: "right" }}>Total ($)</span>
-            <span style={{ textAlign: "right" }}>Baskets</span>
-          </div>
+    <section className={styles.performance} aria-label="Portfolio value and history" aria-busy={loading}>
+      <dl className={styles.tradingStrip}>
+        <div><dt>Portfolio value</dt><dd>{loading ? "…" : nav === null ? "—" : usd.format(nav)}</dd><small>{metricHint}</small></div>
+        <div><dt>Unrealized P&amp;L</dt><dd className={unrealized && unrealized.dollars !== 0 ? unrealized.dollars > 0 ? styles.positive : styles.negative : undefined}>{loading ? "…" : unrealized === null ? "—" : signedUsd.format(unrealized.dollars)} <span>/ {unrealized?.percent == null ? "—" : `${unrealized.percent > 0 ? "+" : ""}${unrealized.percent.toFixed(2)}`}%</span></dd><small>{loading ? "Loading cost basis…" : !connected ? "Connect your wallet" : unrealized === null ? "Cost basis or prices unavailable" : "Current holdings vs. acquisition cost"}</small></div>
+        <div><dt>Realized P&amp;L</dt><dd>—</dd><small>Sale accounting unavailable</small></div>
+      </dl>
+      <PortfolioPerformanceGraph points={connected ? history.data?.data.points ?? [] : []} isLoading={restoring || (connected && history.isLoading)} isError={connected && history.isError} isConnected={connected} timeframe={timeframe} onTimeframeChange={setTimeframe} onRetry={() => void history.refetch()} />
+      <div className={styles.performanceFooter}><span>Value includes deposits and withdrawals</span><span>{loading ? "Updating…" : !connected ? "Wallet disconnected" : <>{positionTime ? `Holdings indexed ${formatUpdateTime(positionTime)}` : "Holdings update unavailable"}<br />{updateLabel}{overview?.freshness.status === "STALE" ? " · delayed" : overview?.freshness.status === "DEGRADED" ? " · refresh interrupted" : ""}</>}</span></div>
+    </section>
 
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {aggregatedHoldings.length === 0 ? (
-              <div style={{ padding: "36px 24px", textAlign: "center", color: "var(--ink-3)", fontSize: "13px" }}>
-                {isWalletRestoring
-                  ? "Restoring your wallet…"
-                  : !isConnected
-                  ? "No wallet connected. Connect your wallet to view active positions."
-                  : livePositionsLoading
-                  ? "Loading live onchain holdings…"
-                  : livePositionsUnavailable
-                  ? "Live holdings are unavailable right now."
-                  : "No active basket holdings found for your connected wallet."}
-              </div>
-            ) : (
-              aggregatedHoldings.map((holding) => {
-                return (
-                  <div
-                    key={holding.symbol}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1.25fr) minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.8fr) minmax(0, 1.1fr)",
-                      alignItems: "center",
-                      padding: "16px 24px",
-                      borderBottom: "1px solid var(--line)",
-                      fontSize: "14px",
-                      transition: "background 0.15s ease",
-                    }}
-                  >
-                    {/* Asset Symbol & Badge */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <StockLogo symbol={holding.symbol} size={24} roundedFull />
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <strong style={{ fontWeight: 700, color: "var(--ink)" }}>
-                          {holding.symbol}
-                        </strong>
-                        <small style={{ color: "var(--ink-3)", fontSize: "11px" }}>
-                          {holding.name}
-                        </small>
-                      </div>
-                    </div>
-
-                    {/* Portfolio Share (%) with Inline Allocation Progress Bar */}
-                    <div style={{ paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "4px", minWidth: 0 }}>
-                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--ink)", fontFamily: "monospace" }}>
-                        {holding.portfolioShare.toFixed(1)}%
-                      </span>
-                      <div style={{ width: "100%", height: "5px", background: "rgba(255, 255, 255, 0.08)", borderRadius: "3px", overflow: "hidden" }}>
-                        <div
-                          style={{
-                            width: `${Math.min(100, Math.max(4, holding.portfolioShare))}%`,
-                            height: "100%",
-                            backgroundColor: holding.color,
-                            borderRadius: "3px",
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Current price and units held */}
-                    <div style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: "2px", fontFamily: "monospace", minWidth: 0 }}>
-                      <span style={{ color: "var(--ink)", fontWeight: 600 }}>
-                        ${formatCompactNumber(holding.currentPrice)}
-                      </span>
-                      <small style={{ color: "var(--ink-3)", fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {holding.totalUnits.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} units
-                      </small>
-                    </div>
-
-                    {/* Total Value ($) */}
-                    <strong style={{ textAlign: "right", fontFamily: "monospace", color: "var(--ink)", fontSize: "14px" }}>
-                      ${formatCompactNumber(holding.totalValue)}
-                    </strong>
-
-                    {/* Baskets list */}
-                    <div style={{ minWidth: 0, textAlign: "right", display: "flex", justifyContent: "flex-end", gap: "4px", flexWrap: "wrap" }}>
-                      {holding.basketNames.map((name) => (
-                        <span
-                          key={name}
-                          style={{
-                            fontSize: "11px",
-                            color: "var(--ink-3)",
-                            background: "rgba(255, 255, 255, 0.05)",
-                            border: "1px solid var(--line)",
-                            padding: "2px 8px",
-                            borderRadius: "6px",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+    <div className={styles.bottomSplit}>
+      <section ref={holdingsRef} className={styles.holdings} aria-labelledby="overview-holdings-title"><div className={styles.sectionHeading}><h2 id="overview-holdings-title">Holdings</h2><span>{overview ? holdings.length : "—"} asset{holdings.length === 1 ? "" : "s"}</span></div>
+        {holdings.length === 0 ? <div className={styles.empty}>{loading ? "Loading your holdings…" : !connected ? "Connect your wallet to view holdings across your baskets." : overviewQuery.isError ? "Holdings couldn’t be loaded." : "No holdings yet. Add funds to a basket to get started."}</div> : <>
+          <div className={styles.tableHeading} aria-hidden="true"><span>Asset</span><span>Weight</span><span>Value</span></div>
+          {holdings.map((holding) => <details className={styles.holding} key={holding.assetAddress} data-asset-address={holding.assetAddress}>
+            <summary><span className={styles.asset}><StockLogo symbol={holding.symbol} size={26} roundedFull /><span><strong>{holding.symbol}</strong><small>{holding.name}</small></span></span><span className={styles.weight}>{holding.weight === null ? "—" : `${holding.weight.toFixed(1)}%`}<span className={styles.weightTrack}><span style={{ width: `${Math.min(100, holding.weight ?? 0)}%` }} /></span></span><span className={styles.holdingValue}>{holding.value === null ? "—" : usd.format(holding.value)}<AppIcon type="arrow" /></span></summary>
+            <div className={styles.holdingDetail}><dl><div><dt>Quantity</dt><dd>{holding.quantity.toLocaleString("en-US", { maximumFractionDigits: 8 })} units</dd></div><div><dt>Reference price</dt><dd>{holding.price === null ? "—" : usd.format(holding.price)}</dd></div><div><dt>Remaining cost basis</dt><dd>{holding.symbol === "USDC" ? "Cash" : holding.basis === null ? "—" : usd.format(holding.basis)}</dd></div><div><dt>Unrealized P&amp;L</dt><dd className={holding.pnl !== null && holding.pnl !== 0 ? holding.pnl > 0 ? styles.positive : styles.negative : undefined}>{holding.symbol === "USDC" ? "Excluded · cash" : holding.pnl === null ? "— · accounting unavailable" : signedUsd.format(holding.pnl)}</dd></div></dl><div className={styles.detailFooter}><span>Aggregated across your portfolio</span><Link className={styles.textAction} href="/app/baskets">Browse baskets <AppIcon type="arrow" /></Link></div></div>
+          </details>)}
+        </>}
       </section>
+      <aside className={styles.context} aria-labelledby="overview-context-title"><h2 id="overview-context-title">Portfolio context</h2><dl><div><dt>Invested in assets</dt><dd>{cashWeight === null ? "—" : `${(100 - cashWeight).toFixed(1)}%`}</dd></div><div><dt>Cash</dt><dd>{cashWeight === null ? "—" : `${cashWeight.toFixed(1)}%`}</dd></div><div><dt>Largest holding</dt><dd>{largest?.weight == null ? "—" : `${largest.symbol} · ${largest.weight.toFixed(1)}%`}</dd></div><div><dt>Active baskets</dt><dd>{overview ? baskets.length : "—"}</dd></div></dl>
+        {allocations.length > 0 && <details className={styles.contextDetails}><summary>Explore sector allocation <AppIcon type="arrow" /></summary><dl>{allocations.map(([sector, value]) => <div key={sector}><dt>{sector}</dt><dd>{nav !== null && nav > 0 ? `${(value / nav * 100).toFixed(1)}%` : "—"}</dd></div>)}</dl></details>}
+        <details className={styles.contextDetails}><summary>How is P&amp;L calculated? <AppIcon type="arrow" /></summary><p>Unrealized P&amp;L is the current value of invested holdings minus their remaining acquisition cost. Its percentage uses that cost as the denominator; cash is excluded.</p><p>Realized P&amp;L is sale proceeds minus the cost of the assets sold. Sale accounting is not available yet, so it is shown as —. Transfers out are not automatically counted as sales.</p></details>
+        {baskets.length > 0 && <details className={styles.contextDetails}><summary>Your baskets <AppIcon type="arrow" /></summary><ul className={styles.basketLinks}>{baskets.map((basket) => <li key={basket.address}><Link href={`/app/baskets/${basket.address}`}><span>{basket.name}</span><AppIcon type="arrow" /></Link></li>)}</ul></details>}
+      </aside>
     </div>
-  );
+
+    <section className={styles.recentActivity} aria-labelledby="overview-activity-title"><div className={styles.sectionHeading}><h2 id="overview-activity-title">Recent activity</h2><Link className={styles.textAction} href="/app/activity">View all <AppIcon type="arrow" /></Link></div>
+      {recentEvents.length > 0 ? recentEvents.map((event, index) => <ActivityEventRow key={`${event.chainId}-${event.txHash}-${event.logIndex}`} event={event} basketSymbol={baskets.find((basket) => basket.address.toLowerCase() === event.basketAddress.toLowerCase())?.symbol} olderEvents={events.slice(index + 1)} full />) : <p className={styles.empty}>{!connected ? "Connect your wallet to see recent operations." : activity.isLoading ? "Loading confirmed operations…" : activity.isError ? "Recent activity couldn’t be loaded." : "Your confirmed deposits, rebalances, and withdrawals will appear here."}</p>}
+    </section>
+  </div>;
 }

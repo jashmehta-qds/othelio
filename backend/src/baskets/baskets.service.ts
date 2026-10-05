@@ -125,29 +125,60 @@ export class BasketsService {
       ), latest_positions AS (
         SELECT DISTINCT ON (bp.basket_address,bp.asset_address) bp.basket_address,bp.asset_address,bp.quantity_base_units,bp.decimals,bp.block_number,bp.block_hash,bp.observed_at
         FROM basket_positions bp JOIN owner_baskets ob ON ob.address=bp.basket_address AND ob.chain_id=bp.chain_id
-        ORDER BY bp.basket_address,bp.asset_address,bp.block_number DESC,bp.observed_at DESC,bp.block_hash DESC
+        ORDER BY bp.basket_address,bp.asset_address,bp.block_number DESC,bp.position_version DESC,bp.event_log_index DESC,bp.event_tx_hash DESC,bp.observed_at DESC,bp.block_hash DESC
       ), latest_prices AS (
         SELECT DISTINCT ON (apo.asset_address) apo.asset_address,apo.price_usd_e8,apo.block_number,apo.block_hash,apo.observed_at
         FROM asset_price_observations apo WHERE apo.chain_id=$1 ORDER BY apo.asset_address,apo.block_number DESC,apo.observed_at DESC,apo.block_hash DESC
       )
       SELECT ob.*, lp.asset_address, lp.quantity_base_units::text, lp.decimals, lp.block_number AS holding_block_number, lp.block_hash AS holding_block_hash, lp.observed_at AS holding_observed_at,
-        ap.price_usd_e8::text, ap.block_number AS holding_price_block_number, ap.block_hash AS holding_price_block_hash, ap.observed_at AS holding_price_observed_at
+        ap.price_usd_e8::text, ap.block_number AS holding_price_block_number, ap.block_hash AS holding_price_block_hash, ap.observed_at AS holding_price_observed_at,
+        acb.quantity_base_units::text AS basis_quantity_base_units, acb.open_basis_usdc_micro::text, acb.accounting_status
       FROM owner_baskets ob LEFT JOIN latest_positions lp ON lp.basket_address=ob.address LEFT JOIN latest_prices ap ON ap.asset_address=lp.asset_address
+      LEFT JOIN asset_cost_basis acb ON acb.chain_id=ob.chain_id AND acb.basket_address=ob.address AND acb.asset_address=lp.asset_address
       ORDER BY ob.created_at DESC, ob.address, lp.asset_address`, [chainId, controller]);
     const rows = result.rows;
     const baskets = [...new Map(rows.map((r) => [String(r.address).trim(), this.summary(r)])).values()];
-    const aggregate = new Map<string, any>();
+    const aggregate = new Map<string, {
+      assetAddress: string; symbol: string | null; decimals: number;
+      quantity: bigint; value: bigint; basis: bigint;
+      price: string | null; accountingComplete: boolean;
+    }>();
     for (const row of rows) {
       if (!row.asset_address || String(row.quantity_base_units) === '0') continue;
       const asset = String(row.asset_address).trim().toLowerCase();
-      const metadata = this.assetMetadata(asset); const current = aggregate.get(asset) ?? { assetAddress: asset, symbol: metadata?.symbol ?? null, decimals: Number(row.decimals ?? metadata?.decimals ?? 0), quantityBaseUnits: 0n, priceUsdE8: row.price_usd_e8 == null ? null : String(row.price_usd_e8), valueUsdcMicro: 0n, currentWeightBps: null, averageCostUsdcMicroPerBaseUnit: null, unrealizedPnlUsdcMicro: null, status: row.price_usd_e8 == null ? 'UNAVAILABLE' : 'COMPLETE' };
-      current.quantityBaseUnits += BigInt(row.quantity_base_units);
-      if (row.price_usd_e8 != null) current.valueUsdcMicro += (BigInt(row.quantity_base_units) * BigInt(row.price_usd_e8) * 1_000_000n) / (10n ** BigInt(Number(row.decimals ?? 0)) * 100_000_000n);
+      const metadata = this.assetMetadata(asset);
+      const current = aggregate.get(asset) ?? {
+        assetAddress: asset, symbol: metadata?.symbol ?? null, decimals: Number(row.decimals ?? metadata?.decimals ?? 0),
+        quantity: 0n, value: 0n, basis: 0n,
+        price: row.price_usd_e8 == null ? null : String(row.price_usd_e8), accountingComplete: true,
+      };
+      const quantity = BigInt(row.quantity_base_units);
+      const value = row.price_usd_e8 == null ? null :
+        quantity * BigInt(row.price_usd_e8) * 1_000_000n / (10n ** BigInt(current.decimals) * 100_000_000n);
+      current.quantity += quantity;
+      current.value += value ?? 0n;
+      if (value === null) current.price = null;
+      // Cash is excluded from investment P&L; the indexer intentionally does
+      // not create acquisition-basis records for USDC.
+      if (metadata?.symbol === 'USDC') current.basis += value ?? 0n;
+      else if (row.accounting_status === 'COMPLETE' && row.open_basis_usdc_micro != null &&
+        row.basis_quantity_base_units != null && BigInt(row.basis_quantity_base_units) === quantity) {
+        current.basis += BigInt(row.open_basis_usdc_micro);
+      } else current.accountingComplete = false;
       aggregate.set(asset, current);
     }
-    const holdings = [...aggregate.values()].map((h) => ({ ...h, quantityBaseUnits: h.quantityBaseUnits.toString(), valueUsdcMicro: h.priceUsdE8 == null ? null : h.valueUsdcMicro.toString() }));
+    const holdings: Holding[] = [...aggregate.values()].map((h) => ({
+      assetAddress: h.assetAddress, symbol: h.symbol, decimals: h.decimals,
+      quantityBaseUnits: h.quantity.toString(), priceUsdE8: h.price,
+      valueUsdcMicro: h.price === null ? null : h.value.toString(), currentWeightBps: null,
+      // Matches basket detail: micro-USDC per whole token, despite the legacy field name.
+      averageCostUsdcMicroPerBaseUnit: h.accountingComplete ? (h.basis * 10n ** BigInt(h.decimals) / h.quantity).toString() : null,
+      unrealizedPnlUsdcMicro: h.price !== null && h.accountingComplete ? (h.value - h.basis).toString() : null,
+      status: h.price === null ? 'UNAVAILABLE' : h.accountingComplete ? 'COMPLETE' : 'PARTIAL',
+    }));
     const freshness = this.freshness(rows[0] ?? {});
-    const totalNavUsdcMicro = holdings.reduce((sum, holding) => sum + BigInt(holding.valueUsdcMicro ?? '0'), 0n).toString();
+    const totalNavUsdcMicro = holdings.some((holding) => holding.valueUsdcMicro === null) ? null :
+      holdings.reduce((sum, holding) => sum + BigInt(holding.valueUsdcMicro!), 0n).toString();
     return this.putCached(key, portfolioOverviewSchema.parse({ chainId, controller, totalNavUsdcMicro, baskets, holdings, freshness, calculatedAt: new Date().toISOString() })) as PortfolioOverview;
   }
 
