@@ -58,6 +58,32 @@ describe('portfolio foundation contracts', () => {
 });
 
 describe('BasketsService extraction boundary', () => {
+  it('serializes accounting event timestamps as ISO strings and preserves invalid-date failure', async () => {
+    const event = {
+      id: 'event-1', tx_hash: '0xabc', log_index: 2, block_number: '42', block_hash: '0xdef',
+      occurred_at: '2026-10-05T14:34:56.000+02:00', kind: 'DEPOSIT', asset_address: basketAddress,
+      quantity_base_units: '100', decimals: 6, basis_delta_usdc_micro: '10', valuation_source: 'indexer',
+      status: 'COMPLETE', issue: null,
+    };
+    const db = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+        .mockResolvedValueOnce({ rows: [event] }),
+    };
+    const service = new BasketsService(db as never, {} as never, {} as never);
+
+    const result = await service.getAccountingEvents(basketAddress, '31337', basketAddress);
+    expect(result.data.events[0].occurredAt).toBe('2026-10-05T12:34:56.000Z');
+
+    const invalidDb = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+        .mockResolvedValueOnce({ rows: [{ ...event, occurred_at: 'invalid' }] }),
+    };
+    const invalidService = new BasketsService(invalidDb as never, {} as never, {} as never);
+    await expect(invalidService.getAccountingEvents(basketAddress, '31337', basketAddress)).rejects.toThrow(RangeError);
+  });
+
   it('persists a validated creation-time target allocation for later funding', async () => {
     const db = { query: vi.fn().mockResolvedValue({ rows: [] }) };
     const service = new BasketsService(db as never, {} as never, {} as never);

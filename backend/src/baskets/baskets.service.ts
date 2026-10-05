@@ -522,7 +522,7 @@ export class BasketsService {
   private serializeAccountingEvent(row: Record<string, unknown>) {
     return {
       id: String(row.id), txHash: String(row.tx_hash), logIndex: Number(row.log_index), blockNumber: String(row.block_number),
-      blockHash: String(row.block_hash), occurredAt: new Date(String(row.occurred_at)).toISOString(), kind: String(row.kind),
+      blockHash: String(row.block_hash), occurredAt: this.iso(row.occurred_at), kind: String(row.kind),
       assetAddress: String(row.asset_address), quantityBaseUnits: String(row.quantity_base_units), decimals: Number(row.decimals),
       basisDeltaUsdcMicro: String(row.basis_delta_usdc_micro), valuationSource: String(row.valuation_source), status: String(row.status), issue: row.issue ?? null,
     };
