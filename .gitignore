@@ -25,6 +25,7 @@ foundry-pp/
 .codex/
 .cursor/
 .impeccable/
+.worktrees/
 
 # Environment & Secrets
 .env
