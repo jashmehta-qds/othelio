@@ -47,6 +47,23 @@ pub async fn worker_last_success_block(
     Ok(row.and_then(|(block,)| block).unwrap_or(0).max(0) as u64)
 }
 
+pub async fn record_observed_head(
+    pool: &PgPool,
+    chain_id: i64,
+    block: u64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO indexer_worker_state (chain_id,worker_name,next_block,observed_head_block,observed_head_at)
+         VALUES ($1,'events',COALESCE((SELECT next_block FROM indexer_state WHERE chain_id=$1),0),$2,NOW())
+         ON CONFLICT (chain_id,worker_name) DO UPDATE SET observed_head_block=EXCLUDED.observed_head_block,observed_head_at=NOW()",
+    )
+    .bind(chain_id)
+    .bind(block as i64)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn release_worker_lease(
     pool: &PgPool,
     chain_id: i64,

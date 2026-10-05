@@ -19,8 +19,8 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::db::{
-    acquire_worker_lease, get_next_block, record_worker_failure, release_worker_lease,
-    renew_worker_lease, resolve_start_block, validate_or_rollback_checkpoint,
+    acquire_worker_lease, get_next_block, record_observed_head, record_worker_failure,
+    release_worker_lease, renew_worker_lease, resolve_start_block, validate_or_rollback_checkpoint,
     worker_last_success_block,
 };
 use crate::events::{
@@ -159,24 +159,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(latest_block) => {
                 rpc_failure_count = 0;
                 let latest_block = latest_block.as_u64();
+                record_observed_head(&pool, chain_id, latest_block).await?;
 
                 if current_block <= latest_block {
                     let blocks_per_range = batch_size.saturating_add(1);
                     let available_blocks = latest_block
                         .saturating_sub(current_block)
                         .saturating_add(1);
-                    if available_blocks < blocks_per_range {
-                        tokio::time::sleep(Duration::from_secs(configured_u64(
-                            "INDEXER_HEAD_POLL_INTERVAL_SECS",
-                            5,
-                        )))
-                        .await;
-                        continue;
-                    }
-                    let full_ranges = available_blocks / blocks_per_range;
+                    // At the live head, process a partial range immediately instead of
+                    // waiting for a complete batch. Waiting for all 10 blocks kept the
+                    // checkpoint one full range behind and tripped the action lag gate.
+                    let available_ranges = available_blocks
+                        .saturating_add(blocks_per_range.saturating_sub(1))
+                        / blocks_per_range;
                     let catchup_concurrency = configured_u64("INDEXER_CATCHUP_CONCURRENCY", 3)
                         .clamp(1, 3)
-                        .min(full_ranges) as usize;
+                        .min(available_ranges.max(1)) as usize;
                     let window_blocks = blocks_per_range
                         .saturating_mul(catchup_concurrency as u64);
                     let to_block = current_block

@@ -11,6 +11,7 @@ const mockedClient = vi.hoisted(() => ({
   readContract: vi.fn(),
   call: vi.fn(),
   getBlock: vi.fn(),
+  getBytecode: vi.fn(),
 }));
 
 vi.mock('viem', async (importOriginal) => {
@@ -65,10 +66,15 @@ function snapshot(amounts: Array<[string, string]>): PositionSnapshot {
 
 function makePlanner(position: PositionSnapshot) {
   const positions = {
+    getIndexedPositionSnapshot: vi.fn().mockResolvedValue({
+      data: position,
+      capabilities: createPortfolioOnlyCapabilities(8453, 'v3'),
+    }),
     getPositionSnapshot: vi.fn().mockResolvedValue({
       data: position,
       capabilities: createPortfolioOnlyCapabilities(8453, 'v3'),
     }),
+    assertActionReadiness: vi.fn().mockResolvedValue({ warnings: [] }),
   };
   const dex = {
     getBestQuote: vi.fn().mockImplementation(async (params) => ({
@@ -104,6 +110,7 @@ function makePlanner(position: PositionSnapshot) {
 
 describe('BasketQuotePlannerService spot rebalance', () => {
   beforeEach(() => {
+    process.env.BASE_RPC_URL = 'http://127.0.0.1:8545';
     vi.clearAllMocks();
     mockedClient.readContract.mockImplementation(async ({ functionName }: { functionName: string }) => {
       if (functionName === 'moduleVersion') return 3n;
@@ -115,6 +122,7 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     });
     mockedClient.call.mockResolvedValue({ data: '0x' });
     mockedClient.getBlock.mockResolvedValue({ timestamp: BigInt(Math.floor(Date.now() / 1_000)) });
+    mockedClient.getBytecode.mockResolvedValue('0x6000');
   });
 
   it('sells the actual overweight asset in a no-USDC basket and binds the exact v3 route', async () => {
@@ -136,7 +144,8 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     });
     if (!('rebalance' in response.data)) throw new Error('Expected a rebalance execution plan.');
 
-    expect(positions.getPositionSnapshot).toHaveBeenCalledWith(basket, 8453, [overweight, underweight]);
+    expect(positions.getIndexedPositionSnapshot).toHaveBeenCalledWith(basket, 8453);
+    expect(positions.assertActionReadiness).toHaveBeenCalledWith(8453, basket, [overweight, underweight, overweight, underweight]);
     expect(dex.getBestQuote).toHaveBeenCalledWith(expect.objectContaining({
       chainId: 8453,
       sellToken: overweight,
@@ -257,7 +266,7 @@ describe('BasketQuotePlannerService spot rebalance', () => {
       amounts: ['200000000', '50000000'],
       remainingTokens: [overweight, underweight],
     });
-    expect(positions.getPositionSnapshot).toHaveBeenCalledWith(basket, 8453);
+    expect(positions.getIndexedPositionSnapshot).toHaveBeenCalledWith(basket, 8453);
     expect(dex.getBestQuote).not.toHaveBeenCalled();
     const decoded = decodeFunctionData({ abi: WITHDRAW_IN_KIND_ABI, data: response.data.plan.calls[0].calldata as `0x${string}` });
     expect(decoded.functionName).toBe('withdrawInKind');
@@ -374,7 +383,12 @@ describe('BasketQuotePlannerService spot rebalance', () => {
         { assetAddress: overweight, targetWeightBps: 5000 },
         { assetAddress: underweight, targetWeightBps: 5000 },
       ],
-    })).rejects.toThrow('ROUTE_SIMULATION_FAILED: ERC20: insufficient allowance');
+    })).rejects.toMatchObject({
+      response: {
+        code: 'SIMULATION_FAILED',
+        reason: expect.stringContaining('ERC20: insufficient allowance'),
+      },
+    });
   });
 
   it('uses verified liquid balances even when legacy lending discovery is unavailable', async () => {
@@ -422,7 +436,14 @@ describe('BasketQuotePlannerService spot rebalance', () => {
   });
 
   it('creates and simulates a direct single-asset typed Aerodrome funding plan', async () => {
-    const { planner, dex } = makePlanner(snapshot([]));
+    const { planner, dex, positions } = makePlanner(snapshot([]));
+    positions.assertActionReadiness.mockResolvedValueOnce({
+      warnings: [{
+        code: 'STALE_PRICE_REFERENCE',
+        lastPriceReferenceAt: '2026-10-02T17:08:11.000Z',
+        assets: [{ assetAddress: underweight, feedUpdatedAt: '2026-10-02T17:08:11.000Z', ageSeconds: 120_000 }],
+      }],
+    });
     // Deliberately diverge the chain clock from the host clock, as local Anvil
     // forks can do. The contract deadline must remain within its five-minute
     // block.timestamp bound.
@@ -446,6 +467,10 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     if (!('plan' in response.data)) throw new Error('Expected a funding execution plan.');
 
     expect(response.executionAllowed).toBe(true);
+    expect(response.data.warnings).toEqual([expect.objectContaining({
+      code: 'STALE_PRICE_REFERENCE',
+      lastPriceReferenceAt: '2026-10-02T17:08:11.000Z',
+    })]);
     expect(response.data.plan.approvals).toEqual([{
       tokenAddress: overweight,
       spenderAddress: moduleAddress,
@@ -471,5 +496,37 @@ describe('BasketQuotePlannerService spot rebalance', () => {
       to: moduleAddress,
       data: response.data.plan.calls[0].calldata,
     }));
+  });
+
+  it('uses a live canonical block when an unfunded basket has no indexed snapshot yet', async () => {
+    const indexed = snapshot([]);
+    indexed.blockNumber = 0;
+    indexed.blockHash = `0x${'0'.repeat(64)}`;
+    const { planner, positions, dex } = makePlanner(indexed);
+    const live = snapshot([]);
+    positions.getPositionSnapshot.mockResolvedValueOnce({
+      data: live,
+      capabilities: createPortfolioOnlyCapabilities(8453, 'v3'),
+    });
+    dex.getBestQuote.mockImplementationOnce(async (params: any) => ({ winningQuote: {
+      providerName: 'Aerodrome', kind: 'DIRECT', chainId: 8453, sellToken: params.sellToken, buyToken: params.buyToken,
+      sellAmount: BigInt(params.sellAmount), routerAddress: router, allowanceSpender: router,
+      recipientAddress: params.takerAddress, tickSpacing: 100, firstTickSpacing: 100, secondTickSpacing: 0,
+      expectedBuyAmount: 300_000_000n, minBuyAmount: 297_000_000n,
+      expiresAt: '2099-01-01T00:00:00.000Z', estimatedGasUsd: 0.1, netBuyAmountUsd: 299.9, isAvailable: true,
+    }, allQuotes: [] }));
+
+    const response = await planner.quoteSwaps(basket, {
+      action: 'mint',
+      chainId: 8453,
+      moduleAddress,
+      callerAddress: caller,
+      inputAsset: overweight,
+      inputAmount: '300000000',
+      holdings: [{ address: underweight, targetWeightBps: 10_000 }],
+    });
+
+    expect(response.executionAllowed).toBe(true);
+    expect(positions.getPositionSnapshot).toHaveBeenCalledWith(basket, 8453, [overweight, underweight]);
   });
 });

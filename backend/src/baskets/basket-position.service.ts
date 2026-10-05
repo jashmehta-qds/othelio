@@ -63,6 +63,20 @@ export interface BasketPositionResponse {
   capabilities: BasketCapabilities;
 }
 
+export interface StalePriceReferenceWarning {
+  code: 'STALE_PRICE_REFERENCE';
+  lastPriceReferenceAt: string;
+  assets: Array<{
+    assetAddress: Address;
+    feedUpdatedAt: string;
+    ageSeconds: number;
+  }>;
+}
+
+export interface ActionReadiness {
+  warnings: StalePriceReferenceWarning[];
+}
+
 @Injectable()
 export class BasketPositionService {
   constructor(
@@ -107,17 +121,38 @@ export class BasketPositionService {
   }
 
   /** Action gate: page reads never call this method. */
-  async assertActionReadiness(chainId: number, basketAddress: Address, assets: Address[] = []): Promise<void> {
-    const checkpoint = await this.db.query('SELECT next_block FROM indexer_state WHERE chain_id=$1 LIMIT 1', [chainId]);
+  async assertActionReadiness(chainId: number, basketAddress: Address, assets: Address[] = []): Promise<ActionReadiness> {
+    const checkpoint = await this.db.query(
+      `SELECT next_block,observed_head_block,observed_head_at
+       FROM indexer_worker_state
+       WHERE chain_id=$1 AND worker_name='events'
+       LIMIT 1`,
+      [chainId],
+    );
     const head = checkpoint.rows[0]?.next_block == null ? null : Number(checkpoint.rows[0].next_block) - 1;
     if (head == null) throw new ConflictException({ code: 'INDEXER_LAGGING', error: 'INDEXER_LAGGING' });
-    const client = this.getClient(chainId);
-    if (!client) throw new ConflictException({ code: 'INDEXER_LAGGING', error: 'INDEXER_LAGGING' });
+    const observedHead = checkpoint.rows[0]?.observed_head_block == null
+      ? null
+      : Number(checkpoint.rows[0].observed_head_block);
+    const observedHeadAt = checkpoint.rows[0]?.observed_head_at == null
+      ? null
+      : new Date(checkpoint.rows[0].observed_head_at).getTime();
+    const configuredHeadMaxAge = Number(process.env.INDEXER_HEAD_OBSERVATION_MAX_AGE_SECS ?? 30);
+    const headMaxAgeMs = (Number.isFinite(configuredHeadMaxAge)
+      ? Math.max(5, Math.floor(configuredHeadMaxAge))
+      : 30) * 1_000;
+    let client: PositionClient | null = null;
     let chainHead: number;
-    try {
-      chainHead = Number(await client.getBlockNumber());
-    } catch {
-      throw new ConflictException({ code: 'INDEXER_LAGGING', error: 'INDEXER_LAGGING' });
+    if (observedHead !== null && observedHeadAt !== null && Date.now() - observedHeadAt <= headMaxAgeMs) {
+      chainHead = observedHead;
+    } else {
+      client = this.getClient(chainId);
+      try {
+        if (!client) throw new Error('RPC client unavailable');
+        chainHead = Number(await client.getBlockNumber());
+      } catch {
+        throw new ConflictException({ code: 'CHAIN_HEAD_UNAVAILABLE', error: 'CHAIN_HEAD_UNAVAILABLE' });
+      }
     }
     // The indexer commits canonical checkpoints in 10-block ranges on Base
     // (BATCH_SIZE=9). Allow one normal range to be outstanding; reject only
@@ -129,27 +164,81 @@ export class BasketPositionService {
     if (chainHead - head > maxIndexerLag) {
       throw new ConflictException({ code: 'INDEXER_LAGGING', error: 'INDEXER_LAGGING' });
     }
-    const priceAssets = assets.filter((asset) => asset.toLowerCase() !== BASE_USDC_ADDRESS.toLowerCase());
+    const uniqueAssets = Array.from(new Set(assets.map((asset) => asset.toLowerCase()))) as Address[];
+    const priceAssets = uniqueAssets.filter((asset) => asset !== BASE_USDC_ADDRESS.toLowerCase());
+    const warnings: StalePriceReferenceWarning[] = [];
     if (priceAssets.length > 0) {
-      const prices = await this.db.query(`SELECT asset_address,MAX(block_number) AS block_number FROM asset_price_observations WHERE chain_id=$1 AND LOWER(asset_address)=ANY($2::text[]) GROUP BY asset_address`, [chainId, priceAssets.map((asset) => asset.toLowerCase())]);
-      const byAsset = new Map(prices.rows.map((row) => [String(row.asset_address).trim().toLowerCase(), Number(row.block_number)]));
-      const staleAssets = priceAssets.filter((asset) => !byAsset.has(asset.toLowerCase()) || head - byAsset.get(asset.toLowerCase())! > 10);
-      if (staleAssets.length > 0) {
+      const prices = await this.db.query(
+        `SELECT DISTINCT ON (LOWER(asset_address))
+           LOWER(asset_address) AS asset_address,
+           block_number,
+           feed_updated_at
+         FROM asset_price_observations
+         WHERE chain_id=$1 AND LOWER(asset_address)=ANY($2::text[])
+         ORDER BY LOWER(asset_address),block_number DESC,observed_at DESC,block_hash DESC`,
+        [chainId, priceAssets],
+      );
+      const byAsset = new Map(prices.rows.map((row) => [String(row.asset_address).trim().toLowerCase(), {
+        blockNumber: Number(row.block_number),
+        feedUpdatedAt: row.feed_updated_at == null ? null : new Date(row.feed_updated_at),
+      }]));
+      const unavailableAssets = priceAssets.filter((asset) => {
+        const price = byAsset.get(asset);
+        return !price || !price.feedUpdatedAt || !Number.isFinite(price.feedUpdatedAt.getTime()) || head - price.blockNumber > 10;
+      });
+      if (unavailableAssets.length > 0) {
         throw new ConflictException({
           code: 'PRICE_SNAPSHOT_STALE',
           error: 'PRICE_SNAPSHOT_STALE',
-          assets: staleAssets,
-          indexedPriceBlocks: Object.fromEntries(staleAssets.map((asset) => [asset, byAsset.get(asset.toLowerCase()) ?? null])),
+          assets: unavailableAssets,
+          indexedPriceBlocks: Object.fromEntries(unavailableAssets.map((asset) => [asset, byAsset.get(asset)?.blockNumber ?? null])),
           indexedHead: head,
         });
       }
+
+      const configuredNoticeAge = Number(process.env.PRICE_REFERENCE_NOTICE_AGE_SECS ?? 3_600);
+      const noticeAgeSeconds = Number.isFinite(configuredNoticeAge)
+        ? Math.max(60, Math.floor(configuredNoticeAge))
+        : 3_600;
+      const now = Date.now();
+      const staleReferences = priceAssets.flatMap((asset) => {
+        const feedUpdatedAt = byAsset.get(asset)!.feedUpdatedAt!;
+        const ageSeconds = Math.max(0, Math.floor((now - feedUpdatedAt.getTime()) / 1_000));
+        return ageSeconds > noticeAgeSeconds
+          ? [{ assetAddress: asset, feedUpdatedAt: feedUpdatedAt.toISOString(), ageSeconds }]
+          : [];
+      });
+      if (staleReferences.length > 0) {
+        warnings.push({
+          code: 'STALE_PRICE_REFERENCE',
+          lastPriceReferenceAt: staleReferences.reduce(
+            (oldest, reference) => reference.feedUpdatedAt < oldest ? reference.feedUpdatedAt : oldest,
+            staleReferences[0].feedUpdatedAt,
+          ),
+          assets: staleReferences,
+        });
+      }
     }
-    const reconciliation = await this.db.query(`SELECT asset_address,last_checked_block,status FROM indexer_reconciliation_state WHERE chain_id=$1 AND basket_address=$2 AND LOWER(asset_address)=ANY($3::text[])`, [chainId, basketAddress, assets.map((asset) => asset.toLowerCase())]);
+    // New target assets and a funding token may not have a basket_positions row
+    // yet. They represent an indexed zero balance, not an unknown balance. Only
+    // assets that are actually held need reconciliation verification.
+    const indexedPositions = await this.db.query(
+      `SELECT DISTINCT LOWER(asset_address) AS asset_address
+       FROM basket_positions
+       WHERE chain_id=$1 AND basket_address=$2 AND LOWER(asset_address)=ANY($3::text[])`,
+      [chainId, basketAddress, uniqueAssets],
+    );
+    const trackedAssets = uniqueAssets.filter((asset) => indexedPositions.rows.some((row) => String(row.asset_address).trim().toLowerCase() === asset));
+    const reconciliation = trackedAssets.length === 0
+      ? { rows: [] }
+      : await this.db.query(`SELECT asset_address,last_checked_block,status FROM indexer_reconciliation_state WHERE chain_id=$1 AND basket_address=$2 AND LOWER(asset_address)=ANY($3::text[])`, [chainId, basketAddress, trackedAssets]);
     const byAsset = new Map(reconciliation.rows.map((row) => [String(row.asset_address).trim().toLowerCase(), { block: Number(row.last_checked_block), status: String(row.status) }]));
-    if (assets.some((asset) => !byAsset.has(asset.toLowerCase()))) throw new ConflictException({ code: 'BALANCE_REFRESH_FAILED', error: 'BALANCE_REFRESH_FAILED', reason: 'RECONCILIATION_STATE_UNKNOWN' });
-    if (assets.some((asset) => byAsset.get(asset.toLowerCase())!.status === 'PENDING')) throw new ConflictException({ code: 'BALANCE_REFRESH_FAILED', error: 'BALANCE_REFRESH_FAILED', reason: 'RECONCILIATION_STATE_UNKNOWN' });
-    const needsRefresh = assets.filter((asset) => { const state = byAsset.get(asset.toLowerCase())!; return state.status === 'DEGRADED' || head - state.block > 150; });
-    if (needsRefresh.length === 0) return;
+    if (trackedAssets.some((asset) => !byAsset.has(asset))) throw new ConflictException({ code: 'BALANCE_REFRESH_FAILED', error: 'BALANCE_REFRESH_FAILED', reason: 'RECONCILIATION_STATE_UNKNOWN' });
+    if (trackedAssets.some((asset) => byAsset.get(asset)!.status === 'PENDING')) throw new ConflictException({ code: 'BALANCE_REFRESH_FAILED', error: 'BALANCE_REFRESH_FAILED', reason: 'RECONCILIATION_STATE_UNKNOWN' });
+    const needsRefresh = trackedAssets.filter((asset) => { const state = byAsset.get(asset)!; return state.status === 'DEGRADED' || head - state.block > 150; });
+    if (needsRefresh.length === 0) return { warnings };
+    client ??= this.getClient(chainId);
+    if (!client) throw new ConflictException({ code: 'BALANCE_REFRESH_FAILED', error: 'BALANCE_REFRESH_FAILED' });
     try {
       const refreshed = await client.multicall({ contracts: needsRefresh.map((asset) => ({ address: asset, abi: ERC20_ABI, functionName: 'balanceOf', args: [basketAddress] })) });
       const indexed = await this.db.query(`SELECT DISTINCT ON (asset_address) asset_address,quantity_base_units FROM basket_positions WHERE chain_id=$1 AND basket_address=$2 AND LOWER(asset_address)=ANY($3::text[]) ORDER BY asset_address,block_number DESC,observed_at DESC,block_hash DESC`, [chainId, basketAddress, needsRefresh.map((asset) => asset.toLowerCase())]);
@@ -164,6 +253,7 @@ export class BasketPositionService {
     } catch {
       throw new ConflictException({ code: 'BALANCE_REFRESH_FAILED', error: 'BALANCE_REFRESH_FAILED' });
     }
+    return { warnings };
   }
 
   async getPositionSnapshot(

@@ -553,6 +553,22 @@ export class BasketsService {
     const createdBlock = body.createdBlock ?? 1;
     const createdTx = body.createdTx ?? '0x0000000000000000000000000000000000000000000000000000000000000000';
     const createdBlockHash = body.createdBlockHash ?? createdTx;
+    const configuredTargets = body.assets === undefined ? null : body.assets.map((asset) => ({
+      address: addressSchema.parse(asset.address).toLowerCase(),
+      targetWeightBps: asset.targetWeightBps,
+    }));
+    if (configuredTargets) {
+      const uniqueAddresses = new Set(configuredTargets.map((asset) => asset.address));
+      const totalWeightBps = configuredTargets.reduce((sum, asset) => sum + asset.targetWeightBps, 0);
+      if (
+        configuredTargets.length === 0
+        || uniqueAddresses.size !== configuredTargets.length
+        || configuredTargets.some((asset) => !Number.isInteger(asset.targetWeightBps) || asset.targetWeightBps <= 0 || asset.targetWeightBps > 10_000)
+        || totalWeightBps !== 10_000
+      ) {
+        throw new BadRequestException('Basket target assets must be unique positive integer weights totaling 10000 bps.');
+      }
+    }
 
     try {
       await this.db.query(
@@ -577,7 +593,31 @@ export class BasketsService {
         ],
       );
 
+      if (configuredTargets) {
+        await this.db.query(
+          `WITH removed AS (
+             DELETE FROM basket_assets WHERE chain_id=$1 AND basket_address=$2
+           )
+           INSERT INTO basket_assets (chain_id, basket_address, asset_address, target_weight_bps, updated_block)
+           SELECT $1, $2, target.asset_address, target.target_weight_bps, $5
+           FROM UNNEST($3::text[], $4::int[]) AS target(asset_address, target_weight_bps)
+           ON CONFLICT (chain_id, basket_address, asset_address) DO UPDATE SET
+             target_weight_bps=EXCLUDED.target_weight_bps,
+             updated_block=EXCLUDED.updated_block`,
+          [
+            chainId,
+            address,
+            configuredTargets.map((asset) => asset.address),
+            configuredTargets.map((asset) => asset.targetWeightBps),
+            createdBlock,
+          ],
+        );
+      }
+
+      this.readCache.clear();
+
     } catch (err) {
+      if (configuredTargets) throw err;
       console.warn('[BasketsService] Database insert warning (continuing fallback):', err);
     }
 

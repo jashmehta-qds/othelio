@@ -40,7 +40,10 @@ abigen!(
 
 abigen!(
     SnapshotErc20,
-    r#"[function balanceOf(address account) view returns (uint256)]"#
+    r#"[
+        function balanceOf(address account) view returns (uint256)
+        function decimals() view returns (uint8)
+    ]"#
 );
 
 abigen!(

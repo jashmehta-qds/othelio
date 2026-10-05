@@ -86,7 +86,14 @@ export class AerodromeAdapter implements IDexAdapter {
         }
       }
 
-      if (candidatePaths.length === 0) return null;
+      if (candidatePaths.length === 0) {
+        console.warn('[AerodromeAdapter] no reviewed route manifest entry', {
+          chainId: params.chainId,
+          sellToken: params.sellToken,
+          buyToken: params.buyToken,
+        });
+        return null;
+      }
 
       const rpcUrl = rpcUrlForChain(params.chainId);
       if (!rpcUrl) throw new Error(`RPC is required for Aerodrome quotes on chain ${params.chainId}.`);
@@ -100,6 +107,7 @@ export class AerodromeAdapter implements IDexAdapter {
         expectedBuyAmount: bigint;
       } | null = null;
 
+      let failedCandidates = 0;
       for (const candidate of candidatePaths) {
         try {
           const res = await client.readContract({
@@ -113,11 +121,23 @@ export class AerodromeAdapter implements IDexAdapter {
             bestResult = { ...candidate, expectedBuyAmount };
           }
         } catch {
+          failedCandidates += 1;
           continue;
         }
       }
 
-      if (!bestResult || bestResult.expectedBuyAmount <= 0n) return null;
+      if (!bestResult || bestResult.expectedBuyAmount <= 0n) {
+        console.warn('[AerodromeAdapter] all reviewed route quotes failed', {
+          chainId: params.chainId,
+          sellToken: params.sellToken,
+          buyToken: params.buyToken,
+          sellAmount: params.sellAmount,
+          candidateCount: candidatePaths.length,
+          failedCandidates,
+          rpcConfigured: Boolean(rpcUrl),
+        });
+        return null;
+      }
 
       const routerAddress = BASE_AERODROME_SLIPSTREAM_ROUTER;
       const allowanceSpender = BASE_AERODROME_SLIPSTREAM_ROUTER;
@@ -154,6 +174,13 @@ export class AerodromeAdapter implements IDexAdapter {
         rawResponse: { path: bestResult.path, quoter: AERODROME_QUOTER_ADDRESS },
       };
     } catch (err) {
+      console.warn('[AerodromeAdapter] quote request failed', {
+        chainId: params.chainId,
+        sellToken: params.sellToken,
+        buyToken: params.buyToken,
+        sellAmount: params.sellAmount,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return null;
     }
   }

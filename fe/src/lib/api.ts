@@ -1,5 +1,15 @@
 import type { ExecutionPlan } from '@/types/shared';
 
+export type PriceReferenceWarning = {
+  code: 'STALE_PRICE_REFERENCE';
+  lastPriceReferenceAt: string;
+  assets: Array<{
+    assetAddress: string;
+    feedUpdatedAt: string;
+    ageSeconds: number;
+  }>;
+};
+
 const localBackendUrl =
   typeof window === 'undefined'
     ? 'http://localhost:3001'
@@ -50,6 +60,7 @@ export async function fetchSwapQuote(basketAddress: string, body: unknown) {
       minBoughtAmounts: string[];
       basketTokens: string[];
       preparationReason?: string;
+      warnings?: PriceReferenceWarning[];
       plan?: ExecutionPlan;
       module?: {
         address: string;

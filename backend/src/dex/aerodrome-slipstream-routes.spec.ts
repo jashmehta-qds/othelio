@@ -42,7 +42,7 @@ describe('aerodrome-slipstream-routes', () => {
     for (const route of DEFAULT_AERODROME_SLIPSTREAM_ROUTES) {
       expect(route.chainId).toBe(8453);
       expect(route.token0).toBe(BASE_USDC_ADDRESS);
-      expect([10, 200]).toContain(route.tickSpacing);
+      expect(route.tickSpacing).toBe(10);
       expect(route.enabled).toBe(true);
       expect(BASE_LAUNCH_B20_TOKENS).toContain(route.token1);
     }

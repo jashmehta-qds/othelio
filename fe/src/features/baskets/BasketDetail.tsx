@@ -113,7 +113,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
     return new Date(b.occurredAt || 0).getTime() - new Date(a.occurredAt || 0).getTime();
   });
 
-  const mappedIndexedHoldings: Holding[] = (detail?.holdings ?? []).map((holding: IndexedHolding) => {
+  const positionHoldings: Holding[] = (detail?.holdings ?? []).map((holding: IndexedHolding) => {
     const quantity = Number(formatUnits(BigInt(holding.quantityBaseUnits), holding.decimals));
     const value = holding.valueUsdcMicro === null ? 0 : Number(holding.valueUsdcMicro) / 1e6;
     const target = (detail?.targets ?? []).find((targetAsset) => targetAsset.assetAddress.toLowerCase() === holding.assetAddress.toLowerCase());
@@ -130,6 +130,23 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
       color: metadata?.color || "#8aa4ff",
     };
   });
+  const targetOnlyHoldings: Holding[] = (detail?.targets ?? []).filter((target) =>
+    !(detail?.holdings ?? []).some((holding) => holding.assetAddress.toLowerCase() === target.assetAddress.toLowerCase()))
+    .map((target) => {
+      const metadata = supportedAssets.find((asset) => asset.address?.toLowerCase() === target.assetAddress.toLowerCase());
+      const symbol = metadata?.symbol ?? formatAddress(target.assetAddress);
+      return {
+        symbol,
+        name: metadata?.name ?? symbol,
+        address: target.assetAddress,
+        target: target.targetWeightBps / 100,
+        current: 0,
+        quantity: 0,
+        value: 0,
+        color: metadata?.color ?? "#8aa4ff",
+      };
+    });
+  const mappedIndexedHoldings = [...positionHoldings, ...targetOnlyHoldings];
 
   const holdingsCalculated = (detail?.holdings ?? []).map((indexedHolding) => {
     const h = mappedIndexedHoldings.find((holding) => holding.address?.toLowerCase() === indexedHolding.assetAddress.toLowerCase());
@@ -148,13 +165,13 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
       unrealisedPnl,
       accountingIssue: indexedHolding.status === 'COMPLETE' ? null : indexedHolding.status,
     };
-  }).filter((holding): holding is NonNullable<typeof holding> => holding !== null);
+  }).filter((holding): holding is NonNullable<typeof holding> => holding !== null && holding.quantity > 0);
 
   const fallbackHoldings = fallbackBasket.holdings || [];
 
   const displayHoldings = holdingsCalculated.length > 0
     ? holdingsCalculated
-    : fallbackHoldings.map((h) => {
+    : !detail ? fallbackHoldings.filter((h) => h.quantity > 0).map((h) => {
         const tokenPrice = h.quantity > 0 ? h.value / h.quantity : 0;
         return {
           ...h,
@@ -164,7 +181,8 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
           unrealisedPnl: null,
           accountingIssue: null,
         };
-      });
+      }) : [];
+  const hasActualHoldings = displayHoldings.length > 0;
 
   const calculatedTotalValue = displayHoldings.reduce((total, holding) => total + holding.assetValue, 0);
 
@@ -190,6 +208,8 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
       : fallbackHoldings,
   };
   const allocation = mappedIndexedHoldings.length > 0 ? mappedIndexedHoldings : (fallbackHoldings.length > 0 ? fallbackHoldings : null);
+  const hasTargetAllocation = basket.holdings.some((holding) => (holding.target || 0) > 0);
+  const targetAllocation = basket.holdings.filter((holding) => (holding.target || 0) > 0);
 
   // A partial total would look authoritative while omitting assets whose accounting
   // reconciliation is incomplete. Keep the aggregate unavailable until all displayed
@@ -268,12 +288,19 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
           </div>
 
           <div className="basket-hero-side">
-            <div className="basket-drift-slot">
-              {allocation ? <PortfolioDrift holdings={allocation} /> : <div className="basket-drift-empty">Allocation drift is waiting for live balances and prices.</div>}
-            </div>
+            {hasActualHoldings && (
+              <div className="basket-drift-slot">
+                {allocation && <PortfolioDrift holdings={allocation} />}
+              </div>
+            )}
 
             <div className="basket-actions">
-              <button className="primary" disabled={!canManageBasket} onClick={() => setAction("mint")}>
+              <button
+                className="primary"
+                disabled={!canManageBasket || !hasTargetAllocation}
+                title={!hasTargetAllocation ? "This basket has no saved target allocation." : undefined}
+                onClick={() => setAction("mint")}
+              >
                 <AppIcon type="plus" />Add funds
               </button>
               <button disabled={!canManageBasket} onClick={() => setAction("withdraw")}>Withdraw</button>
@@ -282,6 +309,38 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
           </div>
         </div>
       </section>
+      {!hasActualHoldings && hasTargetAllocation && (
+        <section className="allocation-block target-allocation-preview">
+          <div className="section-title">
+            <div>
+              <h2>Target allocation</h2>
+              <p>Your saved composition. Add funds to purchase these assets.</p>
+            </div>
+            <span className="target-allocation-status">Ready to fund</span>
+          </div>
+          <div className="target-allocation-card">
+            <div className="target-allocation-bar" aria-label="Saved target allocation">
+              {targetAllocation.map((holding) => (
+                <span
+                  key={holding.address ?? holding.symbol}
+                  title={`${holding.symbol} ${holding.target.toFixed(2)}%`}
+                  style={{ width: `${holding.target}%`, background: holding.color }}
+                />
+              ))}
+            </div>
+            <div className="target-allocation-assets">
+              {targetAllocation.map((holding) => (
+                <div className="target-allocation-chip" key={holding.address ?? holding.symbol}>
+                  <StockLogo symbol={holding.symbol} size={22} />
+                  <span>{holding.symbol}</span>
+                  <strong>{holding.target.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+      {hasActualHoldings && <>
       <section className="allocation-block basket-holdings-block">
         <div className="section-title">
           <div>
@@ -377,16 +436,17 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
         <div className="allocation-visual">
           {allocation ? <AllocationSankey allocations={allocation} theme="dark" /> : (
             <div className="sankey-wrap" style={{ padding: "36px 20px", textAlign: "center", color: "var(--muted-ink)", fontSize: "13px" }}>
-              Allocation is waiting for indexed targets or complete live balances and prices.
+              No target allocation is configured for this basket.
             </div>
           )}
         </div>
 
         <footer className="allocation-footer">
-          <span>{allocation ? "Target vs. current allocation" : "Allocation unavailable"}</span>
-          <span>{allocation && detail?.freshness?.priceObservedAt ? `Live as of ${new Date(detail.freshness.priceObservedAt).toLocaleString()}` : "Awaiting onchain data"}</span>
+          <span>{allocation ? "Target vs. current allocation" : "Target allocation unavailable"}</span>
+          <span>{allocation && detail?.freshness?.priceObservedAt ? `Live as of ${new Date(detail.freshness.priceObservedAt).toLocaleString()}` : allocation ? "Awaiting onchain data" : "No saved targets"}</span>
         </footer>
       </section>
+      </>}
 
       <section className="activity-block">
         <div className="section-title">

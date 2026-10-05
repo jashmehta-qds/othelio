@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { canvasBackingSize } from "./canvasBackingSize";
 
 // Framer / Paper.design Fragment Shader (WebGL2)
 const liquidFragSource = `#version 300 es
@@ -415,9 +416,7 @@ export default function IndexField() {
 
     const handleResize = () => {
       if (!canvas || !gl) return;
-      const rect = canvas.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.8);
-      const size = Math.round(Math.min(rect.width, rect.height) * dpr);
+      const size = canvasBackingSize(canvas, window.devicePixelRatio);
       if (size > 0) {
         canvas.width = size;
         canvas.height = size;
@@ -426,6 +425,8 @@ export default function IndexField() {
     };
 
     handleResize();
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(canvas);
     window.addEventListener("resize", handleResize);
 
     gl.uniform1f(uniforms.u_ratio, 1);
@@ -458,6 +459,7 @@ export default function IndexField() {
     gl.uniform1i(uniforms.u_image_texture, 0);
 
     return () => {
+      resizeObserver.disconnect();
       window.removeEventListener("resize", handleResize);
       if (texture) gl.deleteTexture(texture);
     };
@@ -465,10 +467,13 @@ export default function IndexField() {
 
   // Framer Animation Loop
   useEffect(() => {
-    if (!gl || !uniforms || !imageData) return;
+    if (!gl || !uniforms || !imageData || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
     let animationId = 0;
     let totalTime = 0;
     let lastTime = performance.now();
+    let inView = true;
 
     const animate = (currentTime: number) => {
       const delta = currentTime - lastTime;
@@ -484,9 +489,33 @@ export default function IndexField() {
       animationId = requestAnimationFrame(animate);
     };
 
-    animationId = requestAnimationFrame(animate);
-    return () => {
+    const stop = () => {
       cancelAnimationFrame(animationId);
+      animationId = 0;
+    };
+    const updatePlayback = () => {
+      if (motionPreference.matches || !inView || document.hidden) {
+        stop();
+        return;
+      }
+      if (animationId) return;
+      lastTime = performance.now();
+      animationId = requestAnimationFrame(animate);
+    };
+    const observer = new IntersectionObserver(([entry]) => {
+      inView = entry.isIntersecting;
+      updatePlayback();
+    });
+    observer.observe(canvas);
+    motionPreference.addEventListener("change", updatePlayback);
+    document.addEventListener("visibilitychange", updatePlayback);
+    updatePlayback();
+
+    return () => {
+      stop();
+      observer.disconnect();
+      motionPreference.removeEventListener("change", updatePlayback);
+      document.removeEventListener("visibilitychange", updatePlayback);
     };
   }, [gl, uniforms, imageData]);
 

@@ -152,7 +152,10 @@ pub async fn read_price_chunk(
                 .collect(),
         );
     };
-    let max_age = configured_u64("PRICE_MAX_SOURCE_AGE_SECS", 86_400);
+    // Match the deployed BasketOracle's seven-day hard ceiling. References
+    // older than the UI freshness threshold remain usable and are surfaced as
+    // warnings by the quote API; invalid rounds are still rejected here.
+    let max_age = configured_u64("PRICE_MAX_SOURCE_AGE_SECS", 604_800);
     let mut good = Vec::new();
     let mut failed = Vec::new();
     for (metadata, res) in feeds.into_iter().zip(results.into_iter()) {

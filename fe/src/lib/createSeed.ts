@@ -7,6 +7,7 @@ export async function registerConfirmedBasket(body: {
   createdBlock: number;
   createdBlockHash: `0x${string}`;
   createdTx: `0x${string}`;
+  assets: Array<{ address: string; targetWeightBps: number }>;
 }) {
   return fetchApi('/v1/baskets', { method: 'POST', body: JSON.stringify(body) });
 }

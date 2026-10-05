@@ -54,6 +54,68 @@ function makeService(variableDebtFails = false, symbol = 'USDC') {
 }
 
 describe('BasketPositionService', () => {
+  it('uses the indexer-observed chain head for action readiness without a second RPC dependency', async () => {
+    const db = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ next_block: '101', observed_head_block: '103', observed_head_at: new Date() }] })
+        .mockResolvedValueOnce({ rows: [] }),
+    };
+    const service = new BasketPositionService(db as never);
+    (service as any).getClient = vi.fn(() => null);
+
+    await expect(service.assertActionReadiness(8453, basket, [])).resolves.toEqual({ warnings: [] });
+    expect((service as any).getClient).not.toHaveBeenCalled();
+  });
+
+  it('returns a warning instead of blocking when a usable indexed price reference is old', async () => {
+    const feedUpdatedAt = new Date(Date.now() - 2 * 60 * 60 * 1_000);
+    const db = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ next_block: '101', observed_head_block: '103', observed_head_at: new Date() }] })
+        .mockResolvedValueOnce({ rows: [{ asset_address: provider, block_number: '100', feed_updated_at: feedUpdatedAt }] })
+        .mockResolvedValueOnce({ rows: [{ asset_address: provider }] })
+        .mockResolvedValueOnce({ rows: [{ asset_address: provider, last_checked_block: '100', status: 'CURRENT' }] }),
+    };
+    const service = new BasketPositionService(db as never);
+
+    await expect(service.assertActionReadiness(8453, basket, [provider])).resolves.toEqual({
+      warnings: [{
+        code: 'STALE_PRICE_REFERENCE',
+        lastPriceReferenceAt: feedUpdatedAt.toISOString(),
+        assets: [expect.objectContaining({
+          assetAddress: provider,
+          feedUpdatedAt: feedUpdatedAt.toISOString(),
+        })],
+      }],
+    });
+  });
+
+  it('allows a new target asset without a basket position or reconciliation row', async () => {
+    const db = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ next_block: '101', observed_head_block: '103', observed_head_at: new Date() }] })
+        .mockResolvedValueOnce({ rows: [{ asset_address: provider, block_number: '100', feed_updated_at: new Date() }] })
+        .mockResolvedValueOnce({ rows: [] }),
+    };
+    const service = new BasketPositionService(db as never);
+
+    await expect(service.assertActionReadiness(8453, basket, [provider])).resolves.toEqual({ warnings: [] });
+    expect(db.query).toHaveBeenCalledTimes(3);
+  });
+
+  it('still rejects a genuinely lagging indexed checkpoint', async () => {
+    const db = {
+      query: vi.fn().mockResolvedValueOnce({
+        rows: [{ next_block: '101', observed_head_block: '120', observed_head_at: new Date() }],
+      }),
+    };
+    const service = new BasketPositionService(db as never);
+
+    await expect(service.assertActionReadiness(8453, basket, [])).rejects.toMatchObject({
+      response: { code: 'INDEXER_LAGGING' },
+    });
+  });
+
   it('reads and values liquid balances together with configured Aave positions', async () => {
     const { service, observedBlockNumbers } = makeService();
     const result = await service.getPositionSnapshot(basket, 31337);

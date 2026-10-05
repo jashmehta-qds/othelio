@@ -92,7 +92,12 @@ export class BasketQuotePlannerService {
       if (action === 'mint') return await this.quoteSingleAssetFunding(basketAddress, body);
       return await this.quoteInKindWithdrawal(basketAddress, body);
     } catch (error) {
-      if (error instanceof ConflictException || error instanceof BadRequestException || error instanceof UnprocessableEntityException) throw error;
+      if (
+        error instanceof ConflictException
+        || error instanceof BadRequestException
+        || error instanceof ServiceUnavailableException
+        || error instanceof UnprocessableEntityException
+      ) throw error;
       throw new UnprocessableEntityException({ code: 'QUOTE_FAILED', error: 'QUOTE_FAILED' });
     }
   }
@@ -104,7 +109,7 @@ export class BasketQuotePlannerService {
     const recipientAddress = this.parseAddress(body.recipientAddress ?? body.callerAddress, 'recipientAddress');
     const requestedValueUsdE8 = this.parsePositiveAmount(body.withdrawValueUsdE8, 'withdrawValueUsdE8');
     const { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId);
-    await this.positions.assertActionReadiness(chainId, basketAddress, snapshot.tokens.map((token) => token.assetAddress as Address));
+    const readiness = await this.positions.assertActionReadiness(chainId, basketAddress, snapshot.tokens.map((token) => token.assetAddress as Address));
     const capability = capabilities.actions.WITHDRAW_LIQUID;
     if (capability.availability === 'DISABLED') throw new UnprocessableEntityException(capability.reason);
     this.assertUsableLiquidWithdrawalSnapshot(snapshot, basketAddress, chainId);
@@ -171,6 +176,7 @@ export class BasketQuotePlannerService {
         withdrawValueUsdE8: requestedValueUsdE8.toString(),
         plan,
         module: { address: moduleAddress, moduleVersion: 3, supportsBoundedExecution: true },
+        warnings: readiness.warnings,
         withdrawal: { tokens, amounts: amounts.map(String), remainingTokens },
       },
     };
@@ -184,7 +190,7 @@ export class BasketQuotePlannerService {
     const targetWeights = this.parseTargetWeights(body.targetWeights ?? body.holdings);
     const targetAssets = targetWeights.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'));
     const { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId);
-    await this.positions.assertActionReadiness(chainId, basketAddress, [...targetAssets, ...snapshot.tokens.map((token) => token.assetAddress as Address)]);
+    const readiness = await this.positions.assertActionReadiness(chainId, basketAddress, [...targetAssets, ...snapshot.tokens.map((token) => token.assetAddress as Address)]);
     const spotCapability = capabilities.actions.SPOT_REBALANCE;
     if (spotCapability.availability === 'DISABLED') {
       throw new UnprocessableEntityException(spotCapability.reason);
@@ -438,6 +444,7 @@ export class BasketQuotePlannerService {
       data: {
         plan,
         module: { address: moduleAddress, moduleVersion: 3, supportsBoundedExecution: true },
+        warnings: readiness.warnings,
         route: {
           provider: primaryRoute.provider,
           target: primaryRoute.target,
@@ -475,13 +482,25 @@ export class BasketQuotePlannerService {
       throw new UnprocessableEntityException('No valid targets with targetWeightBps > 0 were specified for funding.');
     }
 
-    const { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId);
-    await this.positions.assertActionReadiness(chainId, basketAddress, [inputAsset, ...targets.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'))]);
+    let { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId);
+    const readiness = await this.positions.assertActionReadiness(chainId, basketAddress, [inputAsset, ...targets.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'))]);
     if (capabilities.actions.FUND.availability === 'DISABLED') {
       throw new UnprocessableEntityException(capabilities.actions.FUND.reason);
     }
     if (snapshot.blockNumber === 0 || snapshot.blockHash === `0x${'0'.repeat(64)}`) {
-      throw new ServiceUnavailableException('A canonical basket block is required before direct funding can be simulated.');
+      // An unfunded basket has no indexed position/NAV row yet. Read a fresh,
+      // canonical RPC snapshot for simulation instead of treating zero holdings
+      // as an unavailable basket.
+      const liveSnapshot = await this.positions.getPositionSnapshot(
+        basketAddress,
+        chainId,
+        [inputAsset, ...targets.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'))],
+      );
+      snapshot = liveSnapshot.data;
+      capabilities = liveSnapshot.capabilities;
+      if (snapshot.blockNumber === 0 || snapshot.blockHash === `0x${'0'.repeat(64)}`) {
+        throw new ServiceUnavailableException('A canonical basket block is required before direct funding can be simulated.');
+      }
     }
 
     const totalWeightBps = targets.reduce((sum, t) => sum + t.targetWeightBps, 0);
@@ -645,6 +664,7 @@ export class BasketQuotePlannerService {
         basketTokens,
         plan,
         module: { address: moduleAddress, moduleVersion: 3, supportsBoundedExecution: true },
+        warnings: readiness.warnings,
         trades,
         preparationReason: 'Direct post-create funding was simulated for the supplied owner/funder. Factory create-and-seed uses a distinct factory caller flow and is not prepared here.',
       },

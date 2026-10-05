@@ -58,6 +58,64 @@ describe('portfolio foundation contracts', () => {
 });
 
 describe('BasketsService extraction boundary', () => {
+  it('persists a validated creation-time target allocation for later funding', async () => {
+    const db = { query: vi.fn().mockResolvedValue({ rows: [] }) };
+    const service = new BasketsService(db as never, {} as never, {} as never);
+    const secondAsset = '0x2222222222222222222222222222222222222222';
+
+    await service.createBasket({
+      chainId: 8453,
+      address: basketAddress,
+      controller: basketAddress,
+      name: 'Configured basket',
+      assets: [
+        { address: basketAddress, targetWeightBps: 6000 },
+        { address: secondAsset, targetWeightBps: 4000 },
+      ],
+    });
+
+    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(db.query.mock.calls[2][0]).toContain('INSERT INTO basket_assets');
+    expect(db.query.mock.calls[2][1]).toEqual([
+      8453,
+      basketAddress,
+      [basketAddress, secondAsset],
+      [6000, 4000],
+      1,
+    ]);
+  });
+
+  it('rejects malformed creation-time target allocations', async () => {
+    const db = { query: vi.fn() };
+    const service = new BasketsService(db as never, {} as never, {} as never);
+
+    await expect(service.createBasket({
+      address: basketAddress,
+      controller: basketAddress,
+      name: 'Invalid basket',
+      assets: [{ address: basketAddress, targetWeightBps: 9000 }],
+    })).rejects.toThrow('Basket target assets must be unique positive integer weights totaling 10000 bps.');
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('does not report success when creation-time targets fail to persist', async () => {
+    const dbError = new Error('target insert failed');
+    const db = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockRejectedValueOnce(dbError),
+    };
+    const service = new BasketsService(db as never, {} as never, {} as never);
+
+    await expect(service.createBasket({
+      address: basketAddress,
+      controller: basketAddress,
+      name: 'Configured basket',
+      assets: [{ address: basketAddress, targetWeightBps: 10_000 }],
+    })).rejects.toBe(dbError);
+  });
+
   it('returns weighted-average accounting as exact strings only after controller ownership verification', async () => {
     const db = {
       query: vi.fn()

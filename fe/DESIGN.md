@@ -34,7 +34,7 @@ Use a regular weight with tight tracking and a calm line-height. Supporting text
 
 Keep the first viewport sparse: wordmark, one action, one statement, one visual system. Let the visual occupy space without forcing it into a card or panel. Prefer asymmetry and negative space over evenly distributed dashboard columns.
 
-The landing page is a brand threshold. `/app` is where the terminal, wallet gate, portfolio, history, security, and agent permissions belong.
+The landing page is a brand threshold. Its split hero pairs one promise with the animated silver Othelio mark. The liquid mark arrives directly through a brief blur-and-scale entrance, with an illustrative OTHL counter in its center and no ambient gray glow or opening pill. A second view reveals an illustrative allocation in a quiet ledger. `/app` is where the terminal, wallet gate, portfolio, history, security, and agent permissions belong.
 
 ## App workspace
 
@@ -42,9 +42,9 @@ The app is a calm plug-and-play workspace, not a terminal cosplay. Use a warm pa
 
 ## Motion
 
-Motion should have a readable narrative: diffuse field → convergence into an Othelio form → held state. Do not loop between assembled and disassembled states unless the story explicitly requires it. Avoid camera zooms, perpetual spin, and high-frequency shimmer.
+Motion should have a readable narrative: the silver O settles from a blurred entrance into the full mark while an illustrative price fluctuates quietly inside it; the headline remains still. On phones, the scene moves beneath the headline and fits entirely inside the viewport. Avoid camera zooms, springy movement, perpetual spin, and high-frequency shimmer.
 
-The hero scene should pause when offscreen, adapt its GPU budget to the device, and provide a reduced-motion state that preserves the resolved mark.
+The hero scene must have a reduced-motion state that preserves the resolved mark. Prefer lightweight CSS and vector geometry for this composition.
 
 ## Anti-patterns
 
@@ -56,6 +56,7 @@ Avoid:
 - Literal orbit diagrams and ticker rails on the landing page.
 - Giant centered blobs that do not have a product meaning.
 - Multiple competing calls to action.
+- Logos presented as endorsements or verified integrations, and simulated live prices. Illustrative company marks identify the example assets only.
 
 ## Interaction language
 
@@ -63,4 +64,4 @@ Links are quiet until hovered. Actions use a short verb and a directional arrow.
 
 ## Accessibility and performance
 
-Keep headline contrast high, preserve visible focus states, and never make the WebGL scene the only carrier of meaning. Respect `prefers-reduced-motion`, cap device pixel ratio, and make WebGL failure degrade to a quiet dark surface with readable navigation and CTA.
+Keep headline contrast high, preserve visible focus states, and never make the visual scene the only carrier of meaning. Respect `prefers-reduced-motion`; navigation, copy, and the CTA must remain usable without animation.

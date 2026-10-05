@@ -1,0 +1,95 @@
+.scene {
+  position: relative;
+  width: min(100%, 560px);
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  isolation: isolate;
+}
+
+.emblem {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  width: 76%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  animation: emblemArrive 1.8s .12s both cubic-bezier(.16, 1, .3, 1);
+}
+
+.emblem canvas,
+.fallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fallback {
+  display: none;
+  color: #c9ced1;
+}
+
+.price {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+}
+
+.priceLine {
+  display: flex;
+  align-items: baseline;
+  gap: .35rem;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.priceLine > span {
+  color: #d7ff46;
+  font-size: .75rem;
+  font-weight: 700;
+}
+
+.priceLine strong {
+  color: #eeeee7;
+  font-size: 1.25rem;
+}
+
+.priceLine small,
+.priceNote {
+  color: #898b84;
+  font-size: .65rem;
+}
+
+.priceNote {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  letter-spacing: .16em;
+}
+
+@keyframes emblemArrive {
+  0% { opacity: 0; filter: blur(12px); transform: translate(-50%, -50%) scale(.19); }
+  35% { opacity: 1; filter: blur(4px); }
+  100% { opacity: 1; filter: blur(0); transform: translate(-50%, -50%) scale(1); }
+}
+
+@media (max-width: 900px) {
+  .scene { width: min(100%, 500px); }
+}
+
+@media (max-width: 600px) {
+  .scene { width: min(100%, 380px); }
+  .emblem { width: 82%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emblem { animation: none; }
+  .emblem canvas { display: none; }
+  .fallback { display: block; }
+}

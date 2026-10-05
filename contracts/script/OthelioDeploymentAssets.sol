@@ -24,7 +24,7 @@ library OthelioDeploymentAssets {
 
     /// @notice Sole reviewed direct USDC pool tick for each launch asset.
     function baseUsdcTickSpacing(uint256 index) internal pure returns (int24) {
-        int24[ASSET_COUNT] memory ticks = [int24(10), int24(10), int24(10), int24(10), int24(10), int24(10), int24(200)];
+        int24[ASSET_COUNT] memory ticks = [int24(10), int24(10), int24(10), int24(10), int24(10), int24(10), int24(10)];
         return ticks[index];
     }
 

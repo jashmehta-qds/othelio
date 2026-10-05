@@ -9,6 +9,7 @@ import { AppIcon } from "@/components/app-shell/AppIcon";
 import { extractCreatedBasketAddress, registerConfirmedBasket } from "@/lib/createSeed";
 import { WALLET_REQUEST_REJECTED_MESSAGE, walletActionError } from "@/lib/walletErrors";
 import { useHydrated } from "@/hooks/useHydrated";
+import { BasketAllocationEditor, basketTargetAssets, basketTargetTotal, type BasketTargetMap } from "@/components/BasketAllocationEditor";
 
 export default function CreateBasketPage() {
   const router = useRouter();
@@ -17,6 +18,7 @@ export default function CreateBasketPage() {
 
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
+  const [targets, setTargets] = useState<BasketTargetMap>({});
 
   const [transactionError, setTransactionError] = useState<string | null>(null);
 
@@ -34,6 +36,9 @@ export default function CreateBasketPage() {
 
     setTransactionError(null);
     try {
+      if (Object.keys(targets).length === 0 || basketTargetTotal(targets) !== 100) {
+        throw new Error("Choose at least one target asset and make the allocation total 100%.");
+      }
       const cleanName = name.trim() || "Custom Basket";
       const config = CONTRACT_ADDRESSES[targetChainId as keyof typeof CONTRACT_ADDRESSES];
       if (!config) throw new Error(`Othelio is not configured for chain ${targetChainId}.`);
@@ -83,6 +88,7 @@ export default function CreateBasketPage() {
         createdBlock: Number(receipt.blockNumber),
         createdBlockHash: receipt.blockHash,
         createdTx: receipt.transactionHash,
+        assets: basketTargetAssets(targets),
       });
       router.push(`/app/baskets/${basketAddress}`);
     } catch (error) {
@@ -115,7 +121,7 @@ export default function CreateBasketPage() {
           Create New Basket
         </h1>
         <p className="page-description">
-          Create the basket now. Its initial target allocation will be measured from the first onchain funding transaction.
+          Define basket identity and target asset weights.
         </p>
       </header>
 
@@ -179,10 +185,7 @@ export default function CreateBasketPage() {
           </div>
 
           <div style={{ padding: "24px", background: "var(--panel)", borderRadius: "16px", border: "1px solid var(--line)" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: 700, marginBottom: "8px" }}>Allocation after funding</h3>
-            <p style={{ margin: 0, color: "var(--muted-ink)", fontSize: "13px" }}>
-              This basket starts without an allocation. Add funds after creation; the indexed onchain balances and prices will set its initial target.
-            </p>
+            <BasketAllocationEditor targets={targets} onChange={setTargets} variant="page" />
           </div>
         </div>
 
@@ -213,13 +216,13 @@ export default function CreateBasketPage() {
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "var(--muted-ink)" }}>Target allocation</span>
-                <strong>Available after funding</strong>
+                <strong>{Object.keys(targets).length > 0 ? `${Object.keys(targets).length} Assets (${basketTargetTotal(targets)}%)` : "—"}</strong>
               </div>
             </div>
 
             <button
               className="primary"
-              disabled={!hasConnectedWallet || isPending}
+              disabled={!hasConnectedWallet || isPending || Object.keys(targets).length === 0 || basketTargetTotal(targets) !== 100}
               onClick={handleExecute}
               style={{
                 width: "100%",

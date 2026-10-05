@@ -6,7 +6,7 @@ import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets, depositBasket, withdrawBasket, getSlippageTolerance, type Basket } from "@/lib/baskets";
 import { CONTRACT_ADDRESSES, OTHELIO_PORTFOLIO_MODULE_ABI } from "@/lib/contracts";
-import { fetchSwapQuote } from "@/lib/api";
+import { fetchSwapQuote, type PriceReferenceWarning } from "@/lib/api";
 import { useBasketDetails, useBasketActivity, useWalletUsdcBalance } from "@/hooks/useBaskets";
 import { toRawAmount, USDC_DECIMALS } from "@/types/shared";
 
@@ -29,6 +29,38 @@ function userFacingExecutionError(error: unknown, fallback: string): string {
 
 function isCanonicalLiquidWithdrawalError(message: string | null, isMint: boolean): boolean {
   return !isMint && Boolean(message?.toLowerCase().includes("canonical liquid basket value"));
+}
+
+function PriceReferenceNotice({ warnings }: { warnings: PriceReferenceWarning[] }) {
+  const warning = warnings.find((item) => item.code === "STALE_PRICE_REFERENCE");
+  if (!warning) return null;
+
+  const assetLabels = warning.assets.map((item) => (
+    supportedAssets.find((asset) => asset.address?.toLowerCase() === item.assetAddress.toLowerCase())?.symbol
+      ?? `${item.assetAddress.slice(0, 6)}…${item.assetAddress.slice(-4)}`
+  ));
+  const uniqueLabels = Array.from(new Set(assetLabels));
+  const referenceTime = new Date(warning.lastPriceReferenceAt);
+  const formattedReference = Number.isNaN(referenceTime.getTime())
+    ? warning.lastPriceReferenceAt
+    : referenceTime.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      });
+
+  return (
+    <div className="price-reference-notice" role="status">
+      <AppIcon type="clock" />
+      <p>
+        <strong>Using the last available price reference</strong>
+        <span>{uniqueLabels.join(", ")} · {formattedReference}</span>
+        <small>Your live route, minimum output, and slippage protection still apply.</small>
+      </p>
+    </div>
+  );
 }
 
 export function BasketDrawer({ basket, action, onClose }: { basket: Basket; action: Exclude<BasketAction, null>; onClose: () => void }) {
@@ -58,6 +90,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [executionError, setExecutionError] = useState<string | null>(null);
+  const [priceWarnings, setPriceWarnings] = useState<PriceReferenceWarning[]>([]);
   const total = useMemo(() => Object.values(targets).reduce((sum, value) => sum + value, 0), [targets]);
 
   const { isPending: isSendPending, sendTransactionAsync } = useSendTransaction();
@@ -186,6 +219,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
       });
 
       const quote = res?.data;
+      setPriceWarnings(quote?.warnings ?? []);
       const plan = quote?.plan;
       const call = plan?.calls[0];
       const isCurrent = plan
@@ -292,6 +326,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
                 </strong>
               </div>
             </div>
+            <PriceReferenceNotice warnings={priceWarnings} />
             {executionError && (
               <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
                 <strong style={{ display: "block", marginBottom: "4px" }}>{executionError === QUOTE_EXPIRED_MESSAGE ? "Quote expired" : "Rebalance needs attention"}</strong>
@@ -471,6 +506,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
 
   const [withdrawInUsdc, setWithdrawInUsdc] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [priceWarnings, setPriceWarnings] = useState<PriceReferenceWarning[]>([]);
   const isCanonicalLiquidError = isCanonicalLiquidWithdrawalError(actionError, isMint);
 
   const {
@@ -568,11 +604,14 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         if (!(chainId in CONTRACT_ADDRESSES)) {
           throw new Error(`Add funds is unavailable on unsupported chain ${chainId}.`);
         }
-        const holdingsPayload = basket.holdings.map((h) => ({
-          address: supportedAssets.find((a) => a.symbol === h.symbol)?.address || "0x0000000000000000000000000000000000000000",
+        const holdingsPayload = basket.holdings.filter((h) => (h.target || 0) > 0).map((h) => ({
+          address: h.address || supportedAssets.find((a) => a.symbol === h.symbol)?.address || "0x0000000000000000000000000000000000000000",
           symbol: h.symbol,
           targetWeightBps: Math.round((h.target || 0) * 100),
         }));
+        if (holdingsPayload.length === 0) {
+          throw new Error("This basket has no saved target allocation. Create a basket with target assets before adding funds.");
+        }
 
         const usdcAmount = parseUnits(depositAmount.trim() || "0", USDC_DECIMALS);
         if (usdcAmount <= BigInt(0)) {
@@ -603,6 +642,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         });
 
         const quote = res?.data;
+        setPriceWarnings(quote?.warnings ?? []);
         const plan = quote?.plan;
         const call = plan?.calls[0];
         const routeExpired = !plan || new Date(plan.expiresAt).getTime() <= Date.now();
@@ -670,6 +710,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
           withdrawValueUsdE8,
         });
         const quote = res.data;
+        setPriceWarnings(quote?.warnings ?? []);
         const plan = quote.plan;
         const call = plan?.calls[0];
         const valid = res.executionAllowed
@@ -958,6 +999,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                 <small>No assets move until you approve the transaction in your wallet.</small>
               </p>
             </div>
+            <PriceReferenceNotice warnings={priceWarnings} />
             {actionError && !isCanonicalLiquidError && (
               <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
                 <strong style={{ display: "block", marginBottom: "4px" }}>{actionError === QUOTE_EXPIRED_MESSAGE ? "Quote expired" : "Transaction needs attention"}</strong>

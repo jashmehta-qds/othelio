@@ -7,12 +7,14 @@ import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { extractCreatedBasketAddress, registerConfirmedBasket } from "@/lib/createSeed";
 import { walletActionError } from "@/lib/walletErrors";
+import { BasketAllocationEditor, basketTargetAssets, basketTargetTotal, type BasketTargetMap } from "@/components/BasketAllocationEditor";
 
 export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const router = useRouter();
   const { address, isConnected } = useAccount();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
+  const [targets, setTargets] = useState<BasketTargetMap>({});
 
   const [previewing, setPreviewing] = useState(false);
   const [transactionError, setTransactionError] = useState<string | null>(null);
@@ -42,6 +44,9 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
 
     setTransactionError(null);
     try {
+      if (Object.keys(targets).length === 0 || basketTargetTotal(targets) !== 100) {
+        throw new Error("Choose at least one target asset and make the allocation total 100%.");
+      }
       const cleanName = name.trim() || "Custom Basket";
       const defaultChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 8453);
       const targetChainId = (publicClient?.chain?.id && (publicClient.chain.id in CONTRACT_ADDRESSES))
@@ -93,6 +98,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
         createdBlock: Number(receipt.blockNumber),
         createdBlockHash: receipt.blockHash,
         createdTx: receipt.transactionHash,
+        assets: basketTargetAssets(targets),
       });
       router.push(`/app/baskets/${basketAddress}`);
     } catch (error) {
@@ -108,7 +114,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
           <header>
             <div>
               <h2>{previewing ? "Staged Basket" : "Create Basket"}</h2>
-              <span>{previewing ? "Review basket details before signing" : "Create an unfunded basket"}</span>
+              <span>{previewing ? "Review basket details before signing" : "Configure identity and target allocation"}</span>
             </div>
             <button onClick={onClose} aria-label="Close create drawer">×</button>
           </header>
@@ -133,8 +139,8 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                   <strong>{symbol}</strong>
                 </div>
                 <div>
-                  <span>Target allocation</span>
-                  <strong>Measured after first funding</strong>
+                  <span>Basket Composition</span>
+                  <strong>{Object.keys(targets).length} Assets ({basketTargetTotal(targets)}%)</strong>
                 </div>
                 <div>
                   <span>Status</span>
@@ -145,7 +151,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
           ) : (
             <>
               <p className="drawer-intro">
-                Create the basket first. Its initial target will come from indexed onchain balances and prices after funding.
+                Set basket details, add stock tokens to your composition, and set target weights.
               </p>
 
               {/* 1. Basket Details Row */}
@@ -194,6 +200,8 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
                 <small style={{ fontSize: "10px", color: "var(--muted-ink)" }}>Create the basket first. You can add USDC with a fresh quoted trade afterward.</small>
               </div>
 
+              <BasketAllocationEditor targets={targets} onChange={setTargets} />
+
             </>
           )}
 
@@ -201,6 +209,17 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
         </div>
 
         <footer style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {!previewing && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px", padding: "2px 0" }}>
+              <span style={{ color: "var(--muted-ink)", fontWeight: 500 }}>Total allocation</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <small style={{ fontSize: "11px", fontWeight: 600, color: basketTargetTotal(targets) === 100 && Object.keys(targets).length > 0 ? "var(--positive)" : "var(--danger)" }}>
+                  {Object.keys(targets).length === 0 ? "Add 1+ stock" : basketTargetTotal(targets) === 100 ? "" : `${basketTargetTotal(targets) > 100 ? "-" : "+"}${Math.abs(100 - basketTargetTotal(targets))}% needed`}
+                </small>
+                <strong style={{ fontSize: "15px", fontWeight: 700, color: basketTargetTotal(targets) === 100 && Object.keys(targets).length > 0 ? "var(--positive)" : "var(--ink)" }}>{basketTargetTotal(targets)}%</strong>
+              </div>
+            </div>
+          )}
           {transactionError && (
             <p role="status" style={{ margin: 0, color: "var(--muted-ink)", fontSize: "12px", textAlign: "center" }}>
               {transactionError}
@@ -209,11 +228,11 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: "9px" }}>
             <button onClick={previewing ? () => setPreviewing(false) : onClose}>
-              {previewing ? "Edit details" : "Cancel"}
+              {previewing ? "Edit weights" : "Cancel"}
             </button>
             <button
               className="primary"
-              disabled={isPending || isConfirming}
+              disabled={isPending || isConfirming || Object.keys(targets).length === 0 || basketTargetTotal(targets) !== 100}
               onClick={previewing ? handleExecute : () => setPreviewing(true)}
             >
               {previewing
