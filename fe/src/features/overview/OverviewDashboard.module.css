@@ -4,8 +4,9 @@
 .pageHeading h1 { margin: 0; }
 .pageHeading > span, .label { color: var(--muted-ink); font-size: 12px; }
 .actionCenter { display: grid; grid-template-columns: 1.5fr 1fr; gap: 28px; padding: 24px; margin-bottom: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
-.actionCenter p { margin: 6px 0 18px; font-size: 13px; color: var(--muted-ink); }
-.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.actionIntro { display: grid; grid-template-rows: 24px 1fr auto; gap: 8px; }
+.actionCenter p { margin: 0; font-size: 13px; color: var(--muted-ink); }
+.actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .primary, .secondary, .textAction { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; font-family: inherit; font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer; }
 .primary { padding: 9px 14px; border: 0; border-radius: 7px; background: var(--accent); color: var(--canvas); }
 .secondary { padding: 8px 13px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); }
@@ -16,8 +17,13 @@
 .textAction:hover { color: var(--accent); }
 .primary:disabled, .textAction:disabled { opacity: .5; cursor: not-allowed; }
 .page a:focus-visible, .page button:focus-visible, .page summary:focus-visible, .page input:focus-visible, .page select:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.review { border-left: 1px solid var(--line); padding-left: 24px; display: flex; align-items: flex-start; justify-content: center; flex-direction: column; gap: 8px; }
+.review { border-left: 1px solid var(--line); padding-left: 24px; display: grid; grid-template-rows: 24px 1fr auto; justify-items: start; align-items: start; gap: 8px; }
+.review > .label { align-self: center; }
 .review > strong { font-size: 14px; font-weight: 500; }
+.actionCenter p, .actionCenter .label, .actionCenter .primary, .actionCenter .secondary, .actionCenter .textAction, .actionCenter .review > strong, .actionCenter .fundPicker, .actionCenter .fundPicker select { font-size: 13px; line-height: 1.5; }
+.actionCenter .primary, .actionCenter .secondary, .actionCenter .textAction { box-sizing: border-box; min-height: 32px; padding: 5px 10px; }
+.actionCenter .primary { border: 1px solid transparent; }
+.actionCenter .textAction { padding: 6px 0; }
 .fundPicker { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13px; }
 .fundPicker select { max-width: 100%; min-height: 40px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); color: var(--ink); padding: 8px 12px; font-family: inherit; font-size: 14px; }
 .notice { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; color: var(--muted-ink); font-size: 13px; margin: -8px 0 18px; }
@@ -124,4 +130,5 @@
   .recentActivity :global(.activity-event.full .activity-row) { grid-template-columns: 65px minmax(0, 1fr) 95px; gap: 6px; font-size: 12px; }
 }
 @media (pointer: coarse) { .primary, .secondary, .textAction, .periods button, .contextDetails summary { min-height: 44px; } .fundPicker select { font-size: 16px; } }
+@media (pointer: coarse) { .actionCenter .primary, .actionCenter .secondary, .actionCenter .textAction { min-height: 44px; } }
 @media (prefers-reduced-motion: reduce) { .holdingValue svg { transition: none; } }

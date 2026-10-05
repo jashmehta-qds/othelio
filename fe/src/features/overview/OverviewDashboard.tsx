@@ -80,7 +80,7 @@ export function OverviewDashboard() {
     <header className={styles.pageHeading}><h1 className="page-title">Your portfolio</h1><span>{networkLabelForChainId(chainId)} · USD</span></header>
 
     <section className={styles.actionCenter} aria-labelledby="overview-action-title">
-      <div><h2 id="overview-action-title">Action center</h2><p>{!connected ? "Connect your wallet to bring your baskets into view." : baskets.length === 0 && !loading ? "Create your first basket, then add funds when you’re ready." : "Your next move, without losing sight of your portfolio."}</p>
+      <div className={styles.actionIntro}><h2 id="overview-action-title">Action center</h2><p>{!connected ? "Connect your wallet to bring your baskets into view." : baskets.length === 0 && !loading ? "Create your first basket, then add funds when you’re ready." : "Your next move, without losing sight of your portfolio."}</p>
         <div className={styles.actions}>
           {baskets.length === 1 ? <Link className={styles.primary} href={`/app/baskets/${baskets[0].address}?action=mint`}>Add funds <AppIcon type="arrow" /></Link> : <button className={styles.primary} disabled={!connected || loading || baskets.length === 0} aria-expanded={choosingBasket} aria-controls="overview-fund-picker" onClick={() => setChoosingBasket(!choosingBasket)}>Add funds <AppIcon type="arrow" /></button>}
           <Link className={styles.secondary} href="/app/baskets">Manage baskets</Link>
