@@ -67,8 +67,10 @@ export class BasketsService {
   private freshness(row: Record<string, any>): Freshness {
     const positionBlockNumber = row.position_block_number == null ? null : Number(row.position_block_number);
     const priceBlockNumber = row.price_block_number == null ? null : Number(row.price_block_number);
-    const status: Freshness['status'] = row.freshness_status === 'DEGRADED' ? 'DEGRADED' :
-      positionBlockNumber == null || priceBlockNumber == null ? 'UNAVAILABLE' : 'FRESH';
+    const priceCheckedAt = row.price_observed_at ? new Date(String(row.price_observed_at)).getTime() : null;
+    const status: Freshness['status'] = positionBlockNumber == null || priceBlockNumber == null ? 'UNAVAILABLE' :
+      row.freshness_status === 'DEGRADED' || row.price_worker_error ? 'DEGRADED' :
+      priceCheckedAt == null || Date.now() - priceCheckedAt > 60_000 ? 'STALE' : 'FRESH';
     return {
       positionBlockNumber,
       positionBlockHash: row.position_block_hash?.trim?.() ?? null,
@@ -115,9 +117,10 @@ export class BasketsService {
           (SELECT bp.block_number FROM basket_positions bp WHERE bp.chain_id=b.chain_id AND bp.basket_address=b.address ORDER BY bp.block_number DESC,bp.observed_at DESC,bp.block_hash DESC LIMIT 1) AS position_block_number,
           (SELECT bp.block_hash FROM basket_positions bp WHERE bp.chain_id=b.chain_id AND bp.basket_address=b.address ORDER BY bp.block_number DESC,bp.observed_at DESC,bp.block_hash DESC LIMIT 1) AS position_block_hash,
           (SELECT bp.observed_at FROM basket_positions bp WHERE bp.chain_id=b.chain_id AND bp.basket_address=b.address ORDER BY bp.block_number DESC,bp.observed_at DESC,bp.block_hash DESC LIMIT 1) AS position_observed_at,
-          (SELECT apo.block_number FROM asset_price_observations apo WHERE apo.chain_id=b.chain_id ORDER BY apo.block_number DESC,apo.observed_at DESC,apo.block_hash DESC LIMIT 1) AS price_block_number,
-          (SELECT apo.block_hash FROM asset_price_observations apo WHERE apo.chain_id=b.chain_id ORDER BY apo.block_number DESC,apo.observed_at DESC,apo.block_hash DESC LIMIT 1) AS price_block_hash,
-          (SELECT apo.observed_at FROM asset_price_observations apo WHERE apo.chain_id=b.chain_id ORDER BY apo.block_number DESC,apo.observed_at DESC,apo.block_hash DESC LIMIT 1) AS price_observed_at
+          (SELECT last_success_block FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_block_number,
+          (SELECT last_success_hash FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_block_hash,
+          (SELECT last_success_at FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_observed_at,
+          (SELECT last_error FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_worker_error
         FROM baskets b WHERE b.chain_id=$1 AND b.controller=$2
       ), latest_positions AS (
         SELECT DISTINCT ON (bp.basket_address,bp.asset_address) bp.basket_address,bp.asset_address,bp.quantity_base_units,bp.decimals,bp.block_number,bp.block_hash,bp.observed_at
@@ -163,9 +166,10 @@ export class BasketsService {
       (SELECT bp.block_number FROM basket_positions bp WHERE bp.chain_id=b.chain_id AND bp.basket_address=b.address ORDER BY bp.block_number DESC,bp.observed_at DESC,bp.block_hash DESC LIMIT 1) AS position_block_number,
       (SELECT bp.block_hash FROM basket_positions bp WHERE bp.chain_id=b.chain_id AND bp.basket_address=b.address ORDER BY bp.block_number DESC,bp.observed_at DESC,bp.block_hash DESC LIMIT 1) AS position_block_hash,
       (SELECT bp.observed_at FROM basket_positions bp WHERE bp.chain_id=b.chain_id AND bp.basket_address=b.address ORDER BY bp.block_number DESC,bp.observed_at DESC,bp.block_hash DESC LIMIT 1) AS position_observed_at,
-      (SELECT apo.block_number FROM asset_price_observations apo WHERE apo.chain_id=b.chain_id ORDER BY apo.block_number DESC,apo.observed_at DESC,apo.block_hash DESC LIMIT 1) AS price_block_number,
-      (SELECT apo.block_hash FROM asset_price_observations apo WHERE apo.chain_id=b.chain_id ORDER BY apo.block_number DESC,apo.observed_at DESC,apo.block_hash DESC LIMIT 1) AS price_block_hash,
-      (SELECT apo.observed_at FROM asset_price_observations apo WHERE apo.chain_id=b.chain_id ORDER BY apo.block_number DESC,apo.observed_at DESC,apo.block_hash DESC LIMIT 1) AS price_observed_at
+      (SELECT last_success_block FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_block_number,
+      (SELECT last_success_hash FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_block_hash,
+      (SELECT last_success_at FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_observed_at,
+      (SELECT last_error FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_worker_error
       FROM baskets b WHERE b.chain_id=$1 AND b.address=$2 AND ($3::char(42) IS NULL OR b.controller=$3)`, [chainId, address, controller]);
     if (!basketResult.rows[0]) throw new NotFoundException({ error: 'BASKET_NOT_FOUND' });
     const row = basketResult.rows[0];
@@ -272,9 +276,10 @@ export class BasketsService {
       (SELECT bp.block_number FROM basket_positions bp WHERE bp.chain_id=b.chain_id AND bp.basket_address=b.address ORDER BY bp.block_number DESC,bp.observed_at DESC,bp.block_hash DESC LIMIT 1) AS position_block_number,
       (SELECT bp.block_hash FROM basket_positions bp WHERE bp.chain_id=b.chain_id AND bp.basket_address=b.address ORDER BY bp.block_number DESC,bp.observed_at DESC,bp.block_hash DESC LIMIT 1) AS position_block_hash,
       (SELECT bp.observed_at FROM basket_positions bp WHERE bp.chain_id=b.chain_id AND bp.basket_address=b.address ORDER BY bp.block_number DESC,bp.observed_at DESC,bp.block_hash DESC LIMIT 1) AS position_observed_at,
-      (SELECT apo.block_number FROM asset_price_observations apo WHERE apo.chain_id=b.chain_id ORDER BY apo.block_number DESC,apo.observed_at DESC,apo.block_hash DESC LIMIT 1) AS price_block_number,
-      (SELECT apo.block_hash FROM asset_price_observations apo WHERE apo.chain_id=b.chain_id ORDER BY apo.block_number DESC,apo.observed_at DESC,apo.block_hash DESC LIMIT 1) AS price_block_hash,
-      (SELECT apo.observed_at FROM asset_price_observations apo WHERE apo.chain_id=b.chain_id ORDER BY apo.block_number DESC,apo.observed_at DESC,apo.block_hash DESC LIMIT 1) AS price_observed_at
+      (SELECT last_success_block FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_block_number,
+      (SELECT last_success_hash FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_block_hash,
+      (SELECT last_success_at FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_observed_at,
+      (SELECT last_error FROM indexer_worker_state WHERE chain_id=b.chain_id AND worker_name='prices') AS price_worker_error
       FROM baskets b WHERE b.chain_id=$1 AND ($2::char(42) IS NULL OR b.controller=$2) ORDER BY b.created_block DESC LIMIT 100`, [chainId, controller]);
     return this.putCached(key, result.rows.map((row) => basketSummarySchema.parse(this.summary(row)))) as BasketSummary[];
   }
@@ -848,8 +853,10 @@ export class BasketsService {
     const result = await this.db.query(`SELECT DISTINCT ON (LOWER(apo.asset_address))
       $1::bigint AS chain_id, LOWER(apo.asset_address) AS asset_address, NULL::text AS symbol, NULL::text AS name,
       NULL::smallint AS decimals, apo.price_usd_e8::text, apo.block_number, TRIM(apo.block_hash) AS block_hash,
-      apo.observed_at, CASE WHEN apo.observed_at > NOW() - INTERVAL '10 minutes' THEN 'FRESH' ELSE 'STALE' END AS status
-      FROM asset_price_observations apo WHERE apo.chain_id=$1 ORDER BY LOWER(apo.asset_address), apo.block_number DESC`, [chainId]);
+      apo.observed_at, CASE WHEN worker.last_success_at > NOW() - INTERVAL '60 seconds' AND worker.last_error IS NULL THEN 'FRESH' ELSE 'STALE' END AS status
+      FROM asset_price_observations apo
+      LEFT JOIN indexer_worker_state worker ON worker.chain_id=apo.chain_id AND worker.worker_name='prices'
+      WHERE apo.chain_id=$1 ORDER BY LOWER(apo.asset_address), apo.block_number DESC`, [chainId]);
     const data = result.rows.map((row) => { const metadata = this.assetMetadata(String(row.asset_address)); return assetCatalogItemSchema.parse({ chainId, assetAddress: String(row.asset_address).trim().toLowerCase(), symbol: metadata?.symbol ?? row.symbol, name: metadata?.name ?? row.name, decimals: metadata?.decimals ?? (row.decimals == null ? null : Number(row.decimals)), priceUsdE8: row.price_usd_e8 == null ? null : String(row.price_usd_e8), priceBlockNumber: row.block_number == null ? null : Number(row.block_number), priceBlockHash: row.block_hash ?? null, priceObservedAt: row.observed_at ? this.iso(row.observed_at) : null, status: row.status }); });
     return { data: this.putCached(key, data) };
   }

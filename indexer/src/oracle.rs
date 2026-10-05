@@ -6,17 +6,13 @@ use ethers::types::{Address, BlockId, BlockNumber, U64};
 use futures::future::join_all;
 use serde_json::json;
 use sqlx::{PgPool, Postgres, Transaction};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
-use tracing::info;
+use tracing::{info, warn};
 
 #[derive(Clone, Debug)]
 pub struct FeedMetadata {
     pub token: Address,
     pub feed: Address,
-    pub token_decimals: u8,
     pub feed_decimals: u8,
 }
 
@@ -24,9 +20,8 @@ pub struct FeedMetadata {
 pub struct RegistryCache {
     pub chain_id: i64,
     pub registry: Address,
-    pub loaded_at: std::time::Instant,
+    pub checked_through_block: u64,
     pub feeds: Vec<FeedMetadata>,
-    pub token_fingerprint: u64,
 }
 
 static REGISTRY_CACHE: OnceLock<tokio::sync::RwLock<Option<RegistryCache>>> = OnceLock::new();
@@ -40,8 +35,50 @@ pub async fn cached_registry_metadata(
     registry_addr: Address,
     chain_id: i64,
     block_id: BlockId,
+    block_number: u64,
 ) -> Result<Vec<FeedMetadata>, Box<dyn std::error::Error>> {
-    let max_age = Duration::from_secs(configured_u64("INDEXER_REGISTRY_CACHE_SECS", 900));
+    let cached = registry_cache().read().await.clone();
+    if let Some(cached) = cached {
+        if cached.chain_id == chain_id
+            && cached.registry == registry_addr
+            && block_number > cached.checked_through_block
+        {
+            let mut from = cached.checked_through_block + 1;
+            let mut changed = false;
+            while from <= block_number {
+                // Alchemy Free limits eth_getLogs to ten-block ranges. Persist
+                // progress in memory so a failed catchup check resumes its gap.
+                let to = (from + 9).min(block_number);
+                match provider
+                    .get_logs(
+                        &Filter::new()
+                            .address(registry_addr)
+                            .from_block(from)
+                            .to_block(to),
+                    )
+                    .await
+                {
+                    Ok(logs) if logs.is_empty() => {
+                        if let Some(current) = registry_cache().write().await.as_mut() {
+                            current.checked_through_block = to;
+                        }
+                        from = to + 1;
+                    }
+                    Err(error) => {
+                        warn!(error = %error, "registry change check failed; using last known feed mapping");
+                        return Ok(cached.feeds);
+                    }
+                    Ok(_) => {
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+            if !changed {
+                return Ok(cached.feeds);
+            }
+        }
+    }
     let client = Arc::new(provider.clone());
     let registry = OthelioAssetRegistry::new(registry_addr, client);
     let tokens = registry
@@ -60,42 +97,20 @@ pub async fn cached_registry_metadata(
                     .block(block_id)
                     .call()
                     .await
-                    .map(|(supported, feed, token_decimals, feed_decimals, _)| {
-                        (token, supported, feed, token_decimals, feed_decimals)
+                    .map(|(supported, feed, _, feed_decimals, _)| {
+                        (token, supported, feed, feed_decimals)
                     })
             }
         });
         let results = join_all(futures).await;
         for result in results {
-            let (token, supported, feed, token_decimals, feed_decimals) = result?;
+            let (token, supported, feed, feed_decimals) = result?;
             if supported && feed != Address::zero() && feed_decimals <= 36 {
                 feeds.push(FeedMetadata {
                     token,
                     feed,
-                    token_decimals,
                     feed_decimals,
                 });
-            }
-        }
-    }
-    let mut fingerprint = DefaultHasher::new();
-    tokens.hash(&mut fingerprint);
-    for f in &feeds {
-        f.token.hash(&mut fingerprint);
-        f.feed.hash(&mut fingerprint);
-        f.token_decimals.hash(&mut fingerprint);
-        f.feed_decimals.hash(&mut fingerprint);
-    }
-    let token_fingerprint = fingerprint.finish();
-    {
-        let cache = registry_cache().read().await;
-        if let Some(value) = cache.as_ref() {
-            if value.chain_id == chain_id
-                && value.registry == registry_addr
-                && value.token_fingerprint == token_fingerprint
-                && value.loaded_at.elapsed() < max_age
-            {
-                return Ok(value.feeds.clone());
             }
         }
     }
@@ -103,9 +118,8 @@ pub async fn cached_registry_metadata(
     *cache = Some(RegistryCache {
         chain_id,
         registry: registry_addr,
-        loaded_at: std::time::Instant::now(),
+        checked_through_block: block_number,
         feeds: feeds.clone(),
-        token_fingerprint,
     });
     info!(chain_id, registry = ?registry_addr, feed_count = feeds.len(), "indexer registry/feed metadata cache refreshed");
     Ok(feeds)
@@ -148,7 +162,12 @@ pub async fn read_price_chunk(
             Vec::new(),
             feeds
                 .into_iter()
-                .map(|feed| (fmt_addr(&feed.token), "multicall request failed".to_string()))
+                .map(|feed| {
+                    (
+                        fmt_addr(&feed.token),
+                        "multicall request failed".to_string(),
+                    )
+                })
                 .collect(),
         );
     };
@@ -232,18 +251,35 @@ pub async fn run_hourly_valuation_tick(
 
     let block_hash = format!("{:#x}", block.hash.unwrap_or_default());
     let block_secs = block.timestamp.as_u64() as i64;
-    let block_timestamp = chrono::DateTime::from_timestamp(block_secs, 0).unwrap_or_else(chrono::Utc::now);
+    let block_timestamp =
+        chrono::DateTime::from_timestamp(block_secs, 0).unwrap_or_else(chrono::Utc::now);
 
-    let feeds = cached_registry_metadata(provider, registry_addr, chain_id, block_id).await
-        .map_err(|e| format!("registry metadata read failed: {}", e))?;
-    let multicall: Address = std::env::var("MULTICALL3_ADDRESS").unwrap_or_else(|_| MULTICALL3_ADDRESS.to_string()).parse()
+    let feeds = cached_registry_metadata(
+        provider,
+        registry_addr,
+        chain_id,
+        block_id,
+        price_block_number,
+    )
+    .await
+    .map_err(|e| format!("registry metadata read failed: {}", e))?;
+    if feeds.is_empty() {
+        return Err("registry has no configured price feeds".into());
+    }
+    let multicall: Address = std::env::var("MULTICALL3_ADDRESS")
+        .unwrap_or_else(|_| MULTICALL3_ADDRESS.to_string())
+        .parse()
         .map_err(|e| format!("invalid MULTICALL3_ADDRESS: {}", e))?;
     let chunk_size = configured_u64("INDEXER_PRICE_MULTICALL_CHUNK_SIZE", 100).max(1) as usize;
     let concurrency = configured_u64("INDEXER_PRICE_MULTICALL_CONCURRENCY", 2).max(1) as usize;
     let mut feeds_succeeded = 0;
+    let mut price_rows_written = 0;
     let mut failed_assets = Vec::new();
 
-    let mut write_tx = pool.begin().await.map_err(|e| format!("price write transaction failed: {e}"))?;
+    let mut write_tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("price write transaction failed: {e}"))?;
     let lock_row: (bool,) = sqlx::query_as("SELECT pg_try_advisory_xact_lock($1)")
         .bind(chain_id)
         .fetch_one(&mut *write_tx)
@@ -262,25 +298,49 @@ pub async fn run_hourly_valuation_tick(
     while offset < feeds.len() {
         let end = (offset + chunk_size * concurrency).min(feeds.len());
         let futures = feeds[offset..end].chunks(chunk_size).map(|chunk| {
-            read_price_chunk(Arc::new(provider.clone()), multicall, chunk.to_vec(), block_id, block_timestamp)
+            read_price_chunk(
+                Arc::new(provider.clone()),
+                multicall,
+                chunk.to_vec(),
+                block_id,
+                block_timestamp,
+            )
         });
         let chunk_results = join_all(futures).await;
         for (reads, failures) in chunk_results {
             failed_assets.extend(failures);
             for price in reads {
                 let token_addr_str = fmt_addr(&price.metadata.token);
-                sqlx::query(
+                let written = sqlx::query(
                     "INSERT INTO asset_price_observations (chain_id, asset_address, feed_address, block_number, block_hash, block_timestamp, feed_round_id, price_usd_e8, feed_updated_at, observed_at)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7::numeric,$8::numeric,$9,NOW())"
+                     SELECT $1,$2,$3,$4,$5,$6,$7::numeric,$8::numeric,$9,NOW()
+                     WHERE NOT EXISTS (
+                       SELECT 1 FROM (
+                         SELECT feed_round_id, price_usd_e8, feed_address
+                         FROM asset_price_observations
+                         WHERE chain_id=$1 AND asset_address=$2
+                         ORDER BY block_number DESC LIMIT 1
+                       ) previous
+                       WHERE previous.feed_round_id=$7::numeric
+                         AND previous.price_usd_e8=$8::numeric
+                         AND previous.feed_address=$3
+                     )
+                     ON CONFLICT (chain_id, asset_address, block_number) DO NOTHING"
                 )
                 .bind(chain_id).bind(&token_addr_str).bind(&fmt_addr(&price.metadata.feed))
                 .bind(price_block_number as i64).bind(&block_hash).bind(block_timestamp)
                 .bind(price.round_id.to_string()).bind(price.price_usd_e8.to_string()).bind(price.feed_updated_at)
-                .execute(&mut *write_tx).await.map_err(|e| format!("price observation write failed: {}", e))?;
+                .execute(&mut *write_tx).await.map_err(|e| format!("price observation write failed: {}", e))?
+                .rows_affected();
+                price_rows_written += written;
                 feeds_succeeded += 1;
             }
         }
         offset = end;
+    }
+
+    if feeds_succeeded == 0 {
+        return Err("no price feeds returned a valid round".into());
     }
 
     let updated_rows = sqlx::query(
@@ -355,7 +415,7 @@ pub async fn run_hourly_valuation_tick(
            nav_usdc = EXCLUDED.nav_usdc,
            valuation_status = EXCLUDED.valuation_status,
            issue = EXCLUDED.issue,
-           observed_at = EXCLUDED.observed_at"
+           observed_at = EXCLUDED.observed_at",
     )
     .bind(chain_id)
     .bind(price_block_number as i64)
@@ -365,6 +425,7 @@ pub async fn run_hourly_valuation_tick(
     .await
     .map_err(|e| format!("NAV observation write failed: {}", e))?;
 
+    let failed_count = failed_assets.len();
     for (failed_asset, issue_msg) in failed_assets {
         sqlx::query(
             "INSERT INTO basket_nav_observations (
@@ -401,13 +462,15 @@ pub async fn run_hourly_valuation_tick(
     let checkpoint = sqlx::query(
         "UPDATE indexer_worker_state
         SET next_block=$1,last_success_block=$2,last_success_at=NOW(),last_attempt_at=NOW(),
-             consecutive_failures=0,last_error=NULL,updated_at=NOW()
+             consecutive_failures=0,last_error=$5,last_success_hash=$6,updated_at=NOW()
          WHERE chain_id=$3 AND worker_name='prices' AND lease_owner=$4 AND lease_expires_at > NOW()"
     )
     .bind(price_block_number as i64 + 1)
     .bind(price_block_number as i64)
     .bind(chain_id)
     .bind(owner)
+    .bind(if failed_count == 0 { None } else { Some(format!("{failed_count} price feeds failed validation or RPC reads")) })
+    .bind(&block_hash)
     .execute(&mut *write_tx)
     .await
     .map_err(|e| format!("price checkpoint write failed: {e}"))?;
@@ -426,11 +489,14 @@ pub async fn run_hourly_valuation_tick(
     .await
     .map_err(|e| format!("NAV checkpoint write failed: {e}"))?;
 
-    write_tx.commit().await.map_err(|e| format!("price/NAV commit failed: {e}"))?;
+    write_tx
+        .commit()
+        .await
+        .map_err(|e| format!("price/NAV commit failed: {e}"))?;
 
     info!(
-        "⏰ [Hourly Valuation Tick] Block {} evaluated: feeds_succeeded={}, nav_rows_written={}",
-        price_block_number, feeds_succeeded, updated_rows.rows_affected()
+        "[Price Valuation Tick] Block {} evaluated: feeds_succeeded={}, feeds_failed={}, price_rows_written={}, nav_rows_written={}",
+        price_block_number, feeds_succeeded, failed_count, price_rows_written, updated_rows.rows_affected()
     );
 
     Ok(())
@@ -632,6 +698,8 @@ pub async fn write_event_valuation_checkpoint(
     Ok(Some(
         weights
             .into_iter()
+            // Zero-balance history is retained in positions, not active targets.
+            .filter(|(_, bps, _)| *bps > 0)
             .map(|(asset, bps, _)| (asset, bps))
             .collect(),
     ))

@@ -4,6 +4,7 @@ mod db;
 mod events;
 mod lending;
 mod oracle;
+mod price_worker;
 mod reconciliation;
 mod utils;
 
@@ -15,7 +16,7 @@ use sqlx::postgres::PgPoolOptions;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::db::{
@@ -26,7 +27,7 @@ use crate::db::{
 use crate::events::{
     event_filter_addresses, fetch_and_process_ranges, retry_pending_position_projections,
 };
-use crate::oracle::run_hourly_valuation_tick;
+use crate::price_worker::run_price_worker;
 use crate::reconciliation::run_reconciliation_tick;
 use crate::utils::{
     circuit_key, configured_u64, is_supported_chain_id, lease_owner, provider_name, read_head,
@@ -76,7 +77,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "1".to_string())
         .parse()
         .unwrap_or(1);
-    let price_interval_blocks = configured_u64("INDEXER_PRICE_INTERVAL_BLOCKS", 10).max(1);
 
     let lending_pool_addrs: Vec<Address> = std::env::var("LENDING_POOL_ADDRESSES")
         .unwrap_or_default()
@@ -130,9 +130,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut current_block = get_next_block(&pool, chain_id, default_start).await?;
     current_block =
         validate_or_rollback_checkpoint(&pool, &provider, chain_id, current_block).await?;
-    let mut last_price_block = worker_last_success_block(&pool, chain_id, "prices")
-        .await
-        .unwrap_or(0);
+    let price_primary_url = std::env::var("INDEXER_PRICE_RPC_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| rpc_url.clone());
+    let price_primary = Arc::new(Provider::<Http>::try_from(price_primary_url)?);
+    let price_secondary = std::env::var("INDEXER_PRICE_RPC_URL_SECONDARY")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(Provider::<Http>::try_from)
+        .transpose()?
+        .map(Arc::new);
+    tokio::spawn(run_price_worker(
+        pool.clone(),
+        chain_id,
+        registry_addr,
+        indexer_confirmations,
+        price_primary,
+        price_secondary,
+    ));
     let mut last_reconciliation_block =
         worker_last_success_block(&pool, chain_id, "reconciliation")
             .await
@@ -143,10 +159,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         if using_secondary && std::time::Instant::now() >= next_primary_probe {
             let timeout = Duration::from_secs(configured_u64("INDEXER_RPC_TIMEOUT_SECS", 30));
-            if tokio::time::timeout(timeout, primary_provider.get_block_number())
-                .await
-                .is_ok()
-            {
+            if matches!(
+                tokio::time::timeout(timeout, primary_provider.get_block_number()).await,
+                Ok(Ok(_))
+            ) {
                 provider = primary_provider.clone();
                 using_secondary = false;
                 info!("primary RPC probe succeeded; returning from secondary provider");
@@ -163,9 +179,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if current_block <= latest_block {
                     let blocks_per_range = batch_size.saturating_add(1);
-                    let available_blocks = latest_block
-                        .saturating_sub(current_block)
-                        .saturating_add(1);
+                    let available_blocks =
+                        latest_block.saturating_sub(current_block).saturating_add(1);
                     // At the live head, process a partial range immediately instead of
                     // waiting for a complete batch. Waiting for all 10 blocks kept the
                     // checkpoint one full range behind and tripped the action lag gate.
@@ -174,18 +189,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         / blocks_per_range;
                     let catchup_concurrency = configured_u64("INDEXER_CATCHUP_CONCURRENCY", 3)
                         .clamp(1, 3)
-                        .min(available_ranges.max(1)) as usize;
-                    let window_blocks = blocks_per_range
-                        .saturating_mul(catchup_concurrency as u64);
+                        .min(available_ranges.max(1))
+                        as usize;
+                    let window_blocks = blocks_per_range.saturating_mul(catchup_concurrency as u64);
                     let to_block = current_block
                         .saturating_add(window_blocks.saturating_sub(1))
                         .min(latest_block);
                     let scan_started = std::time::Instant::now();
                     info!(
                         concurrency = catchup_concurrency,
-                        "[Rust Indexer] Scanning blocks {} -> {}",
-                        current_block,
-                        to_block
+                        "[Rust Indexer] Scanning blocks {} -> {}", current_block, to_block
                     );
 
                     if !acquire_worker_lease(&pool, chain_id, "events").await? {
@@ -238,7 +251,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "INDEXER_CATCHUP_MIN_INTERVAL_MS",
                                     1_000,
                                 ));
-                                if let Some(remaining) = minimum_interval.checked_sub(scan_started.elapsed()) {
+                                if let Some(remaining) =
+                                    minimum_interval.checked_sub(scan_started.elapsed())
+                                {
                                     tokio::time::sleep(remaining).await;
                                 }
                             }
@@ -305,86 +320,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 let confirmed_block = latest_block.saturating_sub(indexer_confirmations);
-                if confirmed_block >= last_price_block.saturating_add(price_interval_blocks) {
-                    let valuation_block = latest_block.saturating_sub(indexer_confirmations);
-                    if valuation_block > 0 && acquire_worker_lease(&pool, chain_id, "prices").await? {
-                        if !rpc_health
-                            .entry(circuit_key("prices", using_secondary))
-                            .or_default()
-                            .can_request()
-                        {
-                            release_worker_lease(&pool, chain_id, "prices").await?;
-                            continue;
-                        }
-                        let worker_timeout =
-                            Duration::from_secs(configured_u64("INDEXER_RPC_TIMEOUT_SECS", 30));
-                        let prices_owner = lease_owner("prices");
-                        match tokio::time::timeout(
-                            worker_timeout,
-                            run_hourly_valuation_tick(
-                                &pool,
-                                &provider,
-                                registry_addr,
-                                chain_id,
-                                valuation_block,
-                                &prices_owner,
-                            ),
-                        )
-                        .await
-                        {
-                            Ok(Ok(())) => {
-                                rpc_health
-                                    .entry(circuit_key("prices", using_secondary))
-                                    .or_default()
-                                    .success();
-                                last_price_block = valuation_block;
-                                if !renew_worker_lease(&pool, chain_id, "prices").await? {
-                                    return Err(
-                                        "price lease was lost after atomic checkpoint commit"
-                                            .into(),
-                                    );
-                                }
-                                release_worker_lease(&pool, chain_id, "prices").await?;
-                            }
-                            Ok(Err(e)) => {
-                                rpc_health
-                                    .entry(circuit_key("prices", using_secondary))
-                                    .or_default()
-                                    .failure();
-                                record_worker_failure(&pool, chain_id, "prices", &e.to_string())
-                                    .await?;
-                                if let Some(secondary) = secondary_rpc_url.as_ref() {
-                                    if let Ok(candidate) =
-                                        Provider::<Http>::try_from(secondary.clone())
-                                    {
-                                        provider = Arc::new(candidate);
-                                        using_secondary = true;
-                                        next_primary_probe = std::time::Instant::now()
-                                            + Duration::from_secs(configured_u64(
-                                                "INDEXER_RPC_CIRCUIT_COOLDOWN_SECS",
-                                                30,
-                                            ));
-                                    }
-                                }
-                                release_worker_lease(&pool, chain_id, "prices").await?;
-                                error!("[Hourly Valuation Error] Tick failed: {:?}", e);
-                            }
-                            Err(e) => {
-                                rpc_health
-                                    .entry(circuit_key("prices", using_secondary))
-                                    .or_default()
-                                    .failure();
-                                let message = format!(
-                                    "price worker request timed out after {}s",
-                                    worker_timeout.as_secs()
-                                );
-                                record_worker_failure(&pool, chain_id, "prices", &message).await?;
-                                release_worker_lease(&pool, chain_id, "prices").await?;
-                                warn!(error = ?e, "price worker timeout; preserving prior observations");
-                            }
-                        }
-                    }
-                }
                 if confirmed_block >= last_reconciliation_block.saturating_add(150)
                     && current_block > confirmed_block
                 {
@@ -476,6 +411,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => {
                 rpc_failure_count = rpc_failure_count.saturating_add(1);
+                warn!(provider = provider_name(using_secondary), error = %e, failure_count = rpc_failure_count, "event worker head read failed");
                 if let Some(secondary) = secondary_rpc_url.as_ref() {
                     if let Ok(candidate) = Provider::<Http>::try_from(secondary.clone()) {
                         warn!(

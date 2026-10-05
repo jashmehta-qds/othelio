@@ -1,13 +1,13 @@
 # Stage 1: Build stage
-FROM rust:alpine as builder
+FROM rust:alpine AS builder
 
 RUN apk add --no-cache build-base openssl-dev pkgconfig musl-dev
 
 WORKDIR /app
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
-RUN cargo build --release
+RUN cargo build --release --locked
 
 # Stage 2: Runtime stage
 FROM alpine:latest
