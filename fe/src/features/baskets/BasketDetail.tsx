@@ -331,7 +331,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
             <div className="target-allocation-assets">
               {targetAllocation.map((holding) => (
                 <div className="target-allocation-chip" key={holding.address ?? holding.symbol}>
-                  <StockLogo symbol={holding.symbol} size={22} />
+                  <StockLogo symbol={holding.symbol} address={holding.address} size={22} />
                   <span>{holding.symbol}</span>
                   <strong>{holding.target.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%</strong>
                 </div>
@@ -378,7 +378,7 @@ export function BasketDetail({ basket: fallbackBasket, initialAction = null }: {
                   return (
                     <tr key={h.symbol} style={{ borderBottom: "1px solid var(--line)" }}>
                       <td style={{ padding: "12px 16px", fontWeight: 600, display: "flex", alignItems: "center", gap: "10px" }}>
-                        <StockLogo symbol={h.symbol} size={24} />
+                        <StockLogo symbol={h.symbol} address={h.address} size={24} />
                         <div>
                           <span>{h.name}</span>
                           <small style={{ display: "block", color: "var(--ink-3)", fontSize: "11px", fontWeight: 400 }}>{h.symbol}</small>

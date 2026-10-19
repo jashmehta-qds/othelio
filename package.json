@@ -22,6 +22,7 @@
     "dev:reset:fork": "docker compose -f docker-compose.fork.yml down --volumes --remove-orphans && npm run dev:chain:fork",
     "seed:anvil": "node scripts/seed-anvil-pools.js",
     "fund:wallet": "./scripts/fund-local-wallet.sh",
+    "db:compact-nav": "npm run compact:nav -w @othelio/backend",
     "dev:backend": "npm run dev -w @othelio/backend",
     "dev:fe": "npm run dev -w @othelio/fe",
     "build": "npm run build -w @othelio/shared && npm run build -w @othelio/fe && npm run build -w @othelio/backend",

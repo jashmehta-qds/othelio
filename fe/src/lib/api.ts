@@ -1,6 +1,6 @@
 import type { ExecutionPlan } from '@/types/shared';
 
-export type PriceReferenceWarning = {
+export type StalePriceReferenceWarning = {
   code: 'STALE_PRICE_REFERENCE';
   lastPriceReferenceAt: string;
   assets: Array<{
@@ -9,6 +9,18 @@ export type PriceReferenceWarning = {
     ageSeconds: number;
   }>;
 };
+
+export type DustTradesSkippedWarning = {
+  code: 'DUST_TRADES_SKIPPED';
+  message: string;
+  assets: Array<{
+    assetAddress: string;
+    valueUsd: number;
+  }>;
+};
+
+export type QuoteWarning = StalePriceReferenceWarning | DustTradesSkippedWarning;
+export type PriceReferenceWarning = QuoteWarning;
 
 const localBackendUrl =
   typeof window === 'undefined'

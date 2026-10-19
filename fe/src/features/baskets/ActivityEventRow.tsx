@@ -122,15 +122,15 @@ function ActivityAllocation({ changes, sourceAmount }: { changes: ActivityAlloca
     </div>}
     {changes.map(({ assetAddress, previousWeightBps, weightBps }) => {
       const symbol = supportedAssets.find((asset) => asset.address?.toLowerCase() === assetAddress.toLowerCase())?.symbol ?? formatAddress(assetAddress);
-      const isNew = previousWeightBps === null && weightBps > 0;
+      const isNew = (previousWeightBps === null || previousWeightBps === 0) && weightBps > 0;
       const isExited = previousWeightBps !== null && weightBps === 0;
       return <div className={`activity-allocation-row${isNew ? " is-new" : isExited ? " is-exited" : ""}`} key={assetAddress.toLowerCase()}>
-        <StockLogo symbol={symbol} size={16} roundedFull />
+        <StockLogo symbol={symbol} address={assetAddress} size={16} roundedFull />
         <strong>{symbol}</strong>
-        {isNew || isExited
+        {previousWeightBps === null
           ? <strong className="activity-allocation-terminal">{formatAllocationPercent(weightBps)}</strong>
           : <span className="activity-allocation-change">
-            <span>{previousWeightBps === null ? "—" : formatAllocationPercent(previousWeightBps)}</span>
+            <span>{formatAllocationPercent(previousWeightBps)}</span>
             <span aria-hidden="true">→</span>
             <strong>{formatAllocationPercent(weightBps)}</strong>
           </span>}

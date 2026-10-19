@@ -1,12 +1,14 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { addressSchema, chainIdSchema, CONTRACT_B20_TOKENS } from '@othelio/shared';
-import { createPortfolioOnlyCapabilities, BasketDetail, BasketSummary, PortfolioOverview, Freshness, Holding, ActivityEvent, basketDetailSchema, basketSummarySchema, portfolioOverviewSchema, assetCatalogItemSchema, activityPageSchema } from '@othelio/shared';
+import { createPortfolioOnlyCapabilities, BasketDetail, BasketSummary, PortfolioOverview, Freshness, Holding, ActivityEvent, AssetCatalogItem, basketDetailSchema, basketSummarySchema, portfolioOverviewSchema, assetCatalogItemSchema, activityPageSchema } from '@othelio/shared';
 import { DatabaseService } from '../database/database.service';
 import { BasketQuotePlannerService, BasketQuoteRequest } from './basket-quote-planner.service';
 import { LendingEventRequest, LendingEventService } from './lending-event.service';
+import { CoinbaseTokenMetadataService } from './coinbase-token-metadata.service';
 
 @Injectable()
 export class BasketsService {
+  private readonly coinbaseMetadata = new CoinbaseTokenMetadataService();
   private readonly readCache = new Map<string, { expiresAt: number; value: unknown }>();
   private readonly readCacheTtlMs = 15_000;
   constructor(
@@ -24,7 +26,7 @@ export class BasketsService {
     return entry.value as T;
   }
 
-  private putCached(key: string, value: unknown) {
+  private putCached<T>(key: string, value: T): T {
     this.readCache.set(key, { expiresAt: Date.now() + this.readCacheTtlMs, value });
     return value;
   }
@@ -381,26 +383,26 @@ export class BasketsService {
          FROM baskets
          WHERE chain_id = $1 AND controller = $2
        ),
-       eligible_observations AS (
+       latest_before_window AS (
+         SELECT DISTINCT ON (bno.basket_address)
+           bno.basket_address, bno.block_number, bno.block_timestamp AS observed_at, bno.nav_usdc
+         FROM basket_nav_observations bno
+         JOIN owner_baskets ob ON ob.address = bno.basket_address
+         WHERE bno.chain_id = $1
+           AND bno.valuation_status = 'COMPLETE'
+           AND bno.nav_usdc IS NOT NULL
+           AND bno.block_timestamp < $3
+         ORDER BY bno.basket_address, bno.block_timestamp DESC, bno.block_number DESC
+       ),
+       observation_candidates AS (
          SELECT bno.basket_address, bno.block_number, bno.block_timestamp AS observed_at, bno.nav_usdc
          FROM basket_nav_observations bno
          JOIN owner_baskets ob ON ob.address = bno.basket_address
          WHERE bno.chain_id = $1
            AND bno.valuation_status = 'COMPLETE'
            AND bno.nav_usdc IS NOT NULL
+           AND bno.block_timestamp >= $3
            AND bno.block_timestamp <= NOW()
-       ),
-       latest_before_window AS (
-         SELECT DISTINCT ON (basket_address)
-           basket_address, block_number, observed_at, nav_usdc
-         FROM eligible_observations
-         WHERE observed_at < $3
-         ORDER BY basket_address, observed_at DESC, block_number DESC
-       ),
-       observation_candidates AS (
-         SELECT basket_address, block_number, observed_at, nav_usdc
-         FROM eligible_observations
-         WHERE observed_at >= $3
          UNION ALL
          SELECT basket_address, block_number, observed_at, nav_usdc
          FROM latest_before_window
@@ -416,11 +418,14 @@ export class BasketsService {
        FROM timeline
        JOIN owner_baskets ob ON TRUE
        JOIN LATERAL (
-         SELECT eo.nav_usdc, eo.block_number
-         FROM eligible_observations eo
-         WHERE eo.basket_address = ob.address
-           AND eo.observed_at <= timeline.observed_at
-         ORDER BY eo.observed_at DESC, eo.block_number DESC
+         SELECT bno.nav_usdc, bno.block_number
+         FROM basket_nav_observations bno
+         WHERE bno.chain_id = $1
+           AND bno.basket_address = ob.address
+           AND bno.valuation_status = 'COMPLETE'
+           AND bno.nav_usdc IS NOT NULL
+           AND bno.block_timestamp <= timeline.observed_at
+         ORDER BY bno.block_timestamp DESC, bno.block_number DESC
          LIMIT 1
        ) latest ON TRUE
        GROUP BY timeline.observed_at
@@ -813,73 +818,14 @@ export class BasketsService {
     return { data: result.rows };
   }
 
-  private readonly assetPricesCache = new Map<number, { timestamp: number; data: any[] }>();
-  private readonly ASSET_PRICE_CACHE_TTL_MS = 60 * 1000; // 1-minute TTL
-
   async getAssets(chainIdInput?: string | number) {
-    return this.getIndexedAssets(chainIdInput);
-    /* compatibility implementation is retained for callers using this service directly */
-    const chainId = chainIdInput ? Number(chainIdInput) : Number(process.env.CHAIN_ID || 8453);
-    const now = Date.now();
-    const cached = this.assetPricesCache.get(chainId);
-    if (cached !== undefined) {
-      const cachedEntry = cached!;
-      if (now - cachedEntry.timestamp < this.ASSET_PRICE_CACHE_TTL_MS) return { data: cachedEntry.data };
-    }
-
-    const staticAssets = [
-      { symbol: 'AAPLc', name: 'Apple Inc', address: '0xb200000000000000000000C2e324d24d7eEcd1fb', priceFeed: '0x787f13dEa48Db0897CbCDD985de77809D837F988', defaultPrice: 224.50, color: '#5371d9', isCoinbaseB20: true },
-      { symbol: 'AMZNc', name: 'Amazon.com Inc', address: '0xb200000000000000000000d9192b6B456483C2E8', priceFeed: '0x06A8E4b3aBB3B7543d8396FB2B763d22820cB295', defaultPrice: 180.00, color: '#e6a663', isCoinbaseB20: true },
-      { symbol: 'GOOGLc', name: 'Alphabet Inc', address: '0xb2000000000000000000002D0BA3164cc74f58B7', priceFeed: '0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2', defaultPrice: 175.00, color: '#6f8cff', isCoinbaseB20: true },
-      { symbol: 'METAc', name: 'Meta Platforms', address: '0xb2000000000000000000008bC8786B856E61707C', priceFeed: '0x6526aE6797A76123638b863AeE4dD27Ba4E4b27D', defaultPrice: 500.00, color: '#89b6f8', isCoinbaseB20: true },
-      { symbol: 'MSFTc', name: 'Microsoft Corp', address: '0xb200000000000000000000Ab99cFa739E253872B', priceFeed: '0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c', defaultPrice: 415.20, color: '#71bfac', isCoinbaseB20: true },
-      { symbol: 'MSTRc', name: 'Strategy Inc', address: '0xb2000000000000000000004884b426556b92883d', priceFeed: '0xB3cE282CD188b35DA0E38D8Bc7d58e33173D202a', defaultPrice: 135.00, color: '#d595db', isCoinbaseB20: true },
-      { symbol: 'NVDAc', name: 'NVIDIA Corp', address: '0xb20000000000000000000078ee7ce2fE4908108C', priceFeed: '0x04689a41629776563E6822F76f2e57D148d28513', defaultPrice: 125.40, color: '#8aa4ff', isCoinbaseB20: true },
-      { symbol: 'USDC', name: 'USD Coin', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', priceFeed: '0x0000000000000000000000000000000000000000', defaultPrice: 1.00, color: '#8daed0', isCoinbaseB20: false },
-    ];
-
-    const livePriceMap = new Map<string, number>();
-    try {
-      const priceRows = await this.db.query(
-        `SELECT DISTINCT ON (LOWER(asset_address))
-           LOWER(asset_address) AS asset_address,
-           price_usd_e8
-         FROM asset_price_observations
-         WHERE chain_id = $1
-         ORDER BY LOWER(asset_address), observed_at DESC`,
-        [chainId],
-      );
-      for (const row of priceRows.rows) {
-        if (row.price_usd_e8) {
-          livePriceMap.set(row.asset_address.toLowerCase(), Number(row.price_usd_e8) / 1e8);
-        }
-      }
-    } catch {
-      // Fallback to default prices if DB query is unavailable
-    }
-
-    const data = staticAssets.map((asset) => {
-      const livePrice = livePriceMap.get(asset.address.toLowerCase());
-      const price = livePrice !== undefined && livePrice > 0 ? livePrice : asset.defaultPrice;
-      return {
-        symbol: asset.symbol,
-        name: asset.name,
-        address: asset.address,
-        priceFeed: asset.priceFeed,
-        price,
-        color: asset.color,
-        isCoinbaseB20: asset.isCoinbaseB20,
-      };
-    });
-
-    this.assetPricesCache.set(chainId, { timestamp: now, data });
-    return { data };
+    return this.getAssetCatalog(chainIdInput);
   }
 
-  private async getIndexedAssets(chainIdInput?: string | number) {
+  private async getAssetCatalog(chainIdInput?: string | number) {
     const chainId = chainIdSchema.parse(String(chainIdInput ?? process.env.CHAIN_ID ?? '8453'));
     const key = `assets:${chainId}`;
-    const cached = this.cached<unknown[]>(key);
+    const cached = this.cached<AssetCatalogItem[]>(key);
     if (cached) return { data: cached };
     const result = await this.db.query(`SELECT DISTINCT ON (LOWER(apo.asset_address))
       $1::bigint AS chain_id, LOWER(apo.asset_address) AS asset_address, NULL::text AS symbol, NULL::text AS name,
@@ -888,8 +834,39 @@ export class BasketsService {
       FROM asset_price_observations apo
       LEFT JOIN indexer_worker_state worker ON worker.chain_id=apo.chain_id AND worker.worker_name='prices'
       WHERE apo.chain_id=$1 ORDER BY LOWER(apo.asset_address), apo.block_number DESC`, [chainId]);
-    const data = result.rows.map((row) => { const metadata = this.assetMetadata(String(row.asset_address)); return assetCatalogItemSchema.parse({ chainId, assetAddress: String(row.asset_address).trim().toLowerCase(), symbol: metadata?.symbol ?? row.symbol, name: metadata?.name ?? row.name, decimals: metadata?.decimals ?? (row.decimals == null ? null : Number(row.decimals)), priceUsdE8: row.price_usd_e8 == null ? null : String(row.price_usd_e8), priceBlockNumber: row.block_number == null ? null : Number(row.block_number), priceBlockHash: row.block_hash ?? null, priceObservedAt: row.observed_at ? this.iso(row.observed_at) : null, status: row.status }); });
-    return { data: this.putCached(key, data) };
+    const coinbase = await this.coinbaseMetadata.getAll();
+    const projectAsset = (row: Record<string, any>): AssetCatalogItem => {
+      const address = String(row.asset_address).trim().toLowerCase();
+      const fallback = this.assetMetadata(address);
+      const metadata = fallback ? coinbase.get(address) : null;
+      return assetCatalogItemSchema.parse({
+        chainId, assetAddress: address,
+        symbol: metadata?.symbol ?? fallback?.symbol ?? row.symbol,
+        name: metadata?.name ?? fallback?.name ?? row.name,
+        decimals: metadata?.decimals ?? fallback?.decimals ?? (row.decimals == null ? null : Number(row.decimals)),
+        isin: metadata?.isin ?? null,
+        description: metadata?.description ?? null,
+        iconUrl: metadata?.iconUrl ?? null,
+        multiplier: metadata?.multiplier ?? null,
+        coinbaseFirstMintDate: metadata?.firstMintDate ?? null,
+        coinbaseTotalSupply: metadata?.totalSupply ?? null,
+        coinbaseNavPrice: metadata?.navPrice ?? null,
+        coinbaseNavPriceUpdatedAt: metadata?.navPriceUpdatedAt ?? null,
+        priceUsdE8: row.price_usd_e8 == null ? null : String(row.price_usd_e8),
+        priceBlockNumber: row.block_number == null ? null : Number(row.block_number),
+        priceBlockHash: row.block_hash ?? null,
+        priceObservedAt: row.observed_at ? this.iso(row.observed_at) : null,
+        status: row.status,
+        tradeable: row.status !== 'UNAVAILABLE' && row.price_usd_e8 != null,
+      });
+    };
+    const indexed = result.rows.map(projectAsset);
+    const indexedAddresses = new Set(indexed.map((asset) => asset.assetAddress));
+    // Show known B20 identities without writing fictitious oracle observations.
+    const staged = CONTRACT_B20_TOKENS
+      .filter((address) => !indexedAddresses.has(address.toLowerCase()))
+      .map((asset_address) => projectAsset({ asset_address, status: 'UNAVAILABLE' }));
+    return { data: this.putCached(key, [...indexed, ...staged]) };
   }
 
   async quoteSwaps(basketAddress: string, body: BasketQuoteRequest) {

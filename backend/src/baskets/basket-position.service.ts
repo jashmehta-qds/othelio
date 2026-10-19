@@ -105,6 +105,7 @@ export class BasketPositionService {
   async getIndexedPositionSnapshot(
     basketAddressInput: string,
     chainIdInput: string | number,
+    additionalAssetInputs: string[] = [],
   ): Promise<BasketPositionResponse> {
     let basketAddress: Address;
     let chainId: number;
@@ -114,7 +115,14 @@ export class BasketPositionService {
     } catch {
       throw new BadRequestException('basketAddress and chainId must be valid EVM values.');
     }
-    const snapshot = await this.lastKnownSnapshot(chainId, basketAddress, 'INDEXED_SNAPSHOT');
+    const additionalAssets = additionalAssetInputs.map((asset) => {
+      try {
+        return addressSchema.parse(asset).toLowerCase() as Address;
+      } catch {
+        throw new BadRequestException('Every additional asset must be a valid EVM address.');
+      }
+    });
+    const snapshot = await this.lastKnownSnapshot(chainId, basketAddress, 'INDEXED_SNAPSHOT', additionalAssets);
     if (snapshot) return { data: snapshot, capabilities: this.resolveRecoveryCapabilities(chainId, snapshot) };
     const unavailable = this.unavailableSnapshot(chainId, basketAddress, 'INDEXED_SNAPSHOT_UNAVAILABLE');
     return { data: unavailable, capabilities: this.getCapabilities(chainId) };
@@ -182,9 +190,23 @@ export class BasketPositionService {
         blockNumber: Number(row.block_number),
         feedUpdatedAt: row.feed_updated_at == null ? null : new Date(row.feed_updated_at),
       }]));
+      const configuredPriceMaxLag = process.env.PRICE_SNAPSHOT_MAX_LAG_BLOCKS
+        ? Number(process.env.PRICE_SNAPSHOT_MAX_LAG_BLOCKS)
+        : null;
+      const configuredMaxAge = Number(process.env.MAX_PRICE_FEED_AGE_SECS ?? 2 * 3_600);
+      const maxFeedAgeMs = (Number.isFinite(configuredMaxAge) ? configuredMaxAge : 2 * 3_600) * 1_000;
       const unavailableAssets = priceAssets.filter((asset) => {
         const price = byAsset.get(asset);
-        return !price || !price.feedUpdatedAt || !Number.isFinite(price.feedUpdatedAt.getTime()) || head - price.blockNumber > 10;
+        if (!price || !price.feedUpdatedAt || !Number.isFinite(price.feedUpdatedAt.getTime())) {
+          return true;
+        }
+        if (Date.now() - price.feedUpdatedAt.getTime() > maxFeedAgeMs) {
+          return true;
+        }
+        if (configuredPriceMaxLag !== null && head - price.blockNumber > configuredPriceMaxLag) {
+          return true;
+        }
+        return false;
       });
       if (unavailableAssets.length > 0) {
         throw new ConflictException({
@@ -269,23 +291,30 @@ export class BasketPositionService {
     } catch {
       throw new BadRequestException('basketAddress and chainId must be valid EVM values.');
     }
+    const additionalAssets = additionalAssetInputs.map((asset) => {
+      try {
+        return addressSchema.parse(asset).toLowerCase() as Address;
+      } catch {
+        throw new BadRequestException('Every additional asset must be a valid EVM address.');
+      }
+    });
     const client = this.getClient(chainId);
 
     if (!client) {
-      return this.withLastKnownSnapshot(chainId, basketAddress, `RPC_UNCONFIGURED:${chainId}`);
+      return this.withLastKnownSnapshot(chainId, basketAddress, `RPC_UNCONFIGURED:${chainId}`, additionalAssets);
     }
 
     let block: Awaited<ReturnType<PositionClient['getBlock']>>;
     try {
       block = await client.getBlock({ blockTag: 'latest' });
     } catch {
-      return this.withLastKnownSnapshot(chainId, basketAddress, 'RPC_BLOCK_UNAVAILABLE');
+      return this.withLastKnownSnapshot(chainId, basketAddress, 'RPC_BLOCK_UNAVAILABLE', additionalAssets);
     }
 
     const blockNumber = block.number;
     const blockHash = block.hash;
     if (blockNumber === null || blockHash === null) {
-      return this.withLastKnownSnapshot(chainId, basketAddress, 'RPC_BLOCK_NOT_CANONICAL');
+      return this.withLastKnownSnapshot(chainId, basketAddress, 'RPC_BLOCK_NOT_CANONICAL', additionalAssets);
     }
 
     const basketCode = await client.getBytecode({ address: basketAddress, blockNumber }).catch(() => undefined);
@@ -297,13 +326,6 @@ export class BasketPositionService {
 
     const issues: string[] = [];
     const configuredAssets = await this.getConfiguredAssets(chainId, basketAddress, blockNumber, issues);
-    const additionalAssets = additionalAssetInputs.map((asset) => {
-      try {
-        return addressSchema.parse(asset).toLowerCase() as Address;
-      } catch {
-        throw new BadRequestException('Every additional asset must be a valid EVM address.');
-      }
-    });
     // Aave remains write-disabled in the product UI, but existing positions must
     // be discovered accurately so recovery actions can later be enabled safely.
     const poolAddress = AAVE_V3_POOLS[chainId];
@@ -543,14 +565,24 @@ export class BasketPositionService {
     });
   }
 
-  private async withLastKnownSnapshot(chainId: number, basketAddress: Address, issue: string): Promise<BasketPositionResponse> {
-    const snapshot = await this.lastKnownSnapshot(chainId, basketAddress, issue);
+  private async withLastKnownSnapshot(
+    chainId: number,
+    basketAddress: Address,
+    issue: string,
+    additionalAssets: Address[] = [],
+  ): Promise<BasketPositionResponse> {
+    const snapshot = await this.lastKnownSnapshot(chainId, basketAddress, issue, additionalAssets);
     if (snapshot) return { data: snapshot, capabilities: this.resolveRecoveryCapabilities(chainId, snapshot) };
     const unavailable = this.unavailableSnapshot(chainId, basketAddress, issue);
     return { data: unavailable, capabilities: this.getCapabilities(chainId) };
   }
 
-  private async lastKnownSnapshot(chainId: number, basketAddress: Address, issue: string): Promise<PositionSnapshot | null> {
+  private async lastKnownSnapshot(
+    chainId: number,
+    basketAddress: Address,
+    issue: string,
+    additionalAssets: Address[] = [],
+  ): Promise<PositionSnapshot | null> {
     try {
       const result = await this.db.query(
         `WITH latest_nav AS (
@@ -592,6 +624,65 @@ export class BasketPositionService {
           liquidAmountBaseUnits: String(row.quantity_base_units),
           priceUsdE8: row.price_usd_e8 === null ? null : String(row.price_usd_e8),
         }));
+
+      if (additionalAssets.length > 0) {
+        const presentAssets = new Set(tokens.map((token) => token.assetAddress.toLowerCase()));
+        const missingAdditionalAssets = Array.from(
+          new Set(
+            additionalAssets
+              .map((asset) => asset.toLowerCase())
+              .filter((asset) => !presentAssets.has(asset)),
+          ),
+        );
+
+        if (missingAdditionalAssets.length > 0) {
+          const priceRows = await this.db.query(
+            `SELECT DISTINCT ON (LOWER(asset_address))
+               LOWER(asset_address) AS asset_address,
+               price_usd_e8
+             FROM asset_price_observations
+             WHERE chain_id = $1 AND LOWER(asset_address) = ANY($2::text[])
+             ORDER BY LOWER(asset_address), block_number DESC, observed_at DESC, block_hash DESC`,
+            [chainId, missingAdditionalAssets],
+          );
+          const pricesByAsset = new Map<string, string | null>(
+            priceRows.rows.map((row) => [
+              String(row.asset_address).trim().toLowerCase(),
+              row.price_usd_e8 == null ? null : String(row.price_usd_e8),
+            ]),
+          );
+
+          const decimalsRows = await this.db.query(
+            `SELECT DISTINCT ON (LOWER(asset_address))
+               LOWER(asset_address) AS asset_address,
+               decimals
+             FROM basket_positions
+             WHERE chain_id = $1 AND LOWER(asset_address) = ANY($2::text[])
+             ORDER BY LOWER(asset_address), block_number DESC`,
+            [chainId, missingAdditionalAssets],
+          );
+          const decimalsByAsset = new Map<string, number>(
+            decimalsRows.rows.map((row) => [
+              String(row.asset_address).trim().toLowerCase(),
+              Number(row.decimals),
+            ]),
+          );
+
+          for (const missingAsset of missingAdditionalAssets) {
+            let decimals = decimalsByAsset.get(missingAsset);
+            if (decimals === undefined) {
+              decimals = missingAsset === BASE_USDC_ADDRESS.toLowerCase() ? 6 : 8;
+            }
+            tokens.push({
+              assetAddress: missingAsset,
+              decimals,
+              liquidAmountBaseUnits: '0',
+              priceUsdE8: pricesByAsset.get(missingAsset) ?? null,
+            });
+          }
+        }
+      }
+
       const navUsdE8 = tokens.reduce((total, token) => {
         if (token.priceUsdE8 === null) return total;
         return total + (BigInt(token.liquidAmountBaseUnits ?? '0') * BigInt(token.priceUsdE8)) / (BigInt(10) ** BigInt(token.decimals));

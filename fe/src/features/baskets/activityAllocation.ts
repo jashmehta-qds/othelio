@@ -16,7 +16,7 @@ export function touchedTargetWeights(payload: ActivityAllocationPayload): Activi
   const touched = new Set([...sold, ...bought].map((address) => String(address).toLowerCase()));
   if (!Array.isArray(payload.targetWeights)) return [];
 
-  return payload.targetWeights.filter((item): item is ActivityTargetWeight =>
+  const touchedTargets = payload.targetWeights.filter((item): item is ActivityTargetWeight =>
     Boolean(
       item
       && typeof item === "object"
@@ -26,6 +26,22 @@ export function touchedTargetWeights(payload: ActivityAllocationPayload): Activi
       && typeof item.weightBps === "number"
       && touched.has(item.assetAddress.toLowerCase()),
     ));
+
+  const foundAddresses = new Set(touchedTargets.map((t) => t.assetAddress.toLowerCase()));
+  const exitedTargets: ActivityTargetWeight[] = [];
+
+  for (const soldAsset of sold) {
+    const addr = String(soldAsset).toLowerCase();
+    if (!foundAddresses.has(addr)) {
+      foundAddresses.add(addr);
+      exitedTargets.push({
+        assetAddress: String(soldAsset),
+        weightBps: 0,
+      });
+    }
+  }
+
+  return [...exitedTargets, ...touchedTargets];
 }
 
 export function allocationChangesForActivity(
@@ -52,6 +68,6 @@ export function allocationChangesForActivity(
       break;
     }
 
-    return { ...target, previousWeightBps };
+    return { ...target, previousWeightBps: previousWeightBps ?? (olderPayloads.length > 0 ? 0 : null) };
   });
 }

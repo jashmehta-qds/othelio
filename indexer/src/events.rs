@@ -5,7 +5,7 @@ use crate::accounting::{
 };
 use crate::lending::index_lending_event;
 use crate::oracle::{save_indexed_target_weights, write_event_valuation_checkpoint};
-use crate::utils::fmt_addr;
+use crate::utils::{configured_u64, fmt_addr};
 use ethers::abi::RawLog;
 use ethers::prelude::*;
 use ethers::providers::{Http, Provider};
@@ -133,6 +133,15 @@ pub async fn project_position_deltas(
         .fetch_optional(&mut **tx)
         .await?;
         let Some((quantity, decimals)) = prior else {
+            if *direction > 0 {
+                let decimals: i16 = if asset.to_lowercase() == "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" {
+                    6
+                } else {
+                    8
+                };
+                planned.push((asset.clone(), *amount, decimals));
+                continue;
+            }
             issue = Some(format!(
                 "{} delta has no prior absolute position for {}",
                 event_type, asset
@@ -1176,6 +1185,19 @@ pub async fn process_block_range(
     .bind(&completed_hash)
     .execute(&mut *range_tx)
     .await?;
+
+    let retention = configured_u64("CHECKPOINT_RETENTION_BLOCKS", 2000);
+    let prune_interval = configured_u64("CHECKPOINT_PRUNE_INTERVAL_BLOCKS", 100);
+    if prune_interval > 0 && retention > 0 && to_block % prune_interval == 0 && to_block > retention {
+        let prune_cutoff = (to_block - retention) as i64;
+        sqlx::query(
+            "DELETE FROM indexer_block_checkpoints WHERE chain_id = $1 AND block_number < $2",
+        )
+        .bind(chain_id)
+        .bind(prune_cutoff)
+        .execute(&mut *range_tx)
+        .await?;
+    }
     sqlx::query("UPDATE indexer_state SET next_block=GREATEST(next_block,$1),updated_at=NOW() WHERE chain_id=$2")
         .bind(to_block as i64 + 1).bind(chain_id).execute(&mut *range_tx).await?;
     let updated = sqlx::query("UPDATE indexer_worker_state SET next_block=GREATEST(next_block,$1),last_success_block=$2,last_success_hash=$3,last_attempt_at=NOW(),last_success_at=NOW(),consecutive_failures=0,last_error=NULL,updated_at=NOW() WHERE chain_id=$4 AND worker_name='events' AND lease_owner=$5 AND lease_expires_at > NOW()")

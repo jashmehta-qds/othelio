@@ -418,6 +418,18 @@ pub async fn reconcile_accounting_for_basket(
          FROM latest_positions lp WHERE acb.chain_id=$1 AND acb.basket_address=$2 AND acb.asset_address=lp.asset_address
            AND acb.accounting_status='COMPLETE' AND acb.quantity_base_units <> lp.quantity_base_units"
     ).bind(chain_id).bind(basket).execute(&mut **tx).await?;
+    sqlx::query(
+        "WITH latest_positions AS (
+           SELECT DISTINCT ON (asset_address) asset_address, quantity_base_units
+           FROM basket_positions WHERE chain_id=$1 AND basket_address=$2
+           ORDER BY asset_address, block_number DESC, position_version DESC,
+                    event_log_index DESC, event_tx_hash DESC
+         )
+         UPDATE asset_cost_basis acb SET accounting_status='COMPLETE', issue=NULL, updated_at=NOW()
+         FROM latest_positions lp WHERE acb.chain_id=$1 AND acb.basket_address=$2 AND acb.asset_address=lp.asset_address
+           AND acb.accounting_status='INCOMPLETE' AND acb.issue='accounting quantity does not reconcile to latest indexed balance'
+           AND acb.quantity_base_units = lp.quantity_base_units"
+    ).bind(chain_id).bind(basket).execute(&mut **tx).await?;
     Ok(())
 }
 

@@ -8,6 +8,7 @@ import {DeployLocalOthelio, LocalMockAerodromeFactory} from "../script/local/Dep
 import {OthelioAerodromeRouteRegistry} from "../src/dex/OthelioAerodromeRouteRegistry.sol";
 import {OthelioAssetRegistry} from "../src/registry/OthelioAssetRegistry.sol";
 import {TokenizedAssetConstants} from "../src/constants/TokenizedAssetConstants.sol";
+import {OthelioDeploymentAssets} from "../script/OthelioDeploymentAssets.sol";
 
 contract DeployOthelioIsolationTest is Test {
     address private constant BASE_AAVE_POOL = 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5;
@@ -67,5 +68,18 @@ contract DeployOthelioIsolationTest is Test {
         routeRegistry.acceptOwnership();
         assertEq(registry.owner(), governance);
         assertEq(routeRegistry.owner(), governance);
+    }
+
+    function testDeploymentManifestConsistency() public pure {
+        (address[] memory tokens, address[] memory feeds) = OthelioDeploymentAssets.tokensAndBaseFeeds();
+        assertEq(tokens.length, 10, "Unexpected token count");
+        assertEq(feeds.length, 10, "Unexpected feed count");
+        for (uint256 i = 0; i < tokens.length; i++) {
+            assertTrue(tokens[i] != address(0), "Zero token address");
+            assertTrue(feeds[i] != address(0), "Zero feed address");
+            assertEq(OthelioDeploymentAssets.baseTokenDecimals(i), 8, "Unexpected token decimals");
+            assertEq(OthelioDeploymentAssets.baseUsdcTickSpacing(i), 10, "Unexpected tick spacing");
+            assertTrue(OthelioDeploymentAssets.localPriceUsdE8(i) > 0, "Non-positive price");
+        }
     }
 }

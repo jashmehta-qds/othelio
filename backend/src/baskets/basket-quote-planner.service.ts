@@ -41,6 +41,13 @@ const BASKET_WITHDRAW_IN_KIND_V3_ABI = parseAbi([
   'function withdrawInKind(address safe,address recipient,address[] tokens,uint256[] amounts,address[] remainingTokens) external returns (uint256 remainingListedAssetsNavUsdc)',
 ]);
 const BASE_USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
+export const MIN_REBALANCE_TRADE_VALUE_USD_E8 = 5_000_000n; // $0.05 minimum rebalance trade value
+
+export interface SkippedDustTrade {
+  assetAddress: Address;
+  symbol?: string;
+  valueUsd: number;
+}
 
 type Address = `0x${string}`;
 
@@ -189,7 +196,7 @@ export class BasketQuotePlannerService {
     const slippageBps = this.parseSlippage(body.slippageBps);
     const targetWeights = this.parseTargetWeights(body.targetWeights ?? body.holdings);
     const targetAssets = targetWeights.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'));
-    const { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId);
+    const { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId, targetAssets);
     const readiness = await this.positions.assertActionReadiness(chainId, basketAddress, [...targetAssets, ...snapshot.tokens.map((token) => token.assetAddress as Address)]);
     const spotCapability = capabilities.actions.SPOT_REBALANCE;
     if (spotCapability.availability === 'DISABLED') {
@@ -197,8 +204,11 @@ export class BasketQuotePlannerService {
     }
     this.assertUsableSnapshot(snapshot, basketAddress, chainId);
 
-    const { sells, buys, basketTokens } = this.computeNetTrades(snapshot, targetWeights);
+    const { sells, buys, basketTokens, skippedDustTrades } = this.computeNetTrades(snapshot, targetWeights);
     if (sells.length === 0 && buys.length === 0) {
+      if (skippedDustTrades.length > 0) {
+        throw new UnprocessableEntityException('The requested targets only produce dust adjustments (< $0.05), so no DEX swap is required.');
+      }
       throw new UnprocessableEntityException('The requested targets produce no executable rebalance trade.');
     }
 
@@ -438,13 +448,22 @@ export class BasketQuotePlannerService {
 
     const primaryRoute = trades[0];
 
+    const dustWarnings = skippedDustTrades.length > 0 ? [{
+      code: 'DUST_TRADES_SKIPPED',
+      message: `Skipped rebalance adjustments below $0.05 for: ${skippedDustTrades.map((t) => t.symbol ?? t.assetAddress).join(', ')}`,
+      assets: skippedDustTrades.map((t) => ({
+        assetAddress: t.assetAddress,
+        valueUsd: t.valueUsd,
+      })),
+    }] : [];
+
     return {
       success: true,
       executionAllowed: plan.simulation.status === 'SUCCEEDED',
       data: {
         plan,
         module: { address: moduleAddress, moduleVersion: 3, supportsBoundedExecution: true },
-        warnings: readiness.warnings,
+        warnings: [...readiness.warnings, ...dustWarnings],
         route: {
           provider: primaryRoute.provider,
           target: primaryRoute.target,
@@ -731,22 +750,39 @@ export class BasketQuotePlannerService {
     }
     const sells: NetTrade[] = [];
     const buys: NetTrade[] = [];
+    const skippedDustTrades: SkippedDustTrade[] = [];
     for (const token of snapshot.tokens) {
       const key = token.assetAddress.toLowerCase();
       const currentValue = currentValues.get(key) ?? 0n;
       const targetValue = (totalLiquidValueUsdE8 * BigInt(targetByAddress.get(key) ?? 0)) / 10_000n;
       if (currentValue === targetValue) continue;
       const valueDelta = currentValue - targetValue;
+      const absValueDelta = valueDelta < 0n ? -valueDelta : valueDelta;
+      if (absValueDelta < MIN_REBALANCE_TRADE_VALUE_USD_E8) {
+        if (absValueDelta > 0n) {
+          skippedDustTrades.push({
+            assetAddress: token.assetAddress as Address,
+            symbol: token.symbol,
+            valueUsd: Number(absValueDelta) / 1e8,
+          });
+        }
+        continue;
+      }
       const priceUsdE8 = BigInt(token.priceUsdE8!);
-      const amountBaseUnits = ((valueDelta < 0n ? -valueDelta : valueDelta) * (10n ** BigInt(token.decimals))) / priceUsdE8;
+      const amountBaseUnits = (absValueDelta * (10n ** BigInt(token.decimals))) / priceUsdE8;
       if (amountBaseUnits === 0n) continue;
       (valueDelta > 0n ? sells : buys).push({
         assetAddress: token.assetAddress as Address,
         amountBaseUnits,
-        valueUsdE8: valueDelta < 0n ? -valueDelta : valueDelta,
+        valueUsdE8: absValueDelta,
       });
     }
-    return { sells, buys, basketTokens: snapshot.tokens.map((token) => token.assetAddress as Address) };
+    return {
+      sells,
+      buys,
+      basketTokens: snapshot.tokens.map((token) => token.assetAddress as Address),
+      skippedDustTrades,
+    };
   }
 
   private assertUsableSnapshot(snapshot: PositionSnapshot, basketAddress: Address, chainId: number) {

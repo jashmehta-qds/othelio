@@ -144,7 +144,7 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     });
     if (!('rebalance' in response.data)) throw new Error('Expected a rebalance execution plan.');
 
-    expect(positions.getIndexedPositionSnapshot).toHaveBeenCalledWith(basket, 8453);
+    expect(positions.getIndexedPositionSnapshot).toHaveBeenCalledWith(basket, 8453, [overweight, underweight]);
     expect(positions.assertActionReadiness).toHaveBeenCalledWith(8453, basket, [overweight, underweight, overweight, underweight]);
     expect(dex.getBestQuote).toHaveBeenCalledWith(expect.objectContaining({
       chainId: 8453,
@@ -529,4 +529,41 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     expect(response.executionAllowed).toBe(true);
     expect(positions.getPositionSnapshot).toHaveBeenCalledWith(basket, 8453, [overweight, underweight]);
   });
+
+  it('skips dust adjustments under $0.05 and emits a warning', async () => {
+    // overweight has $1000, thirdAsset has $0.02 delta, underweight is $0
+    // Total = $1000.02
+    // target: overweight 5000 bps ($500), underweight 5000 bps ($500), thirdAsset 0 bps ($0)
+    // thirdAsset delta = $0.02 (< $0.05) -> should be skipped!
+    const { planner, dex } = makePlanner({
+      ...snapshot([
+        [overweight, '1000000000'], // $1000
+        [thirdAsset, '20000'],      // $0.02 (< $0.05)
+        [underweight, '0'],         // $0
+      ]),
+    });
+
+    const response = await planner.quoteSwaps(basket, {
+      action: 'rebalance',
+      chainId: 8453,
+      moduleAddress,
+      callerAddress: caller,
+      slippageBps: 100,
+      targetWeights: [
+        { assetAddress: overweight, targetWeightBps: 5000 },
+        { assetAddress: underweight, targetWeightBps: 5000 },
+        { assetAddress: thirdAsset, targetWeightBps: 0 },
+      ],
+    });
+
+    if (!('rebalance' in response.data)) throw new Error('Expected a rebalance execution plan.');
+    // Only overweight should be sold, thirdAsset (< $0.05) should be skipped
+    expect(response.data.rebalance.soldAssets).toEqual([overweight]);
+    expect(response.data.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'DUST_TRADES_SKIPPED',
+      }),
+    ]));
+  });
 });
+

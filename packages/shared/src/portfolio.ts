@@ -315,11 +315,20 @@ export const assetCatalogItemSchema = z.object({
   symbol: z.string().nullable(),
   name: z.string().nullable(),
   decimals: z.number().int().min(0).max(255).nullable(),
+  isin: z.string().nullable(),
+  description: z.string().nullable(),
+  iconUrl: z.string().url().nullable(),
+  multiplier: z.string().nullable(),
+  coinbaseFirstMintDate: z.string().datetime().nullable(),
+  coinbaseTotalSupply: z.string().nullable(),
+  coinbaseNavPrice: z.string().nullable(),
+  coinbaseNavPriceUpdatedAt: z.string().datetime().nullable(),
   priceUsdE8: baseUnitAmountSchema.nullable(),
   priceBlockNumber: z.number().int().nonnegative().nullable(),
   priceBlockHash: blockHashSchema.nullable(),
   priceObservedAt: z.string().datetime().nullable(),
   status: z.enum(["FRESH", "STALE", "DEGRADED", "UNAVAILABLE"]),
+  tradeable: z.boolean().optional(),
 });
 export type AssetCatalogItem = z.infer<typeof assetCatalogItemSchema>;
 

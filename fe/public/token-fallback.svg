@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Token">
+  <rect width="48" height="48" rx="12" fill="#292a27"/>
+  <circle cx="24" cy="24" r="14" fill="none" stroke="#eeeee7" stroke-width="2"/>
+  <path d="M17 24h14M24 17v14" stroke="#eeeee7" stroke-width="2" stroke-linecap="round"/>
+</svg>

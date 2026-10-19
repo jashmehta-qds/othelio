@@ -4,10 +4,10 @@ import { useAccount, useChainId, useReadContract, useWriteContract, useSendTrans
 import { decodeFunctionData, formatUnits, parseUnits } from "viem";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
-import { supportedAssets, depositBasket, withdrawBasket, getSlippageTolerance, type Basket } from "@/lib/baskets";
+import { supportedAssets, depositBasket, withdrawBasket, getSlippageTolerance, type Basket, type Holding } from "@/lib/baskets";
 import { CONTRACT_ADDRESSES, OTHELIO_PORTFOLIO_MODULE_ABI } from "@/lib/contracts";
-import { fetchSwapQuote, type PriceReferenceWarning } from "@/lib/api";
-import { useBasketDetails, useBasketActivity, useWalletUsdcBalance } from "@/hooks/useBaskets";
+import { fetchSwapQuote, type PriceReferenceWarning, type DustTradesSkippedWarning } from "@/lib/api";
+import { useBasketDetails, useBasketActivity, useWalletUsdcBalance, useSupportedAssets } from "@/hooks/useBaskets";
 import { toRawAmount, USDC_DECIMALS } from "@/types/shared";
 
 export type BasketAction = "mint" | "withdraw" | "rebalance" | null;
@@ -31,25 +31,44 @@ function isCanonicalLiquidWithdrawalError(message: string | null, isMint: boolea
   return !isMint && Boolean(message?.toLowerCase().includes("canonical liquid basket value"));
 }
 
+function formatPaddedPercent(val: number): string {
+  const rounded = Math.round(Math.abs(val) * 100) / 100;
+  const parts = rounded.toFixed(2).split(".");
+  const integerPart = parts[0].padStart(2, "0");
+  return `${integerPart}.${parts[1]}`;
+}
+
+function formatWeight(val: number): string {
+  return formatPaddedPercent(val);
+}
+
+function formatWeightDelta(diff: number): string {
+  const rounded = Math.round(diff * 100) / 100;
+  const formatted = formatPaddedPercent(rounded);
+  if (rounded > 0) return `+${formatted}%`;
+  if (rounded < 0) return `-${formatted}%`;
+  return `00.00%`;
+}
+
 function PriceReferenceNotice({ warnings }: { warnings: PriceReferenceWarning[] }) {
   const warning = warnings.find((item) => item.code === "STALE_PRICE_REFERENCE");
   if (!warning) return null;
 
   const assetLabels = warning.assets.map((item) => (
     supportedAssets.find((asset) => asset.address?.toLowerCase() === item.assetAddress.toLowerCase())?.symbol
-      ?? `${item.assetAddress.slice(0, 6)}…${item.assetAddress.slice(-4)}`
+    ?? `${item.assetAddress.slice(0, 6)}…${item.assetAddress.slice(-4)}`
   ));
   const uniqueLabels = Array.from(new Set(assetLabels));
   const referenceTime = new Date(warning.lastPriceReferenceAt);
   const formattedReference = Number.isNaN(referenceTime.getTime())
     ? warning.lastPriceReferenceAt
     : referenceTime.toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        timeZoneName: "short",
-      });
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    });
 
   return (
     <div className="price-reference-notice" role="status">
@@ -63,6 +82,59 @@ function PriceReferenceNotice({ warnings }: { warnings: PriceReferenceWarning[] 
   );
 }
 
+function DustTradesNotice({ warnings }: { warnings: PriceReferenceWarning[] }) {
+  const warning = warnings.find((item): item is DustTradesSkippedWarning => item.code === "DUST_TRADES_SKIPPED");
+  if (!warning) return null;
+
+  const labels = warning.assets.map((item) => {
+    const symbol = supportedAssets.find((asset) => asset.address?.toLowerCase() === item.assetAddress.toLowerCase())?.symbol;
+    return symbol ?? `${item.assetAddress.slice(0, 6)}…${item.assetAddress.slice(-4)}`;
+  });
+  const uniqueLabels = Array.from(new Set(labels));
+
+  return (
+    <div
+      className="price-reference-notice dust-notice"
+      role="status"
+      style={{
+        borderColor: "rgba(234, 179, 8, 0.35)",
+        background: "rgba(234, 179, 8, 0.07)",
+        marginTop: "10px",
+      }}
+    >
+      <AppIcon type="alert" />
+      <p>
+        <strong style={{ color: "var(--warning, #eab308)" }}>Dust adjustments skipped (&lt; $0.05)</strong>
+        <span>
+          Minor rebalance deltas under $0.05 were skipped ({uniqueLabels.join(", ")}) to protect against DEX slippage and transaction failure.
+        </span>
+        <small>Only meaningful position swaps are routed to DEX pools.</small>
+      </p>
+    </div>
+  );
+}
+
+function useCatalogHoldings(): Holding[] {
+  const { data: catalogData } = useSupportedAssets();
+  return useMemo(() => {
+    if (!catalogData?.data?.length) return supportedAssets;
+    return catalogData.data.map((item) => {
+      const fallback = supportedAssets.find((a) => a.symbol === item.symbol || a.address?.toLowerCase() === item.assetAddress.toLowerCase());
+      return {
+        symbol: item.symbol ?? fallback?.symbol ?? "",
+        name: item.name ?? fallback?.name ?? "",
+        target: 0,
+        current: 0,
+        quantity: 0,
+        value: 0,
+        color: fallback?.color ?? "#8aa4ff",
+        address: item.assetAddress ?? fallback?.address,
+        tradeable: item.tradeable ?? (item.status !== "UNAVAILABLE" && item.priceUsdE8 != null),
+      };
+    });
+  }, [catalogData]);
+}
+
 export function BasketDrawer({ basket, action, onClose }: { basket: Basket; action: Exclude<BasketAction, null>; onClose: () => void }) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -70,13 +142,13 @@ export function BasketDrawer({ basket, action, onClose }: { basket: Basket; acti
     return () => { document.body.style.overflow = previousOverflow; };
   }, []);
 
-  const backdrop = <button className="drawer-backdrop" onClick={onClose} aria-label="Close basket action"/>;
+  const backdrop = <button className="drawer-backdrop" onClick={onClose} aria-label="Close basket action" />;
 
   if (action === "rebalance") {
-    return <>{backdrop}<RebalanceDrawer basket={basket} onClose={onClose}/></>;
+    return <>{backdrop}<RebalanceDrawer basket={basket} onClose={onClose} /></>;
   }
 
-  return <>{backdrop}<AmountDrawer basket={basket} kind={action} onClose={onClose}/></>;
+  return <>{backdrop}<AmountDrawer basket={basket} kind={action} onClose={onClose} /></>;
 }
 
 function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => void }) {
@@ -146,21 +218,39 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
     setActiveHash(null);
   }, [isReceiptError, receiptError]);
 
+  const allAssets = useCatalogHoldings();
+
   const selected = Object.keys(targets)
-    .map((symbol) => supportedAssets.find((asset) => asset.symbol === symbol))
-    .filter((asset): asset is (typeof supportedAssets)[number] => Boolean(asset));
+    .map((symbol) => allAssets.find((asset) => asset.symbol === symbol))
+    .filter((asset): asset is Holding => Boolean(asset));
 
   const availableAssets = useMemo(() => {
-    return supportedAssets.filter((asset) => {
-      const isNotSelected = !(asset.symbol in targets);
-      const matchesSearch =
-        asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        asset.name.toLowerCase().includes(searchQuery.toLowerCase());
-      return isNotSelected && matchesSearch;
-    });
-  }, [searchQuery, targets]);
+    return allAssets
+      .filter((asset) => {
+        const isNotSelected = !(asset.symbol in targets);
+        const matchesSearch =
+          asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          asset.name.toLowerCase().includes(searchQuery.toLowerCase());
+        return isNotSelected && matchesSearch;
+      })
+      .sort((a, b) => {
+        const aTradeable = a.tradeable !== false;
+        const bTradeable = b.tradeable !== false;
+        if (aTradeable !== bTradeable) return aTradeable ? -1 : 1;
+        return a.symbol.localeCompare(b.symbol);
+      });
+  }, [allAssets, searchQuery, targets]);
+
+  const inoperableAssets = useMemo(() => {
+    return selected.filter((asset) => (targets[asset.symbol] ?? 0) > 0 && asset.tradeable === false);
+  }, [selected, targets]);
+
+  const hasInoperableAssets = inoperableAssets.length > 0;
 
   const addToken = (tokenSymbol: string) => {
+    const asset = allAssets.find((a) => a.symbol === tokenSymbol);
+    if (asset && asset.tradeable === false) return;
+
     setTargets((current) => {
       const next = { ...current, [tokenSymbol]: 0 };
       const keys = Object.keys(next);
@@ -176,12 +266,18 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
   };
 
   const equalizeWeights = () => {
-    const keys = Object.keys(targets);
-    if (keys.length === 0) return;
-    const equalShare = Math.floor(100 / keys.length);
-    const remainder = 100 - equalShare * keys.length;
+    const operableKeys = Object.keys(targets).filter((sym) => {
+      const asset = allAssets.find((a) => a.symbol === sym);
+      return asset?.tradeable !== false;
+    });
+    if (operableKeys.length === 0) return;
+    const equalShare = Math.floor(100 / operableKeys.length);
+    const remainder = 100 - equalShare * operableKeys.length;
     const next: Record<string, number> = {};
-    keys.forEach((k, idx) => {
+    Object.keys(targets).forEach((sym) => {
+      next[sym] = 0;
+    });
+    operableKeys.forEach((k, idx) => {
       next[k] = equalShare + (idx === 0 ? remainder : 0);
     });
     setTargets(next);
@@ -204,8 +300,13 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
         throw new Error("No verified basket module is configured for this network.");
       }
 
+      const inoperable = selected.find((s) => (targets[s.symbol] || 0) > 0 && s.tradeable === false);
+      if (inoperable) {
+        throw new Error(`Asset ${inoperable.symbol} is not operable on Base mainnet. Set target weight to 0% or remove to proceed.`);
+      }
+
       const targetWeights = selected.map((s) => ({
-        assetAddress: supportedAssets.find((a) => a.symbol === s.symbol)?.address || s.address || "0x0000000000000000000000000000000000000000",
+        assetAddress: allAssets.find((a) => a.symbol === s.symbol)?.address || s.address || "0x0000000000000000000000000000000000000000",
         targetWeightBps: (targets[s.symbol] || 0) * 100,
       }));
 
@@ -301,20 +402,72 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
         ) : previewing ? (
           <>
             <div className="quote-summary" style={{ marginTop: "16px" }}>
-              <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "8px" }}>Staged Weight Adjustments:</div>
-              {selected.map((asset) => {
-                const currentWeight = basket.holdings.find((h) => h.symbol === asset.symbol)?.target ?? 0;
-                const newWeight = targets[asset.symbol] ?? 0;
-                const diff = newWeight - currentWeight;
-                return (
-                  <div key={asset.symbol} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: "13px" }}>
-                    <span>{asset.name} ({asset.symbol})</span>
-                    <strong>
-                      {currentWeight}% → {newWeight}% ({diff >= 0 ? `+${diff}%` : `${diff}%`})
-                    </strong>
-                  </div>
-                );
-              })}
+              <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "10px", color: "var(--ink)" }}>Staged Weight Adjustments</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {selected.map((asset) => {
+                  const currentWeight = basket.holdings.find((h) => h.symbol === asset.symbol)?.target ?? 0;
+                  const newWeight = targets[asset.symbol] ?? 0;
+                  const diff = newWeight - currentWeight;
+                  const roundedDiff = Math.round(diff * 100) / 100;
+                  const isPositive = roundedDiff > 0;
+                  const isNegative = roundedDiff < 0;
+
+                  return (
+                    <div
+                      key={asset.symbol}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "8px 10px",
+                        background: "var(--panel-2)",
+                        borderRadius: "8px",
+                        border: "1px solid var(--panel-border)",
+                        fontSize: "13px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1, marginRight: "12px" }}>
+                        <StockLogo symbol={asset.symbol} size={22} roundedFull />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: "var(--ink)", lineHeight: 1.2 }}>{asset.symbol}</div>
+                          <div style={{ fontSize: "11px", color: "var(--muted-ink)", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                            {asset.name}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                        <span style={{ fontSize: "13px", color: "var(--ink)" }}>
+                          <span style={{ color: "var(--muted-ink)" }}>{formatWeight(currentWeight)}%</span>
+                          <span style={{ margin: "0 6px", color: "var(--muted-ink)", opacity: 0.6 }}>→</span>
+                          <strong style={{ fontWeight: 600 }}>{formatWeight(newWeight)}%</strong>
+                        </span>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            fontVariantNumeric: "tabular-nums",
+                            background: isPositive
+                              ? "rgba(16, 185, 129, 0.12)"
+                              : isNegative
+                                ? "rgba(239, 68, 68, 0.12)"
+                                : "rgba(255, 255, 255, 0.06)",
+                            color: isPositive
+                              ? "#10b981"
+                              : isNegative
+                                ? "#ef4444"
+                                : "var(--muted-ink)",
+                          }}
+                        >
+                          {formatWeightDelta(diff)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
               <div style={{ borderTop: "1px solid var(--line)", marginTop: "12px", paddingTop: "8px", display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
                 <span>Max Slippage Limit</span>
                 <strong>{getSlippageTolerance()}%</strong>
@@ -327,6 +480,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
               </div>
             </div>
             <PriceReferenceNotice warnings={priceWarnings} />
+            <DustTradesNotice warnings={priceWarnings} />
             {executionError && (
               <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
                 <strong style={{ display: "block", marginBottom: "4px" }}>{executionError === QUOTE_EXPIRED_MESSAGE ? "Quote expired" : "Rebalance needs attention"}</strong>
@@ -400,30 +554,55 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
                       overflowY: "auto",
                     }}
                   >
-                    {availableAssets.map((asset) => (
-                      <div
-                        key={asset.symbol}
-                        onClick={() => addToken(asset.symbol)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          padding: "8px 12px",
-                          cursor: "pointer",
-                          borderBottom: "1px solid var(--line)",
-                          transition: "background 0.15s ease",
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--panel-2)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <StockLogo symbol={asset.symbol} size={22} roundedFull />
-                          <strong style={{ fontSize: "12px" }}>{asset.symbol}</strong>
-                          <small style={{ color: "var(--muted-ink)", fontSize: "11px" }}>{asset.name}</small>
+                    {availableAssets.map((asset) => {
+                      const isTradeable = asset.tradeable !== false;
+                      return (
+                        <div
+                          key={asset.symbol}
+                          onClick={() => isTradeable && addToken(asset.symbol)}
+                          title={isTradeable ? undefined : "This asset is not currently enabled for trading on Base mainnet."}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "8px 12px",
+                            cursor: isTradeable ? "pointer" : "not-allowed",
+                            opacity: isTradeable ? 1 : 0.5,
+                            borderBottom: "1px solid var(--line)",
+                            transition: "background 0.15s ease",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (isTradeable) e.currentTarget.style.background = "var(--panel-2)";
+                          }}
+                          onMouseLeave={(e) => {
+                            if (isTradeable) e.currentTarget.style.background = "transparent";
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <StockLogo symbol={asset.symbol} size={22} roundedFull />
+                            <strong style={{ fontSize: "12px" }}>{asset.symbol}</strong>
+                            <small style={{ color: "var(--muted-ink)", fontSize: "11px" }}>{asset.name}</small>
+                          </div>
+                          {isTradeable ? (
+                            <span style={{ fontSize: "11px", color: "var(--accent)", fontWeight: 700 }}>+ Add</span>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                color: "var(--muted-ink)",
+                                background: "var(--panel-2)",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                border: "1px solid var(--panel-border)",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Unavailable
+                            </span>
+                          )}
                         </div>
-                        <span style={{ fontSize: "11px", color: "var(--accent)", fontWeight: 700 }}>+ Add</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -431,40 +610,71 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
 
             {/* 2. Composition / Target Weight Editor (Below Add Component) */}
             <div className="drawer-weight-editor">
-              {selected.map((asset) => (
-                <label key={asset.symbol}>
-                  <span>
-                    <StockLogo symbol={asset.symbol} size={30} roundedFull />
+              {selected.map((asset) => {
+                const isTradeable = asset.tradeable !== false;
+                const isTargetingInoperable = !isTradeable && (targets[asset.symbol] ?? 0) > 0;
+                return (
+                  <label
+                    key={asset.symbol}
+                    style={isTargetingInoperable ? { border: "1px solid rgba(239, 68, 68, 0.4)", borderRadius: "8px", padding: "8px" } : undefined}
+                  >
                     <span>
-                      <strong>{asset.symbol}</strong>
-                      <small>Current {basket.holdings.find((h) => h.symbol === asset.symbol)?.target ?? 0}%</small>
+                      <StockLogo symbol={asset.symbol} size={30} roundedFull />
+                      <span>
+                        <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <strong>{asset.symbol}</strong>
+                          {!isTradeable && (
+                            <span style={{
+                              fontSize: "10px",
+                              color: "var(--muted-ink)",
+                              background: "var(--panel-2)",
+                              padding: "1px 5px",
+                              borderRadius: "4px",
+                              border: "1px solid var(--panel-border)",
+                              fontWeight: 600,
+                            }}>
+                              Coming Soon!
+                            </span>
+                          )}
+                        </span>
+                        <small>Current {formatWeight(basket.holdings.find((h) => h.symbol === asset.symbol)?.target ?? 0)}%</small>
+                      </span>
                     </span>
-                  </span>
-                  <span className="weight-actions">
-                    <output>{targets[asset.symbol]}%</output>
-                    <button
-                      type="button"
-                      onClick={() => setTargets((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== asset.symbol)))}
-                      disabled={selected.length === 1}
-                    >
-                      Remove
-                    </button>
-                  </span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={targets[asset.symbol]}
-                    onChange={(event) => setTargets((current) => ({ ...current, [asset.symbol]: Number(event.target.value) }))}
-                  />
-                </label>
-              ))}
+                    <span className="weight-actions">
+                      <output style={isTargetingInoperable ? { color: "var(--danger)" } : undefined}>
+                        {formatWeight(targets[asset.symbol] ?? 0)}%
+                      </output>
+                      <button
+                        type="button"
+                        onClick={() => setTargets((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== asset.symbol)))}
+                        disabled={selected.length === 1}
+                      >
+                        Remove
+                      </button>
+                    </span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      disabled={!isTradeable}
+                      value={targets[asset.symbol]}
+                      onChange={(event) => setTargets((current) => ({ ...current, [asset.symbol]: Number(event.target.value) }))}
+                    />
+                  </label>
+                );
+              })}
             </div>
 
-            <div className={`allocation-total ${total === 100 ? "valid" : "invalid"}`}>
+            <div className={`allocation-total ${total === 100 && !hasInoperableAssets ? "valid" : "invalid"}`}>
               <span>Total allocation</span>
               <strong>{total}%</strong>
-              <small>{total === 100 ? "Ready to preview" : `Adjust by ${Math.abs(100 - total)}% to continue`}</small>
+              <small>
+                {hasInoperableAssets
+                  ? `${inoperableAssets.map((a) => a.symbol).join(", ")} cannot be allocated (not operable on Base). Set weight to 0% or remove.`
+                  : total === 100
+                    ? "Ready to preview"
+                    : `Adjust by ${Math.abs(100 - total)}% to continue`}
+              </small>
             </div>
           </>
         )}
@@ -482,7 +692,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
             </button>
             <button
               className="primary"
-              disabled={(!previewing && total !== 100) || isPending || isConfirming || isSuccess}
+              disabled={(!previewing && (total !== 100 || hasInoperableAssets)) || isPending || isConfirming || isSuccess}
               onClick={previewing ? handleExecuteRebalance : () => setPreviewing(true)}
             >
               {isSuccess ? "Indexing..." : isPending ? "Confirming..." : previewing ? "Execute" : "Review"}{" "}
@@ -588,6 +798,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
 
   const publicClient = usePublicClient();
 
+  const allAssets = useCatalogHoldings();
+
   const handleExecuteAmountAction = async () => {
     setActionError(null);
     if (!isConnected || !userAddress) {
@@ -605,12 +817,16 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
           throw new Error(`Add funds is unavailable on unsupported chain ${chainId}.`);
         }
         const holdingsPayload = basket.holdings.filter((h) => (h.target || 0) > 0).map((h) => ({
-          address: h.address || supportedAssets.find((a) => a.symbol === h.symbol)?.address || "0x0000000000000000000000000000000000000000",
+          address: h.address || allAssets.find((a) => a.symbol === h.symbol)?.address || "0x0000000000000000000000000000000000000000",
           symbol: h.symbol,
           targetWeightBps: Math.round((h.target || 0) * 100),
         }));
-        if (holdingsPayload.length === 0) {
-          throw new Error("This basket has no saved target allocation. Create a basket with target assets before adding funds.");
+        const inoperableHolding = holdingsPayload.find((h) => {
+          const asset = allAssets.find((a) => a.symbol === h.symbol || a.address?.toLowerCase() === h.address.toLowerCase());
+          return asset?.tradeable === false;
+        });
+        if (inoperableHolding) {
+          throw new Error(`Basket includes ${inoperableHolding.symbol}, which is not operable on Base mainnet. Please rebalance the basket to tradeable assets before adding funds.`);
         }
 
         const usdcAmount = parseUnits(depositAmount.trim() || "0", USDC_DECIMALS);
@@ -957,8 +1173,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                   {isMint
                     ? `${Number(depositAmount || 0).toLocaleString("en-US")} USDC`
                     : withdrawInUsdc
-                    ? "Converted to USDC"
-                    : "Direct Stock Tokens"}
+                      ? "Converted to USDC"
+                      : "Direct Stock Tokens"}
                 </strong>
               </div>
               {!isMint && (
@@ -1000,6 +1216,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
               </p>
             </div>
             <PriceReferenceNotice warnings={priceWarnings} />
+            <DustTradesNotice warnings={priceWarnings} />
             {actionError && !isCanonicalLiquidError && (
               <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
                 <strong style={{ display: "block", marginBottom: "4px" }}>{actionError === QUOTE_EXPIRED_MESSAGE ? "Quote expired" : "Transaction needs attention"}</strong>

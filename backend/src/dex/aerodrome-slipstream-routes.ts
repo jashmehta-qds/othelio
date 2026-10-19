@@ -8,7 +8,7 @@ export { BASE_USDC_ADDRESS } from '../config/addresses';
 /** Factory spacings checked during launch discovery. */
 export const CANDIDATE_TICK_SPACINGS = [1, 10, 50, 100, 200, 500, 2000] as const;
 /** One reviewed, executable USDC pool per launch asset, in launch-list order. */
-export const BASE_LAUNCH_USDC_TICK_SPACINGS = [10, 10, 10, 10, 10, 10, 10] as const;
+export const BASE_LAUNCH_USDC_TICK_SPACINGS = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10] as const;
 
 export interface AerodromeSlipstreamRoute {
   chainId: 31337 | 8453;

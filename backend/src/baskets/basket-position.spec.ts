@@ -68,7 +68,7 @@ describe('BasketPositionService', () => {
   });
 
   it('returns a warning instead of blocking when a usable indexed price reference is old', async () => {
-    const feedUpdatedAt = new Date(Date.now() - 2 * 60 * 60 * 1_000);
+    const feedUpdatedAt = new Date(Date.now() - 90 * 60 * 1_000);
     const db = {
       query: vi.fn()
         .mockResolvedValueOnce({ rows: [{ next_block: '101', observed_head_block: '103', observed_head_at: new Date() }] })

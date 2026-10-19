@@ -11,6 +11,7 @@ export type Holding = {
   color: string;
   address?: string;
   avgCost?: number;
+  tradeable?: boolean;
 };
 
 export type Basket = {
@@ -57,20 +58,22 @@ const techHoldings: Holding[] = [
 export const baskets: Basket[] = [];
 
 export const supportedAssets: Holding[] = [
-  { symbol: "NVDAc", name: "NVIDIA Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#8aa4ff", address: "0xb20000000000000000000078ee7ce2fE4908108C" },
-  { symbol: "AAPLc", name: "Apple Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#5371d9", address: "0xb200000000000000000000C2e324d24d7eEcd1fb" },
-  { symbol: "MSFTc", name: "Microsoft Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#858b87", address: "0xB200000000000000000000Ab99cFa739E253872B" },
-  { symbol: "GOOGLc", name: "Alphabet Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#6f8cff", address: "0xb2000000000000000000002D0BA3164cc74f58B7" },
-  { symbol: "AMZNc", name: "Amazon.com Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#b88a58", address: "0xb200000000000000000000d9192b6B456483C2E8" },
-  { symbol: "METAc", name: "Meta Platforms", target: 0, current: 0, quantity: 0, value: 0, color: "#4e7fff", address: "0xb2000000000000000000008bC8786B856E61707C" },
-  { symbol: "TSLAc", name: "Tesla Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#b16f83", address: "0xb2000000000000000000001e800a7f5189430cD0" },
-  { symbol: "COINc", name: "Coinbase Global", target: 0, current: 0, quantity: 0, value: 0, color: "#0052ff", address: "0xb200000000000000000000c85a31389D71F3ecfb" },
-  { symbol: "MSTRc", name: "MicroStrategy Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#d94141", address: "0xb2000000000000000000004884b426556b92883d" },
-  { symbol: "CRCLc", name: "Circle Internet Financial", target: 0, current: 0, quantity: 0, value: 0, color: "#2775ca", address: "0xB20000000000000000000019f6E7C675b73C2e4D" },
-  { symbol: "INTCc", name: "Intel Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#0071c5", address: "0xB2000000000000000000004AFF16039bA04bdFBc" },
-  { symbol: "SNDKc", name: "SanDisk Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#e2231a", address: "0xb200000000000000000000397293Cb8cda9a10c5" },
-  { symbol: "SPCXc", name: "SpaceX (Destiny Tech100)", target: 0, current: 0, quantity: 0, value: 0, color: "#3f4652", address: "0xb2000000000000000000007b9fcbd005511aCBd5" },
-  { symbol: "USDC", name: "USD Coin", target: 0, current: 0, quantity: 0, value: 0, color: "#8daed0", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+  // Available / Tradeable Assets on Base
+  { symbol: "AAPLc", name: "Apple Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#5371d9", address: "0xb200000000000000000000C2e324d24d7eEcd1fb", tradeable: true },
+  { symbol: "AMZNc", name: "Amazon.com Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#b88a58", address: "0xb200000000000000000000d9192b6B456483C2E8", tradeable: true },
+  { symbol: "GOOGLc", name: "Alphabet Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#6f8cff", address: "0xb2000000000000000000002D0BA3164cc74f58B7", tradeable: true },
+  { symbol: "METAc", name: "Meta Platforms", target: 0, current: 0, quantity: 0, value: 0, color: "#4e7fff", address: "0xb2000000000000000000008bC8786B856E61707C", tradeable: true },
+  { symbol: "MSFTc", name: "Microsoft Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#858b87", address: "0xB200000000000000000000Ab99cFa739E253872B", tradeable: true },
+  { symbol: "MSTRc", name: "MicroStrategy Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#d94141", address: "0xb2000000000000000000004884b426556b92883d", tradeable: true },
+  { symbol: "NVDAc", name: "NVIDIA Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#8aa4ff", address: "0xb20000000000000000000078ee7ce2fE4908108C", tradeable: true },
+  { symbol: "SNDKc", name: "SanDisk Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#e2231a", address: "0xb200000000000000000000397293Cb8cda9a10c5", tradeable: true },
+  { symbol: "SPCXc", name: "SpaceX (Destiny Tech100)", target: 0, current: 0, quantity: 0, value: 0, color: "#3f4652", address: "0xb2000000000000000000007b9fcbd005511aCBd5", tradeable: true },
+  { symbol: "TSLAc", name: "Tesla Inc", target: 0, current: 0, quantity: 0, value: 0, color: "#b16f83", address: "0xb2000000000000000000001e800a7f5189430cD0", tradeable: true },
+  { symbol: "USDC", name: "USD Coin", target: 0, current: 0, quantity: 0, value: 0, color: "#8daed0", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", tradeable: true },
+  // Unavailable Assets on Base
+  { symbol: "COINc", name: "Coinbase Global", target: 0, current: 0, quantity: 0, value: 0, color: "#0052ff", address: "0xb200000000000000000000c85a31389D71F3ecfb", tradeable: false },
+  { symbol: "CRCLc", name: "Circle Internet Financial", target: 0, current: 0, quantity: 0, value: 0, color: "#2775ca", address: "0xB20000000000000000000019f6E7C675b73C2e4D", tradeable: false },
+  { symbol: "INTCc", name: "Intel Corp", target: 0, current: 0, quantity: 0, value: 0, color: "#0071c5", address: "0xB2000000000000000000004AFF16039bA04bdFBc", tradeable: false },
 ];
 
 export function getCreatedBaskets(): Basket[] {

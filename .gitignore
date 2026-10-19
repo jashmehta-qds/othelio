@@ -19,6 +19,13 @@ foundry-pp/
 # Agent & AI Tooling
 .agents/
 **/.agents/
+# Share the Coinbase B20 onboarding skill while keeping other local agent files ignored.
+!.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/coinbase-b20-asset-onboarding/
+!.agents/skills/coinbase-b20-asset-onboarding/**
 .trellis/
 **/.trellis/
 .claude/

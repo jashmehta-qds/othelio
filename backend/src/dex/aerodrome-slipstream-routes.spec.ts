@@ -35,9 +35,9 @@ describe('aerodrome-slipstream-routes', () => {
 
   it('contains the reviewed executable pool for each launch asset', () => {
     expect(CONTRACT_B20_TOKENS).toHaveLength(13);
-    expect(BASE_LAUNCH_B20_TOKENS).toHaveLength(7);
+    expect(BASE_LAUNCH_B20_TOKENS).toHaveLength(10);
     expect(CANDIDATE_TICK_SPACINGS).toEqual([1, 10, 50, 100, 200, 500, 2000]);
-    expect(DEFAULT_AERODROME_SLIPSTREAM_ROUTES).toHaveLength(7);
+    expect(DEFAULT_AERODROME_SLIPSTREAM_ROUTES).toHaveLength(10);
 
     for (const route of DEFAULT_AERODROME_SLIPSTREAM_ROUTES) {
       expect(route.chainId).toBe(8453);
@@ -50,8 +50,8 @@ describe('aerodrome-slipstream-routes', () => {
 
   it('loads reviewed Base routes for both Base runtime environments', () => {
     const routes = getAllAerodromeSlipstreamRoutes();
-    expect(routes).toHaveLength(7 + 7);
-    expect(routes.filter((route) => route.chainId === 31337)).toHaveLength(7);
+    expect(routes).toHaveLength(10 + 10);
+    expect(routes.filter((route) => route.chainId === 31337)).toHaveLength(10);
   });
 
   it('resolves routes bidirectionally regardless of address case', () => {

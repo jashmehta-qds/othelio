@@ -1,0 +1,23 @@
+.trigger { display: inline-flex; align-items: center; justify-content: center; flex: none; overflow: hidden; border-radius: 6px; cursor: help; vertical-align: middle; }
+.trigger.round { border-radius: 50%; }
+.trigger img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.popover, .sheet { background: var(--panel, #161715); color: var(--ink, #eeeee7); border: 1px solid var(--line, #393a37); box-shadow: 0 14px 36px rgba(0, 0, 0, .22); }
+.popover { position: fixed; z-index: 1000; width: 300px; padding: 14px; border-radius: 12px; }
+.popover .list { gap: 6px; }
+.identity { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.identity strong { font-size: 14px; line-height: 1.3; }
+.identity span { color: var(--muted-ink, #898b84); font-size: 12px; font-variant-numeric: tabular-nums; }
+.description { margin: 12px 0; max-height: 110px; overflow-y: auto; font-size: 12px; line-height: 1.5; white-space: pre-line; }
+.list { margin: 12px 0 0; display: grid; gap: 8px; font-size: 12px; }
+.list > div { display: flex; justify-content: space-between; gap: 16px; }
+.list dt { flex: none; color: var(--muted-ink, #898b84); }
+.list dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.note, .empty { margin: 14px 0 0; color: var(--muted-ink, #898b84); font-size: 11px; line-height: 1.5; }
+.mobileLayer { position: fixed; inset: 0; z-index: 1100; }
+.backdrop { position: absolute; inset: 0; width: 100%; background: rgba(0, 0, 0, .55); border: 0; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: min(78dvh, 680px); overflow-y: auto; border-radius: 18px 18px 0 0; padding: 20px 20px max(24px, env(safe-area-inset-bottom)); }
+.sheetHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; font-size: 13px; font-weight: 700; }
+.sheetHeader button { border: 0; background: transparent; color: inherit; font-size: 26px; line-height: 1; cursor: pointer; }
+@media (min-width: 641px) { .mobileLayer { display: none; } }
+@media (max-width: 640px) { .popover { display: none; } .description { max-height: none; } }
