@@ -2,7 +2,7 @@
   "name": "@othelio/backend",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "dev": "tsx watch --exclude '../node_modules/**' --exclude 'node_modules/**' src/main.ts",
     "dev:base": "tsx watch src/main.ts",

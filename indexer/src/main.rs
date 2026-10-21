@@ -97,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("🚀 [Rust Othelio Indexer] Initializing on Chain ID {} (Valuation Interval: {}s, Confirmations: {})...", chain_id, valuation_interval_secs, indexer_confirmations);
 
     let pool = PgPoolOptions::new()
-        .max_connections(10)
+        .max_connections(5)
         .connect(&db_url)
         .await?;
 

@@ -2,6 +2,8 @@
 
 Othelio is a personal tokenized-stock basket protocol built on Base. Users manage custom stock portfolios (B20 tokens like `AAPLc`, `NVDAc`, `GOOGLc`) through dedicated Safe Smart Accounts secured by custom modules, guards, and Chainlink price feeds.
 
+For the Base mainnet application deployment, see [the deployment guide](docs/deployment.md).
+
 ---
 
 ## 🏗️ Architecture Blueprint

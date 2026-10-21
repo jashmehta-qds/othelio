@@ -17,7 +17,13 @@ export interface SessionTokenPayload {
 
 @Injectable()
 export class AuthService {
-  private readonly secret = process.env.AUTH_SECRET || 'othelio-session-secret-key-1337';
+  private readonly secret = (() => {
+    const value = process.env.AUTH_SECRET?.trim();
+    if (process.env.NODE_ENV === 'production' && (!value || value.length < 32)) {
+      throw new Error('AUTH_SECRET must contain at least 32 characters in production');
+    }
+    return value || 'othelio-session-secret-key-1337';
+  })();
   private readonly nonces = new Map<string, NonceEntry>();
 
   private cleanExpiredNonces() {

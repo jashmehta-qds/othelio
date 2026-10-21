@@ -13,7 +13,7 @@ async function bootstrap() {
   });
 
   const host = process.env.API_HOST || '0.0.0.0';
-  const port = parseInt(process.env.API_PORT || '3001', 10);
+  const port = parseInt(process.env.PORT || process.env.API_PORT || '3001', 10);
 
   await app.listen(port, host);
   console.log(`🚀 [NestJS Backend] Running on http://${host}:${port}`);
