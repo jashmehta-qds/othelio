@@ -24,7 +24,11 @@ Ensure you have the following installed on your machine:
 
 ---
 
-## ⚡ Local Base-fork Development
+## ⚡ Runtime profiles
+
+The three Compose files have distinct purposes: `docker-compose.yml` is the two-service OpenShip production stack, `docker-compose.staging.yml` runs a local PostgreSQL database and indexer against live Base, and `docker-compose.dev.yml` preserves the optional local Anvil fork workflow. Use the named staging or dev file for local commands; the default Compose file is production.
+
+### Optional local Base-fork development
 
 The local chain is started separately from application services. This keeps basket addresses, balances, and indexed activity stable while you restart the frontend, backend, or indexer.
 
@@ -41,7 +45,7 @@ npm run dev:services
 
 `npm run dev` starts the canonical Base-fork workflow. The local fork uses chain ID `31337`; real Base uses chain ID `8453`.
 
-### Local Base-mainnet application profile
+### Local Base-mainnet staging profile
 
 To run the frontend, backend, and indexer against the deployed contracts on Base mainnet, keep the fork environment untouched and create a separate profile:
 
@@ -56,9 +60,9 @@ This starts a separate Postgres database on port `5434`, runs the frontend on po
 The Base profile resolves `START_BLOCK=latest` at startup, so it follows new events without replaying the deployment history. If the Base database was already started with an older cursor, reset that one cursor once before restarting:
 
 ```bash
-docker compose --env-file .env.base -f docker-compose.base.yml up -d postgres
-docker compose --env-file .env.base -f docker-compose.base.yml run --rm database-migrations
-docker compose --env-file .env.base -f docker-compose.base.yml exec postgres \
+docker compose --env-file .env.base -f docker-compose.staging.yml up -d postgres
+docker compose --env-file .env.base -f docker-compose.staging.yml run --rm database-migrations
+docker compose --env-file .env.base -f docker-compose.staging.yml exec postgres \
   psql -U othelio -d othelio -c "DELETE FROM indexer_state WHERE chain_id = 8453;"
 ```
 
@@ -90,12 +94,12 @@ Local addresses may change after a reset because the fork state and deployment s
 | Consumer | Values to verify |
 | --- | --- |
 | `fe/src/lib/contracts.ts` | `31337` fork and `8453` Base deployment addresses |
-| `docker-compose.fork.yml` | indexer chain ID, RPC, factory, module, and registry |
+| `docker-compose.dev.yml` | indexer chain ID, RPC, factory, module, and registry |
 | `.env` (local, ignored) and `.env.example` | factory, module, registry, oracle |
 | `contracts/broadcast/.../run-latest.json` | deployed contract addresses and transaction receipts |
 | Postgres / indexer | reset chain-specific indexed data or use `npm run dev:reset`; never retain old events against a fresh Anvil chain |
 
-The local indexer must start at the configured Base fork block, not block `0`; otherwise it attempts to replay Base mainnet history through the fork provider. `docker-compose.fork.yml` sets this automatically for the bundled fork.
+The local indexer must start at the configured Base fork block, not block `0`; otherwise it attempts to replay Base mainnet history through the fork provider. `docker-compose.dev.yml` sets this automatically for the bundled fork.
 
 ### After an indexer projection or migration change
 
@@ -103,10 +107,10 @@ When changing a derived indexer projection (positions, price observations, NAV, 
 
 ```bash
 # Stop the indexer, clear only derived projections and its cursor, then restart it.
-docker compose stop indexer
-docker compose exec -T postgres psql -U othelio -d othelio -c \
+docker compose -f docker-compose.dev.yml stop indexer
+docker compose -f docker-compose.dev.yml exec -T postgres psql -U othelio -d othelio -c \
   "DELETE FROM asset_cost_basis; DELETE FROM accounting_events; DELETE FROM basket_nav_observations; DELETE FROM basket_positions; DELETE FROM asset_price_observations; DELETE FROM indexer_state WHERE chain_id = 31337;"
-docker compose up -d --no-deps indexer
+docker compose -f docker-compose.dev.yml up -d --no-deps indexer
 ```
 
 Run the migration service first when a new migration exists. This sequence is for the local Base-fork environment; production needs a reviewed backup, migration, and replay runbook.

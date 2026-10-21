@@ -1,4 +1,6 @@
-name: othelio-base
+name: othelio-dev
+
+# Optional local Base fork. scripts/dev-fork-infra.sh starts Anvil on the host.
 
 services:
   postgres:
@@ -7,9 +9,9 @@ services:
       POSTGRES_USER: othelio
       POSTGRES_PASSWORD: othelio
       POSTGRES_DB: othelio
-    ports: [ "5434:5432" ]
+    ports: [ "5433:5432" ]
     volumes:
-      - othelio-postgres-base:/var/lib/postgresql/data
+      - othelio-postgres-fork:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U othelio" ]
       interval: 3s
@@ -46,15 +48,15 @@ services:
       context: ./indexer
       dockerfile: Dockerfile
     env_file:
-      - ${OTHELIO_BASE_ENV_FILE:-.env.base}
+      - .env
     environment:
       DATABASE_URL: postgresql://othelio:othelio@postgres:5432/othelio
-      # Keep the container on the RPC selected by dev-base-services.sh. This
-      # overrides a rate-limited value from .env.base when the launcher falls
-      # back to Base's public endpoint.
-      RPC_URL: ${BASE_RPC_URL}
+      RPC_URL: http://host.docker.internal:8545
+      CHAIN_ID: "31337"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres: { condition: service_healthy }
 
 volumes:
-  othelio-postgres-base:
+  othelio-postgres-fork:

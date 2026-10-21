@@ -15,7 +15,7 @@ if [ -f .env ]; then
 fi
 
 echo "[dev-fork-infra] Starting Postgres in Docker (fork project)..."
-docker compose -f docker-compose.fork.yml up -d postgres
+docker compose -f docker-compose.dev.yml up -d postgres
 npm run dev:db:migrate:fork
 
 CURRENT_CHAIN_ID="$(base-cast chain-id --rpc-url http://127.0.0.1:8545 2>/dev/null || true)"

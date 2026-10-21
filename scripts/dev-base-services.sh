@@ -77,14 +77,14 @@ if [[ "${START_BLOCK:-}" == "latest" ]]; then
   echo "Base indexer will begin at block $START_BLOCK."
 fi
 
-docker compose --env-file "$ENV_FILE" -f docker-compose.base.yml up -d postgres
-docker compose --env-file "$ENV_FILE" -f docker-compose.base.yml run --rm database-migrations
+docker compose --env-file "$ENV_FILE" -f docker-compose.staging.yml up -d postgres
+docker compose --env-file "$ENV_FILE" -f docker-compose.staging.yml run --rm database-migrations
 
 # Keep the host services independent: an indexer restart or crash should not
 # tear down the backend and frontend while developing against Base RPC.
 exec "$ROOT_DIR/node_modules/.bin/concurrently" \
   -n "indexer,backend,frontend" \
   -c "cyan,magenta,green" \
-  "docker compose --env-file '$ENV_FILE' -f docker-compose.base.yml up --force-recreate indexer" \
+  "docker compose --env-file '$ENV_FILE' -f docker-compose.staging.yml up --force-recreate indexer" \
   "npm run dev:base -w @othelio/backend" \
   "npm run dev -w @othelio/fe"
