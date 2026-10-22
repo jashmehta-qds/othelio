@@ -22,6 +22,7 @@ import { PortfolioController } from './portfolio.controller';
     NavCompactionService,
   ],
   exports: [
+    BasketsService,
     BasketPositionService,
     BasketQuotePlannerService,
     LendingEventService,
