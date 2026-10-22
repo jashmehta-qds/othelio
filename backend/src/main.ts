@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { AppModule } from './app.module.js';
+import { AgentModule } from './agent/agent.module.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -17,13 +18,17 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Othelio Agent API')
     .setDescription(
-      'API interface for AI Agents, LLMs, and ChatGPT Actions to inspect, build, fund, and manage tokenized equity portfolios on Base.',
+      'Autonomous & Human-in-the-Loop Agent API on Base. AI agents, LLMs, and ChatGPT Actions can inspect baskets, verify live Chainlink oracle prices, and stage bounded portfolio actions under strict user-enforced financial guardrails.',
     )
     .setVersion('1.0')
     .addApiKey({ type: 'apiKey', name: 'X-Agent-Key', in: 'header' }, 'agent-key')
+    .addTag('Agent Interface', 'Endpoints for AI agents to query balances, assets, and stage bounded trades.')
+    .addTag('Proposals & Execution', 'Endpoints to track proposal execution status and fetch review links.')
     .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  const document = SwaggerModule.createDocument(app, swaggerConfig, {
+    include: [AgentModule],
+  });
 
   app.getHttpAdapter().get('/reference/openapi.json', (_req: any, res: any) => {
     res.json(document);
