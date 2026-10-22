@@ -6,6 +6,8 @@ import { useAuth } from "@/context/AuthContext";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { WalletConnectModal } from "@/components/WalletConnectModal";
 import {
+  API_BASE_URL,
+  checkApiHealth,
   fetchAgentSettingsApi,
   updateAgentSettingsApi,
   generateAgentApiKeyApi,
@@ -63,6 +65,7 @@ export default function AgentsPage() {
   const [settings, setSettings] = useState<AgentSettings | null>(null);
   const [proposals, setProposals] = useState<AgentProposalItem[]>([]);
   const [isMarketOpen, setIsMarketOpen] = useState<boolean>(false);
+  const [isApiOnline, setIsApiOnline] = useState<boolean | null>(null);
 
   // Guardrails form states
   const [autonomyTier, setAutonomyTier] = useState<"staged" | "advisory">("staged");
@@ -93,6 +96,20 @@ export default function AgentsPage() {
       setIsMarketOpen(checkIsMarketOpen());
     }, 60000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const verifyApi = async () => {
+      const online = await checkApiHealth();
+      if (mounted) setIsApiOnline(online);
+    };
+    verifyApi();
+    const interval = setInterval(verifyApi, 20000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const loadAgentData = useCallback(async () => {
@@ -229,10 +246,6 @@ export default function AgentsPage() {
     triggerToast("Copied to clipboard.");
   };
 
-  const currentBackendUrl = typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:3001`
-    : "http://localhost:3001";
-
   const claudeConfigSnippet = JSON.stringify(
     {
       mcpServers: {
@@ -240,7 +253,7 @@ export default function AgentsPage() {
           command: "npx",
           args: ["-y", "@othelio/mcp"],
           env: {
-            OTHELIO_API_URL: currentBackendUrl,
+            OTHELIO_API_URL: API_BASE_URL,
             OTHELIO_AGENT_KEY: settings?.maskedApiKey || "YOUR_AGENT_KEY_HERE",
           },
         },
@@ -287,6 +300,18 @@ export default function AgentsPage() {
             NYSE Equities: <strong>{isMarketOpen ? "OPEN (9:30-16:00 ET)" : "CLOSED"}</strong>
           </div>
           <div className={styles.telemetryItem}>
+            <span
+              className={`${styles.statusDot} ${
+                isApiOnline === true
+                  ? styles.statusDotOpen
+                  : isApiOnline === false
+                  ? styles.statusDotClosed
+                  : styles.statusDotActive
+              }`}
+            />
+            API Gateway: <strong>{isApiOnline === true ? "Online" : isApiOnline === false ? "Offline / Starting" : "Connecting..."}</strong>
+          </div>
+          <div className={styles.telemetryItem}>
             <span className={`${styles.statusDot} ${styles.statusDotActive}`} />
             Network: <strong>Base Mainnet (8453)</strong>
           </div>
@@ -314,11 +339,21 @@ export default function AgentsPage() {
 
         <div className={styles.headerActions}>
           <a
-            href={`${currentBackendUrl}/reference`}
+            href={`${API_BASE_URL}/reference`}
             target="_blank"
             rel="noreferrer"
             className={styles.scalarLink}
+            title={`Scalar OpenAPI Interactive Reference (${API_BASE_URL}/reference)`}
           >
+            <span
+              style={{
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                background: isApiOnline === true ? "#22c55e" : isApiOnline === false ? "#ff7770" : "#d7ff46",
+                display: "inline-block",
+              }}
+            />
             <span>Scalar API Reference</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
@@ -484,7 +519,7 @@ export default function AgentsPage() {
 Type: command
 Command: npx -y @othelio/mcp
 Environment:
-  OTHELIO_API_URL=${currentBackendUrl}
+  OTHELIO_API_URL=${API_BASE_URL}
   OTHELIO_AGENT_KEY=${settings.maskedApiKey || "YOUR_AGENT_KEY"}`}</pre>
                     </div>
                   )}
@@ -495,13 +530,13 @@ Environment:
                         <span>OpenAI Custom GPT &gt; Add Action &gt; Import OpenAPI Schema URL</span>
                         <button
                           type="button"
-                          onClick={() => copyToClipboard(`${currentBackendUrl}/reference/openapi.json`, "snippet")}
+                          onClick={() => copyToClipboard(`${API_BASE_URL}/reference/openapi.json`, "snippet")}
                           style={{ fontSize: "11px", fontWeight: 600, color: copiedSnippet ? "#d7ff46" : "var(--ink)", background: "none", border: "none", cursor: "pointer" }}
                         >
                           {copiedSnippet ? "Copied!" : "Copy Schema URL"}
                         </button>
                       </div>
-                      <pre>{`Schema URL: ${currentBackendUrl}/reference/openapi.json
+                      <pre>{`Schema URL: ${API_BASE_URL}/reference/openapi.json
 Authentication: API Key
 Header Name: X-Agent-Key`}</pre>
                     </div>
@@ -513,13 +548,13 @@ Header Name: X-Agent-Key`}</pre>
                         <span>Inspect Basket Composition &amp; Prices via REST</span>
                         <button
                           type="button"
-                          onClick={() => copyToClipboard(`curl -X GET "${currentBackendUrl}/v1/agent/baskets" -H "X-Agent-Key: YOUR_AGENT_KEY"`, "snippet")}
+                          onClick={() => copyToClipboard(`curl -X GET "${API_BASE_URL}/v1/agent/baskets" -H "X-Agent-Key: YOUR_AGENT_KEY"`, "snippet")}
                           style={{ fontSize: "11px", fontWeight: 600, color: copiedSnippet ? "#d7ff46" : "var(--ink)", background: "none", border: "none", cursor: "pointer" }}
                         >
                           {copiedSnippet ? "Copied!" : "Copy cURL"}
                         </button>
                       </div>
-                      <pre>{`curl -X GET "${currentBackendUrl}/v1/agent/baskets" \\
+                      <pre>{`curl -X GET "${API_BASE_URL}/v1/agent/baskets" \\
   -H "X-Agent-Key: YOUR_AGENT_KEY"`}</pre>
                     </div>
                   )}

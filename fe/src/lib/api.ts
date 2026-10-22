@@ -39,7 +39,26 @@ if (process.env.NODE_ENV === 'production' && !configuredBackendUrl) {
   throw new Error('NEXT_PUBLIC_BACKEND_URL must be configured for a production deployment.');
 }
 
-const API_BASE_URL = configuredBackendUrl || localBackendUrl;
+export const API_BASE_URL = (configuredBackendUrl || localBackendUrl).replace(/\/+$/, '');
+
+export async function checkApiHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/health`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return false;
+    const text = await res.text();
+    // Guard against Cloudflare/proxy 502/503 HTML error pages that return 200
+    if (text.includes('data-oblien-error') || text.includes('502 - Bad Gateway')) {
+      return false;
+    }
+    const data = JSON.parse(text);
+    return data?.status === 'ok';
+  } catch {
+    return false;
+  }
+}
 
 export async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
