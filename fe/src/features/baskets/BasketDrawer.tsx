@@ -12,7 +12,7 @@ import { toRawAmount, USDC_DECIMALS } from "@/types/shared";
 
 export type BasketAction = "mint" | "withdraw" | "rebalance" | null;
 
-type ConsentStage = { key: string; fingerprint: string; mode: 'allow' | 'warn'; approved: boolean; startedAt: number; expiresAt: number };
+type ConsentStage = { key: string; fingerprint: string; mode: 'allow' | 'warn' | 'reject'; approved: boolean; startedAt: number; expiresAt: number };
 
 type QuoteFingerprintInput = {
   inputAsset?: string;
@@ -64,7 +64,10 @@ function useStalePriceConsent(wallet: string | undefined, inputKey: string) {
     if (!wallet) throw new Error('Connect a wallet to load its stale-price trade preference.');
     const settings = await fetchAccountSettingsApi(wallet);
     const mode = settings.data.stalePriceTrades ?? 'warn';
-    if (mode === 'reject') throw new Error('This trade is blocked by your stale-price preference. Change it in Settings to continue.');
+    if (mode === 'reject') {
+      setStage({ key, fingerprint, mode, approved: false, startedAt: Date.now(), expiresAt: new Date(expiresAt).getTime() });
+      return false;
+    }
     if (!stage || stage.fingerprint !== fingerprint || stage.mode !== mode || Date.now() >= stage.expiresAt) {
       setStage({ key, fingerprint, mode, approved: false, startedAt: Date.now(), expiresAt: new Date(expiresAt).getTime() });
       setNow(Date.now());
@@ -74,13 +77,7 @@ function useStalePriceConsent(wallet: string | undefined, inputKey: string) {
     if (mode === 'allow' && remaining > 0) return false;
     return true;
   };
-  return { stage, remaining, approve: () => setStage((current) => current?.key === key ? { ...current, approved: true } : current), authorize, clear: () => setStage(null) };
-}
-
-function StaleConsentActions({ stage, remaining, onApprove, onCancel }: { stage: ConsentStage | null; remaining: number; onApprove: () => void; onCancel: () => void }) {
-  if (!stage) return null;
-  if (stage.mode === 'allow') return <p role="status">You can cancel this stale-price trade for {remaining} more seconds. <button type="button" onClick={onCancel}>Cancel trade</button></p>;
-  return stage.approved ? <p role="status">Notice approved. Review the refreshed quote, then Confirm. <button type="button" onClick={onCancel}>Cancel</button></p> : <button type="button" onClick={onApprove}>Approve stale-price notice</button>;
+  return { stage, remaining, setApproval: (approved: boolean) => setStage((current) => current?.key === key ? { ...current, approved } : current), authorize, clear: () => setStage(null) };
 }
 
 const QUOTE_EXPIRED_MESSAGE = "This execution quote expired before it reached the chain. Get a fresh quote, review it, and sign again.";
@@ -129,41 +126,77 @@ function formatMinimumOutputs(assetAddresses: string[] | undefined, amounts: str
   });
 }
 
-function PriceReferenceNotice({ warnings, minimums = [], slippageBps }: { warnings: PriceReferenceWarning[]; minimums?: string[]; slippageBps?: number }) {
+function PriceReferenceNotice({ warnings, minimums = [], slippageBps, stage, remaining, onApprovalChange, onCancel }: { warnings: PriceReferenceWarning[]; minimums?: string[]; slippageBps?: number; stage: ConsentStage | null; remaining: number; onApprovalChange: (approved: boolean) => void; onCancel: () => void }) {
   const warning = warnings.find((item) => item.code === "STALE_PRICE_REFERENCE");
   if (!warning) return null;
 
-  const assetLabels = warning.assets.map((item) => (
-    supportedAssets.find((asset) => asset.address?.toLowerCase() === item.assetAddress.toLowerCase())?.symbol
-    ?? `${item.assetAddress.slice(0, 6)}…${item.assetAddress.slice(-4)}`
-  ));
-  const uniqueLabels = Array.from(new Set(assetLabels));
+  const assetRows = warning.assets.map((item) => {
+    const symbol = supportedAssets.find((asset) => asset.address?.toLowerCase() === item.assetAddress.toLowerCase())?.symbol
+      ?? `${item.assetAddress.slice(0, 6)}…${item.assetAddress.slice(-4)}`;
+    const dollars = Number(item.priceUsdE8) / 100_000_000;
+    const age = item.ageSeconds >= 86400
+      ? `${Math.floor(item.ageSeconds / 86400)}d ${Math.floor((item.ageSeconds % 86400) / 3600)}h old`
+      : item.ageSeconds >= 3600
+        ? `${Math.floor(item.ageSeconds / 3600)}h ${Math.floor((item.ageSeconds % 3600) / 60)}m old`
+        : `${Math.floor(item.ageSeconds / 60)}m old`;
+    return { ...item, symbol, dollars, age };
+  });
   const referenceTime = new Date(warning.lastPriceReferenceAt);
   const formattedReference = Number.isNaN(referenceTime.getTime())
     ? warning.lastPriceReferenceAt
-    : referenceTime.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZoneName: "short",
-    });
+    : referenceTime.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+  const blocked = stage?.mode === 'reject';
 
   return (
-    <div className="price-reference-notice" role="status">
-      <AppIcon type="clock" />
-      <p>
-        <strong>Using the last available price reference</strong>
-        <span>{uniqueLabels.join(", ")} · {formattedReference}</span>
-        {warning.assets.map((item) => {
-          const symbol = supportedAssets.find((asset) => asset.address?.toLowerCase() === item.assetAddress.toLowerCase())?.symbol ?? item.assetAddress;
-          const dollars = Number(item.priceUsdE8) / 100_000_000;
-          return <small key={item.assetAddress}>{symbol}: ${dollars.toLocaleString("en-US", { maximumFractionDigits: 4 })} · updated {new Date(item.feedUpdatedAt).toLocaleString()} ({Math.floor(item.ageSeconds / 3600)}h {Math.floor((item.ageSeconds % 3600) / 60)}m old)</small>;
-        })}
-        {minimums.length > 0 && <small>Quoted route minimum output (raw base units): {minimums.join(", ")}</small>}
-        {slippageBps !== undefined && <small>Selected DEX slippage limit: {(slippageBps / 100).toFixed(2)}%.</small>}
-        <small>The indexed price is a quote-time reference. The oracle may read a newer round before mining; the route minimum and onchain oracle loss check still apply.</small>
-      </p>
+    <div className="price-reference-notice" role="region" aria-labelledby="stale-price-heading">
+      <div className="price-reference-icon" aria-hidden="true"><AppIcon type="clock" /></div>
+      <div className="price-reference-content">
+        <h3 id="stale-price-heading">This quote uses older price references</h3>
+        <p className="price-reference-summary">Prices below were last referenced {formattedReference}. Review them before continuing.</p>
+        <div className="price-reference-assets" role="list" aria-label="Stale quote price references">
+          {assetRows.map((item) => (
+            <div className="price-reference-asset" role="listitem" key={item.assetAddress}>
+              <strong>{item.symbol}</strong>
+              <span>${item.dollars.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span>
+              <small>{item.age}</small>
+            </div>
+          ))}
+        </div>
+        {(minimums.length > 0 || slippageBps !== undefined) && (
+          <details className="price-reference-details">
+            <summary>Quote limits</summary>
+            {minimums.map((minimum, index) => <small key={`${index}-${minimum}`}>Minimum output: {minimum}</small>)}
+            {slippageBps !== undefined && <small>Maximum DEX slippage: {(slippageBps / 100).toFixed(2)}%</small>}
+          </details>
+        )}
+        <p className="price-reference-caveat">These are quote-time references. The oracle may update before the trade executes; route minimums and the onchain loss check still apply.</p>
+        {blocked ? (
+          <div className="price-reference-blocked" role="alert">
+            <strong>Trade blocked by your stale-price preference.</strong>
+            <a href="/app/settings">Change this in Settings</a>
+          </div>
+        ) : stage?.mode === 'allow' ? (
+          remaining > 0 ? (
+            <div className="price-reference-wait" role="status">
+              <span>Trade available in {remaining}s</span>
+              <progress max="15" value={15 - remaining} aria-label={`${remaining} seconds remaining before trade is available`} />
+              <button type="button" onClick={onCancel}>Cancel trade</button>
+            </div>
+          ) : (
+            <div className="price-reference-ready" role="status">
+              <strong>Ready to confirm this trade.</strong>
+              <button type="button" onClick={onCancel}>Cancel trade</button>
+            </div>
+          )
+        ) : stage?.mode === 'warn' ? (
+          <label className="price-reference-consent">
+            <input type="checkbox" checked={stage.approved} onChange={(event) => onApprovalChange(event.currentTarget.checked)} />
+            <span>I accept using these displayed stale quote-time references for this trade.</span>
+          </label>
+        ) : (
+          <p className="price-reference-loading" role="status">Continue with “Review stale quote” to load the consent step.</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -581,9 +614,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
                 </strong>
               </div>
             </div>
-            <PriceReferenceNotice warnings={priceWarnings} minimums={quoteMinimums} slippageBps={quoteSlippageBps} />
-            {priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") && <StaleConsentActions stage={staleConsent.stage} remaining={staleConsent.remaining} onApprove={staleConsent.approve} onCancel={staleConsent.clear} />}
-            {executionError?.includes("stale-price preference") && <a href="/app/settings">Change stale-price preference in Settings</a>}
+            <PriceReferenceNotice warnings={priceWarnings} minimums={quoteMinimums} slippageBps={quoteSlippageBps} stage={staleConsent.stage} remaining={staleConsent.remaining} onApprovalChange={staleConsent.setApproval} onCancel={staleConsent.clear} />
             <DustTradesNotice warnings={priceWarnings} />
             {executionError && (
               <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
@@ -796,10 +827,10 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
             </button>
             <button
               className="primary"
-              disabled={(!previewing && (total !== 100 || hasInoperableAssets)) || isPending || isConfirming || isSuccess || staleConsent.remaining > 0}
+              disabled={(!previewing && (total !== 100 || hasInoperableAssets)) || isPending || isConfirming || isSuccess || staleConsent.remaining > 0 || Boolean(staleConsent.stage?.mode === 'warn' && !staleConsent.stage.approved) || staleConsent.stage?.mode === 'reject'}
               onClick={previewing ? handleExecuteRebalance : () => setPreviewing(true)}
             >
-              {isSuccess ? "Indexing..." : isPending ? "Confirming..." : previewing ? (staleConsent.stage && (staleConsent.stage.mode === 'warn' ? staleConsent.stage.approved : staleConsent.remaining === 0) ? "Confirm trade" : priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") ? "Review stale quote" : "Execute") : "Review"}{" "}
+              {isSuccess ? "Indexing..." : isPending ? "Confirming..." : previewing ? (staleConsent.stage && (staleConsent.stage.mode === 'warn' ? staleConsent.stage.approved : staleConsent.stage.mode === 'allow' ? staleConsent.remaining === 0 : false) ? "Confirm trade" : priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") ? "Review stale quote" : "Execute") : "Review"}{" "}
               <AppIcon type="arrow" />
             </button>
           </>
@@ -1339,9 +1370,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                 <small>No assets move until you approve the transaction in your wallet.</small>
               </p>
             </div>
-            <PriceReferenceNotice warnings={priceWarnings} minimums={quoteMinimums} slippageBps={quoteSlippageBps} />
-            {priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") && <StaleConsentActions stage={staleConsent.stage} remaining={staleConsent.remaining} onApprove={staleConsent.approve} onCancel={staleConsent.clear} />}
-            {(actionError ?? "").includes("stale-price preference") && <a href="/app/settings">Change stale-price preference in Settings</a>}
+            <PriceReferenceNotice warnings={priceWarnings} minimums={quoteMinimums} slippageBps={quoteSlippageBps} stage={staleConsent.stage} remaining={staleConsent.remaining} onApprovalChange={staleConsent.setApproval} onCancel={staleConsent.clear} />
             <DustTradesNotice warnings={priceWarnings} />
             {actionError && !isCanonicalLiquidError && (
               <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
@@ -1365,8 +1394,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         ) : (
           <>
             <button onClick={onClose}>Cancel</button>
-            <button className="primary" disabled={isPending || isConfirming || staleConsent.remaining > 0} onClick={handleExecuteAmountAction}>
-              {isPending ? "Confirming..." : staleConsent.stage && (staleConsent.stage.mode === 'warn' ? staleConsent.stage.approved : staleConsent.remaining === 0) ? "Confirm trade" : priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") ? "Review stale quote" : "Submit"} <AppIcon type="arrow" />
+            <button className="primary" disabled={isPending || isConfirming || staleConsent.remaining > 0 || Boolean(staleConsent.stage?.mode === 'warn' && !staleConsent.stage.approved) || staleConsent.stage?.mode === 'reject'} onClick={handleExecuteAmountAction}>
+              {isPending ? "Confirming..." : staleConsent.stage && (staleConsent.stage.mode === 'warn' ? staleConsent.stage.approved : staleConsent.stage.mode === 'allow' ? staleConsent.remaining === 0 : false) ? "Confirm trade" : priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") ? "Review stale quote" : "Submit"} <AppIcon type="arrow" />
             </button>
           </>
         )}

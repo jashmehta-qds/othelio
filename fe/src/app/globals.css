@@ -1395,51 +1395,36 @@ body {
 }
 
 .price-reference-notice {
-  display: flex;
-  gap: 10px;
-  margin: 14px 0 0;
-  padding: 12px 13px;
-  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  color: var(--ink);
+  display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px;
+  margin: 14px 0 0; padding: 14px; border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  border-radius: 12px; background: color-mix(in srgb, var(--accent) 7%, var(--panel)); color: var(--ink);
 }
-
-.price-reference-notice > svg {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  margin-top: 1px;
-  color: var(--accent);
-}
-
-.price-reference-notice p {
-  min-width: 0;
-  margin: 0;
-}
-
-.price-reference-notice strong,
-.price-reference-notice span,
-.price-reference-notice small {
-  display: block;
-}
-
-.price-reference-notice strong {
-  font-size: 12px;
-}
-
-.price-reference-notice span {
-  margin-top: 3px;
-  color: var(--ink);
-  font-size: 11px;
-}
-
-.price-reference-notice small {
-  margin-top: 4px;
-  color: var(--muted-ink);
-  font-size: 10px;
-  line-height: 1.45;
-}
+.price-reference-notice.dust-notice { display: flex; gap: 10px; }
+.price-reference-notice.dust-notice > svg { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 1px; color: var(--warning, #eab308); }
+.price-reference-notice.dust-notice p { min-width: 0; margin: 0; }
+.price-reference-notice.dust-notice strong,
+.price-reference-notice.dust-notice span,
+.price-reference-notice.dust-notice small { display: block; }
+.price-reference-notice.dust-notice span { margin-top: 3px; color: var(--ink); font-size: 11px; }
+.price-reference-notice.dust-notice small { margin-top: 4px; color: var(--muted-ink); font-size: 10px; line-height: 1.45; }
+.price-reference-icon svg { width: 17px; height: 17px; margin-top: 2px; color: var(--accent); }
+.price-reference-content { min-width: 0; }
+.price-reference-content h3 { margin: 0; font-size: 13px; line-height: 1.35; }
+.price-reference-content p { margin: 4px 0 0; color: var(--muted-ink); font-size: 12px; line-height: 1.45; }
+.price-reference-assets { display: grid; margin-top: 10px; border-top: 1px solid var(--line); }
+.price-reference-asset { display: grid; grid-template-columns: minmax(40px, 1fr) auto auto; align-items: baseline; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12px; font-variant-numeric: tabular-nums; }
+.price-reference-asset span { text-align: right; }
+.price-reference-asset small { color: var(--muted-ink); font-size: 12px; white-space: nowrap; }
+.price-reference-details { margin-top: 8px; font-size: 12px; }
+.price-reference-details summary { width: fit-content; cursor: pointer; }
+.price-reference-details small { display: block; margin-top: 5px; color: var(--muted-ink); font-size: 12px; }
+.price-reference-consent { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); cursor: pointer; font-size: 12px; font-weight: 600; line-height: 1.45; }
+.price-reference-consent input { width: 17px; height: 17px; flex: 0 0 auto; margin: 0; accent-color: var(--accent); }
+.price-reference-wait { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 7px 12px; margin-top: 12px; font-size: 12px; }
+.price-reference-wait progress { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.price-reference-ready { display: flex; justify-content: space-between; gap: 10px; margin-top: 12px; font-size: 12px; }
+.price-reference-blocked, .price-reference-loading { margin-top: 10px; font-size: 12px; line-height: 1.45; }
+.price-reference-wait button, .price-reference-ready button, .price-reference-blocked a { border: 0; padding: 0; background: transparent; color: var(--muted-ink); cursor: pointer; font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
 
 .rebalance-drawer section {
   padding: 20px 0;
