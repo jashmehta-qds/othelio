@@ -16,6 +16,7 @@ describe('SettingsController security', () => {
     getAgentSettings: vi.fn(),
     upsertAgentSettings: vi.fn(),
     generateApiKey: vi.fn(),
+    revokeApiKey: vi.fn(),
   };
 
   const controller = new SettingsController(

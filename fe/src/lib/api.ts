@@ -191,3 +191,103 @@ export async function updateAccountSettingsApi(
     body: JSON.stringify(settings),
   });
 }
+
+export interface AgentSettings {
+  accountAddress: string;
+  autonomyTier: 'staged' | 'advisory';
+  maxSpendPerTxUsd: number;
+  dailySpendLimitUsd: number;
+  spentTodayUsd: number;
+  spentTodayResetAt: string;
+  maxSlippageBps: number;
+  allowedAssets: string[];
+  restrictToMarketHours: boolean;
+  minRebalanceDriftBps: number;
+  hasApiKey: boolean;
+  maskedApiKey?: string;
+  updatedAt?: string;
+}
+
+export interface AgentProposalItem {
+  id: string;
+  accountAddress: string;
+  basketAddress: string | null;
+  action: 'CREATE_BASKET' | 'DEPOSIT' | 'WITHDRAW' | 'REBALANCE';
+  status: 'PENDING' | 'EXECUTED' | 'EXPIRED' | 'REJECTED';
+  proposalSummary: {
+    action: string;
+    title: string;
+    description: string;
+    accountAddress: string;
+    basketAddress?: string;
+    estimatedUsdValue: number;
+    slippageBps?: number;
+    warnings: string[];
+    targets?: Array<{ symbol: string; targetWeightBps: number }>;
+  };
+  transactionCall: {
+    to: string;
+    data: string;
+    value: string;
+    chainId: number;
+  };
+  calldataHash: string;
+  expiresAt: string;
+  signUrl: string;
+  executedTxHash?: string;
+  executedAt?: string;
+  createdAt: string;
+}
+
+export async function fetchAgentSettingsApi(address: string) {
+  return fetchApi<{
+    success: boolean;
+    data: AgentSettings;
+  }>(`/v1/settings/${address.toLowerCase()}/agent`);
+}
+
+export async function updateAgentSettingsApi(
+  address: string,
+  settings: Partial<AgentSettings>,
+  token?: string,
+) {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return fetchApi<{
+    success: boolean;
+    data: AgentSettings;
+  }>(`/v1/settings/${address.toLowerCase()}/agent`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(settings),
+  });
+}
+
+export async function generateAgentApiKeyApi(address: string, token: string) {
+  return fetchApi<{
+    success: boolean;
+    data: { apiKey: string; maskedKey: string };
+  }>(`/v1/settings/${address.toLowerCase()}/agent/key`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function revokeAgentApiKeyApi(address: string, token: string) {
+  return fetchApi<{
+    success: boolean;
+    data: AgentSettings;
+  }>(`/v1/settings/${address.toLowerCase()}/agent/key`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function fetchAgentProposalsApi(address: string) {
+  return fetchApi<{
+    success: boolean;
+    data: AgentProposalItem[];
+  }>(`/v1/proposals?accountAddress=${address.toLowerCase()}`);
+}

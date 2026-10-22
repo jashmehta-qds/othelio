@@ -477,6 +477,43 @@ export class AgentProposalsService {
     };
   }
 
+  async getProposalsForAccount(rawAddress: string, limit: number = 20): Promise<ProposalRecord[]> {
+    const address = addressSchema.parse(rawAddress).toLowerCase();
+    const result = await this.db.query(
+      `SELECT id, account_address, basket_address, action, status, proposal_summary,
+              transaction_call, calldata_hash, expires_at, executed_tx_hash, executed_at, created_at
+       FROM agent_proposals
+       WHERE LOWER(account_address) = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [address, limit],
+    );
+
+    const now = new Date();
+    return result.rows.map((row: any) => {
+      const expiresAt = new Date(row.expires_at);
+      let status = row.status;
+      if (status === 'PENDING' && now > expiresAt) {
+        status = 'EXPIRED';
+      }
+      return {
+        id: row.id,
+        accountAddress: row.account_address.trim().toLowerCase(),
+        basketAddress: row.basket_address ? row.basket_address.trim().toLowerCase() : null,
+        action: row.action,
+        status,
+        proposalSummary: typeof row.proposal_summary === 'string' ? JSON.parse(row.proposal_summary) : row.proposal_summary,
+        transactionCall: typeof row.transaction_call === 'string' ? JSON.parse(row.transaction_call) : row.transaction_call,
+        calldataHash: row.calldata_hash,
+        expiresAt: expiresAt.toISOString(),
+        signUrl: `${this.getAppBaseUrl()}/sign/${row.id}`,
+        executedTxHash: row.executed_tx_hash ?? undefined,
+        executedAt: row.executed_at ? new Date(row.executed_at).toISOString() : undefined,
+        createdAt: new Date(row.created_at).toISOString(),
+      };
+    });
+  }
+
   async confirmProposalExecution(
     proposalId: string,
     rawAccountAddress: string,

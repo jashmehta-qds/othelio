@@ -6,6 +6,7 @@ import {
   Inject,
   Param,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AgentProposalsService } from './agent-proposals.service';
@@ -17,6 +18,22 @@ export class ProposalsController {
     @Inject(AgentProposalsService)
     private readonly agentProposals: AgentProposalsService,
   ) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'List proposals for an account',
+    description: 'Retrieves recently staged proposals for the given wallet address.',
+  })
+  async getProposals(@Query('accountAddress') accountAddress: string) {
+    if (!accountAddress) {
+      throw new BadRequestException('accountAddress query parameter is required.');
+    }
+    const proposals = await this.agentProposals.getProposalsForAccount(accountAddress);
+    return {
+      success: true,
+      data: proposals,
+    };
+  }
 
   @Get(':id')
   @ApiOperation({

@@ -33,20 +33,20 @@ export const createBasketProposalSchema = z.object({
   chainId: chainIdSchema.optional().default(8453),
   targets: z.array(targetWeightSchema).min(1).max(20),
 });
-export type CreateBasketProposalDto = z.infer<typeof createBasketProposalSchema>;
+export type CreateBasketProposalDto = z.input<typeof createBasketProposalSchema>;
 
 export const depositProposalSchema = z.object({
   amountUsdc: z.string().min(1),
   maxSlippageBps: z.number().int().min(1).max(1000).optional(),
   chainId: chainIdSchema.optional().default(8453),
 });
-export type DepositProposalDto = z.infer<typeof depositProposalSchema>;
+export type DepositProposalDto = z.input<typeof depositProposalSchema>;
 
 export const withdrawProposalSchema = z.object({
   withdrawValueUsdE8: z.string().min(1),
   chainId: chainIdSchema.optional().default(8453),
 });
-export type WithdrawProposalDto = z.infer<typeof withdrawProposalSchema>;
+export type WithdrawProposalDto = z.input<typeof withdrawProposalSchema>;
 
 export const rebalanceProposalSchema = z.object({
   updatedTargets: z.array(targetWeightSchema).optional(),
@@ -54,7 +54,7 @@ export const rebalanceProposalSchema = z.object({
   force: z.boolean().optional().default(false),
   chainId: chainIdSchema.optional().default(8453),
 });
-export type RebalanceProposalDto = z.infer<typeof rebalanceProposalSchema>;
+export type RebalanceProposalDto = z.input<typeof rebalanceProposalSchema>;
 
 export interface ProposalSummary {
   action: 'CREATE_BASKET' | 'DEPOSIT' | 'WITHDRAW' | 'REBALANCE';

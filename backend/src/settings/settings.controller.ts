@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Headers,
@@ -103,6 +104,27 @@ export class SettingsController {
     }
 
     const data = await this.agentSettingsService.generateApiKey(address);
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Delete(':address/agent/key')
+  async revokeAgentApiKey(
+    @Param('address') address: string,
+    @Headers('authorization') authHeader: string | undefined,
+  ) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Authentication token required to revoke agent API key');
+    }
+    const token = authHeader.substring('Bearer '.length).trim();
+    const session = this.authService.verifySessionToken(token);
+    if (session.sub.toLowerCase() !== address.toLowerCase()) {
+      throw new ForbiddenException('Cannot revoke agent API key for a different wallet address');
+    }
+
+    const data = await this.agentSettingsService.revokeApiKey(address);
     return {
       success: true,
       data,

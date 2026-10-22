@@ -171,6 +171,15 @@ export class AgentSettingsService {
     };
   }
 
+  async revokeApiKey(rawAddress: string): Promise<AgentSettingsResponse> {
+    const address = addressSchema.parse(rawAddress).toLowerCase();
+    await this.db.query(
+      `UPDATE agent_settings SET api_key_hash = '', updated_at = NOW() WHERE account_address = $1`,
+      [address],
+    );
+    return this.getAgentSettings(address);
+  }
+
   async verifyAgentApiKey(rawApiKey: string): Promise<AgentSettingsResponse> {
     if (!rawApiKey || typeof rawApiKey !== 'string') {
       throw new UnauthorizedException('Valid agent API key required');
