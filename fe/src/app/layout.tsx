@@ -1,21 +1,6 @@
 import type { Metadata } from "next";
-import { Atkinson_Hyperlegible_Next, Space_Grotesk } from "next/font/google";
 import { Providers } from "@/providers/Providers";
 import "./globals.css";
-
-const atkinson = Atkinson_Hyperlegible_Next({
-  variable: "--font-atkinson",
-  subsets: ["latin"],
-  // Next has no metric override data for this family, so generating one only
-  // produces a build warning. The CSS stack remains the intentional fallback.
-  adjustFontFallback: false,
-});
-
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-heading",
-  subsets: ["latin"],
-  weight: ["500", "700"],
-});
 
 export const metadata: Metadata = {
   title: "Othelio — Build the basket you want to own",
@@ -35,8 +20,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${atkinson.variable} ${spaceGrotesk.variable} h-full antialiased`}
+      className="h-full antialiased font-sans"
     >
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:ital,wght@0,200..800;1,200..800&family=Space+Grotesk:wght@500;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <Providers>{children}</Providers>
       </body>
