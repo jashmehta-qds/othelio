@@ -116,7 +116,12 @@ export class BasketQuotePlannerService {
     const recipientAddress = this.parseAddress(body.recipientAddress ?? body.callerAddress, 'recipientAddress');
     const requestedValueUsdE8 = this.parsePositiveAmount(body.withdrawValueUsdE8, 'withdrawValueUsdE8');
     const { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId);
-    const readiness = await this.positions.assertActionReadiness(chainId, basketAddress, snapshot.tokens.map((token) => token.assetAddress as Address));
+    const readiness = await this.positions.assertActionReadiness(
+      chainId,
+      basketAddress,
+      snapshot.tokens.map((token) => token.assetAddress as Address),
+      new Map(snapshot.tokens.map((token) => [token.assetAddress.toLowerCase(), token.priceUsdE8])),
+    );
     const capability = capabilities.actions.WITHDRAW_LIQUID;
     if (capability.availability === 'DISABLED') throw new UnprocessableEntityException(capability.reason);
     this.assertUsableLiquidWithdrawalSnapshot(snapshot, basketAddress, chainId);
@@ -197,7 +202,12 @@ export class BasketQuotePlannerService {
     const targetWeights = this.parseTargetWeights(body.targetWeights ?? body.holdings);
     const targetAssets = targetWeights.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'));
     const { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId, targetAssets);
-    const readiness = await this.positions.assertActionReadiness(chainId, basketAddress, [...targetAssets, ...snapshot.tokens.map((token) => token.assetAddress as Address)]);
+    const readiness = await this.positions.assertActionReadiness(
+      chainId,
+      basketAddress,
+      [...targetAssets, ...snapshot.tokens.map((token) => token.assetAddress as Address)],
+      new Map(snapshot.tokens.map((token) => [token.assetAddress.toLowerCase(), token.priceUsdE8])),
+    );
     const spotCapability = capabilities.actions.SPOT_REBALANCE;
     if (spotCapability.availability === 'DISABLED') {
       throw new UnprocessableEntityException(spotCapability.reason);
@@ -502,7 +512,12 @@ export class BasketQuotePlannerService {
     }
 
     let { data: snapshot, capabilities } = await this.positions.getIndexedPositionSnapshot(basketAddress, chainId);
-    const readiness = await this.positions.assertActionReadiness(chainId, basketAddress, [inputAsset, ...targets.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'))]);
+    const readiness = await this.positions.assertActionReadiness(
+      chainId,
+      basketAddress,
+      [inputAsset, ...targets.map((target) => this.parseAddress(target.assetAddress ?? target.address, 'target assetAddress'))],
+      new Map(snapshot.tokens.map((token) => [token.assetAddress.toLowerCase(), token.priceUsdE8])),
+    );
     if (capabilities.actions.FUND.availability === 'DISABLED') {
       throw new UnprocessableEntityException(capabilities.actions.FUND.reason);
     }

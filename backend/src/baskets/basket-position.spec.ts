@@ -67,12 +67,12 @@ describe('BasketPositionService', () => {
     expect((service as any).getClient).not.toHaveBeenCalled();
   });
 
-  it('returns a warning instead of blocking when a usable indexed price reference is old', async () => {
-    const feedUpdatedAt = new Date(Date.now() - 90 * 60 * 1_000);
+  it('returns a warning for a valid reference older than the freshness threshold but within the contract ceiling', async () => {
+    const feedUpdatedAt = new Date(Date.now() - 3 * 60 * 60 * 1_000);
     const db = {
       query: vi.fn()
         .mockResolvedValueOnce({ rows: [{ next_block: '101', observed_head_block: '103', observed_head_at: new Date() }] })
-        .mockResolvedValueOnce({ rows: [{ asset_address: provider, block_number: '100', feed_updated_at: feedUpdatedAt }] })
+        .mockResolvedValueOnce({ rows: [{ asset_address: provider, block_number: '100', feed_updated_at: feedUpdatedAt, price_usd_e8: '12345000000', feed_round_id: '42' }] })
         .mockResolvedValueOnce({ rows: [{ asset_address: provider }] })
         .mockResolvedValueOnce({ rows: [{ asset_address: provider, last_checked_block: '100', status: 'CURRENT' }] }),
     };
@@ -84,9 +84,57 @@ describe('BasketPositionService', () => {
         lastPriceReferenceAt: feedUpdatedAt.toISOString(),
         assets: [expect.objectContaining({
           assetAddress: provider,
+          priceUsdE8: '12345000000',
           feedUpdatedAt: feedUpdatedAt.toISOString(),
+          ageSeconds: expect.any(Number),
+          feedRoundId: '42',
+          quoteBlock: 100,
         })],
       }],
+    });
+  });
+
+  it('hard-blocks a valid price older than the onchain oracle ceiling', async () => {
+    const feedUpdatedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1_000);
+    const db = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ next_block: '101', observed_head_block: '103', observed_head_at: new Date() }] })
+        .mockResolvedValueOnce({ rows: [{ asset_address: provider, block_number: '100', feed_updated_at: feedUpdatedAt, price_usd_e8: '12345000000', feed_round_id: '42' }] }),
+    };
+    const service = new BasketPositionService(db as never);
+
+    await expect(service.assertActionReadiness(8453, basket, [provider])).rejects.toMatchObject({
+      response: { code: 'PRICE_SNAPSHOT_STALE', assets: [provider] },
+    });
+  });
+
+  it.each([
+    ['no observation', []],
+    ['zero oracle price', [{ asset_address: provider, block_number: '100', feed_updated_at: new Date(), price_usd_e8: '0', feed_round_id: '42' }]],
+    ['missing round id', [{ asset_address: provider, block_number: '100', feed_updated_at: new Date(), price_usd_e8: '12345000000', feed_round_id: null }]],
+  ])('hard-blocks an invalid reference (%s)', async (_caseName, priceRows) => {
+    const db = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ next_block: '101', observed_head_block: '103', observed_head_at: new Date() }] })
+        .mockResolvedValueOnce({ rows: priceRows }),
+    };
+    const service = new BasketPositionService(db as never);
+
+    await expect(service.assertActionReadiness(8453, basket, [provider])).rejects.toMatchObject({
+      response: { code: 'PRICE_SNAPSHOT_STALE', assets: [provider] },
+    });
+  });
+
+  it('hard-blocks when the latest indexed reference differs from the quote snapshot price', async () => {
+    const db = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ next_block: '101', observed_head_block: '103', observed_head_at: new Date() }] })
+        .mockResolvedValueOnce({ rows: [{ asset_address: provider, block_number: '100', feed_updated_at: new Date(), price_usd_e8: '20000000000', feed_round_id: '43' }] }),
+    };
+    const service = new BasketPositionService(db as never);
+
+    await expect(service.assertActionReadiness(8453, basket, [provider], new Map([[provider, '12345000000']]))).rejects.toMatchObject({
+      response: { code: 'PRICE_SNAPSHOT_STALE', assets: [provider] },
     });
   });
 
@@ -94,7 +142,7 @@ describe('BasketPositionService', () => {
     const db = {
       query: vi.fn()
         .mockResolvedValueOnce({ rows: [{ next_block: '101', observed_head_block: '103', observed_head_at: new Date() }] })
-        .mockResolvedValueOnce({ rows: [{ asset_address: provider, block_number: '100', feed_updated_at: new Date() }] })
+        .mockResolvedValueOnce({ rows: [{ asset_address: provider, block_number: '100', feed_updated_at: new Date(), price_usd_e8: '12345000000', feed_round_id: '42' }] })
         .mockResolvedValueOnce({ rows: [] }),
     };
     const service = new BasketPositionService(db as never);

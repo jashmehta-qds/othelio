@@ -5,8 +5,11 @@ export type StalePriceReferenceWarning = {
   lastPriceReferenceAt: string;
   assets: Array<{
     assetAddress: string;
+    priceUsdE8: string;
     feedUpdatedAt: string;
     ageSeconds: number;
+    feedRoundId: string;
+    quoteBlock: number;
   }>;
 };
 
@@ -142,6 +145,7 @@ export interface AccountSettings {
   slippageTolerance: number;
   riskTier: string;
   customRiskBuffer: number | null;
+  stalePriceTrades: 'allow' | 'warn' | 'reject';
   updatedAt?: string;
 }
 

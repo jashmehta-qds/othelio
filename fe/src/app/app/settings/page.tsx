@@ -31,6 +31,7 @@ export default function SettingsPage() {
   const [riskTier, setRiskTier] = useState<RiskTier>("safe");
   const [customRiskBuffer, setCustomRiskBuffer] = useState<string>("");
   const [isCustomRisk, setIsCustomRisk] = useState<boolean>(false);
+  const [stalePriceTrades, setStalePriceTrades] = useState<'allow' | 'warn' | 'reject'>('warn');
 
   const triggerSaveNotification = (msg: string = "Preferences Updated.") => {
     setSaveToast(msg);
@@ -43,6 +44,7 @@ export default function SettingsPage() {
       slippageTolerance?: number;
       riskTier?: string;
       customRiskBuffer?: number | null;
+      stalePriceTrades?: 'allow' | 'warn' | 'reject';
     }) => {
       if (!address || !token) return;
 
@@ -92,6 +94,7 @@ export default function SettingsPage() {
       .then((res) => {
         if (isCancelled || !res.data) return;
         const dbSettings = res.data;
+        setStalePriceTrades(dbSettings.stalePriceTrades ?? 'warn');
 
         // Apply DB settings
         setSlippageState(dbSettings.slippageTolerance);
@@ -164,6 +167,11 @@ export default function SettingsPage() {
       setSlippageTolerance(num, address);
       persistSettings({ slippageTolerance: num });
     }
+  };
+
+  const handleStalePriceTradesChange = (value: 'allow' | 'warn' | 'reject') => {
+    setStalePriceTrades(value);
+    persistSettings({ stalePriceTrades: value });
   };
 
   // Guard: If wallet is not connected or session is not authenticated, render connection prompt
@@ -451,6 +459,25 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Borrowing Safety & Risk Buffer Block */}
+        <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "16px", padding: "24px" }}>
+          <div className="section-title" style={{ marginBottom: "16px" }}>
+            <div>
+              <h2>Stale-price trades</h2>
+              <p>Choose how trades are handled when a supported asset’s valid oracle reference is older than the freshness limit.</p>
+            </div>
+          </div>
+          <div role="group" aria-label="Stale-price trade preference" style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+            {(['allow', 'warn', 'reject'] as const).map((value) => (
+              <button key={value} type="button" aria-pressed={stalePriceTrades === value}
+                onClick={() => handleStalePriceTradesChange(value)}
+                style={{ padding: "10px 16px", borderRadius: "10px", border: stalePriceTrades === value ? "1px solid #d7ff46" : "1px solid var(--line)", background: stalePriceTrades === value ? "#d7ff46" : "var(--panel-2)", color: stalePriceTrades === value ? "#10110f" : "var(--ink)", fontWeight: 600, cursor: "pointer" }}>
+                {value === 'allow' ? 'Allow after 15 seconds' : value === 'warn' ? 'Warn me (Default)' : 'Reject'}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Borrowing Safety & Risk Buffer Block */}

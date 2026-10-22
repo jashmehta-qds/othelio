@@ -68,8 +68,11 @@ export interface StalePriceReferenceWarning {
   lastPriceReferenceAt: string;
   assets: Array<{
     assetAddress: Address;
+    priceUsdE8: string;
     feedUpdatedAt: string;
     ageSeconds: number;
+    feedRoundId: string;
+    quoteBlock: number;
   }>;
 }
 
@@ -129,7 +132,12 @@ export class BasketPositionService {
   }
 
   /** Action gate: page reads never call this method. */
-  async assertActionReadiness(chainId: number, basketAddress: Address, assets: Address[] = []): Promise<ActionReadiness> {
+  async assertActionReadiness(
+    chainId: number,
+    basketAddress: Address,
+    assets: Address[] = [],
+    expectedPrices: Map<string, string | null> = new Map(),
+  ): Promise<ActionReadiness> {
     const checkpoint = await this.db.query(
       `SELECT next_block,observed_head_block,observed_head_at
        FROM indexer_worker_state
@@ -180,7 +188,9 @@ export class BasketPositionService {
         `SELECT DISTINCT ON (LOWER(asset_address))
            LOWER(asset_address) AS asset_address,
            block_number,
-           feed_updated_at
+           feed_updated_at,
+           price_usd_e8,
+           feed_round_id
          FROM asset_price_observations
          WHERE chain_id=$1 AND LOWER(asset_address)=ANY($2::text[])
          ORDER BY LOWER(asset_address),block_number DESC,observed_at DESC,block_hash DESC`,
@@ -189,18 +199,28 @@ export class BasketPositionService {
       const byAsset = new Map(prices.rows.map((row) => [String(row.asset_address).trim().toLowerCase(), {
         blockNumber: Number(row.block_number),
         feedUpdatedAt: row.feed_updated_at == null ? null : new Date(row.feed_updated_at),
+        priceUsdE8: row.price_usd_e8 == null ? null : String(row.price_usd_e8),
+        feedRoundId: row.feed_round_id == null ? null : String(row.feed_round_id),
       }]));
       const configuredPriceMaxLag = process.env.PRICE_SNAPSHOT_MAX_LAG_BLOCKS
         ? Number(process.env.PRICE_SNAPSHOT_MAX_LAG_BLOCKS)
         : null;
       const configuredMaxAge = Number(process.env.MAX_PRICE_FEED_AGE_SECS ?? 2 * 3_600);
-      const maxFeedAgeMs = (Number.isFinite(configuredMaxAge) ? configuredMaxAge : 2 * 3_600) * 1_000;
+      const staleAgeSeconds = Number.isFinite(configuredMaxAge) ? Math.max(0, Math.floor(configuredMaxAge)) : 2 * 3_600;
+      const contractMaxAge = Number(process.env.ONCHAIN_MAX_PRICE_FEED_AGE_SECS ?? 7 * 24 * 3_600);
+      const contractMaxAgeMs = (Number.isFinite(contractMaxAge) ? contractMaxAge : 7 * 24 * 3_600) * 1_000;
       const unavailableAssets = priceAssets.filter((asset) => {
         const price = byAsset.get(asset);
-        if (!price || !price.feedUpdatedAt || !Number.isFinite(price.feedUpdatedAt.getTime())) {
+        if (!price || !price.feedUpdatedAt || !Number.isFinite(price.feedUpdatedAt.getTime())
+          || !price.priceUsdE8 || !price.feedRoundId) {
           return true;
         }
-        if (Date.now() - price.feedUpdatedAt.getTime() > maxFeedAgeMs) {
+        let validPrice = false;
+        try { validPrice = BigInt(price.priceUsdE8) > 0n; } catch { validPrice = false; }
+        if (!validPrice || price.feedUpdatedAt.getTime() > Date.now()) return true;
+        const expectedPrice = expectedPrices.get(asset);
+        if (expectedPrice !== undefined && expectedPrice !== price.priceUsdE8) return true;
+        if (Date.now() - price.feedUpdatedAt.getTime() > contractMaxAgeMs) {
           return true;
         }
         if (configuredPriceMaxLag !== null && head - price.blockNumber > configuredPriceMaxLag) {
@@ -218,16 +238,13 @@ export class BasketPositionService {
         });
       }
 
-      const configuredNoticeAge = Number(process.env.PRICE_REFERENCE_NOTICE_AGE_SECS ?? 3_600);
-      const noticeAgeSeconds = Number.isFinite(configuredNoticeAge)
-        ? Math.max(60, Math.floor(configuredNoticeAge))
-        : 3_600;
       const now = Date.now();
       const staleReferences = priceAssets.flatMap((asset) => {
-        const feedUpdatedAt = byAsset.get(asset)!.feedUpdatedAt!;
+        const price = byAsset.get(asset)!;
+        const feedUpdatedAt = price.feedUpdatedAt!;
         const ageSeconds = Math.max(0, Math.floor((now - feedUpdatedAt.getTime()) / 1_000));
-        return ageSeconds > noticeAgeSeconds
-          ? [{ assetAddress: asset, feedUpdatedAt: feedUpdatedAt.toISOString(), ageSeconds }]
+        return ageSeconds > staleAgeSeconds
+          ? [{ assetAddress: asset, priceUsdE8: price.priceUsdE8!, feedUpdatedAt: feedUpdatedAt.toISOString(), ageSeconds, feedRoundId: price.feedRoundId!, quoteBlock: price.blockNumber }]
           : [];
       });
       if (staleReferences.length > 0) {

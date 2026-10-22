@@ -6,11 +6,82 @@ import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets, depositBasket, withdrawBasket, getSlippageTolerance, type Basket, type Holding } from "@/lib/baskets";
 import { CONTRACT_ADDRESSES, OTHELIO_PORTFOLIO_MODULE_ABI } from "@/lib/contracts";
-import { fetchSwapQuote, type PriceReferenceWarning, type DustTradesSkippedWarning } from "@/lib/api";
+import { fetchSwapQuote, fetchAccountSettingsApi, type PriceReferenceWarning, type DustTradesSkippedWarning } from "@/lib/api";
 import { useBasketDetails, useBasketActivity, useWalletUsdcBalance, useSupportedAssets } from "@/hooks/useBaskets";
 import { toRawAmount, USDC_DECIMALS } from "@/types/shared";
 
 export type BasketAction = "mint" | "withdraw" | "rebalance" | null;
+
+type ConsentStage = { key: string; fingerprint: string; mode: 'allow' | 'warn'; approved: boolean; startedAt: number; expiresAt: number };
+
+type QuoteFingerprintInput = {
+  inputAsset?: string;
+  inputAmount?: string;
+  withdrawValueUsdE8?: string;
+  minBoughtAmounts?: string[];
+  slippageBps?: number;
+  route?: { provider?: string; target?: string; allowanceSpender?: string; recipient?: string; sellAsset?: string; buyAsset?: string; maxSellAmount?: string; minBuyAmount?: string };
+  rebalance?: { soldAssets?: string[]; maxSoldAmounts?: string[]; boughtAssets?: string[]; minBoughtAmounts?: string[]; basketTokens?: string[] };
+  withdrawal?: unknown;
+  plan?: { action?: string; chainId?: number; accountAddress?: string; snapshot?: unknown; calls?: Array<{ to: string; valueBaseUnits: string }>; limits?: unknown; expectedAfterState?: unknown };
+};
+
+function staleQuoteFingerprint(warnings: PriceReferenceWarning[], quote: unknown): string {
+  const data = quote as QuoteFingerprintInput;
+  const references = warnings.flatMap((warning) => warning.code === 'STALE_PRICE_REFERENCE'
+    ? warning.assets.map(({ assetAddress, priceUsdE8, feedUpdatedAt, feedRoundId }) => ({ assetAddress: assetAddress.toLowerCase(), priceUsdE8, feedUpdatedAt, feedRoundId }))
+    : []).sort((a, b) => a.assetAddress.localeCompare(b.assetAddress));
+  const route = data.route;
+  const plan = data.plan;
+  return JSON.stringify({
+    references,
+    inputAsset: data.inputAsset,
+    inputAmount: data.inputAmount,
+    withdrawValueUsdE8: data.withdrawValueUsdE8,
+    route: route && { provider: route.provider, target: route.target, allowanceSpender: route.allowanceSpender, recipient: route.recipient, sellAsset: route.sellAsset, buyAsset: route.buyAsset, maxSellAmount: route.maxSellAmount, minBuyAmount: route.minBuyAmount },
+    minBoughtAmounts: data.minBoughtAmounts,
+    rebalance: data.rebalance && { soldAssets: data.rebalance.soldAssets, maxSoldAmounts: data.rebalance.maxSoldAmounts, boughtAssets: data.rebalance.boughtAssets, minBoughtAmounts: data.rebalance.minBoughtAmounts, basketTokens: data.rebalance.basketTokens },
+    withdrawal: data.withdrawal,
+    plan: plan && { action: plan.action, chainId: plan.chainId, accountAddress: plan.accountAddress, snapshot: plan.snapshot && { chainId: (plan.snapshot as { chainId?: number }).chainId, basketAddress: (plan.snapshot as { basketAddress?: string }).basketAddress }, calls: plan.calls?.map((call: { to: string; valueBaseUnits: string }) => ({ to: call.to, valueBaseUnits: call.valueBaseUnits })), limits: plan.limits, expectedAfterState: plan.expectedAfterState },
+    slippageBps: data.slippageBps,
+  });
+}
+
+function useStalePriceConsent(wallet: string | undefined, inputKey: string) {
+  const [storedStage, setStage] = useState<ConsentStage | null>(null);
+  const [now, setNow] = useState(0);
+  const key = `${wallet?.toLowerCase() ?? ''}:${inputKey}`;
+  const stage = storedStage?.key === key ? storedStage : null;
+  useEffect(() => {
+    if (!stage || stage.mode !== 'allow') return;
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [stage]);
+  const remaining = stage?.mode === 'allow' ? Math.max(0, Math.ceil(15 - (now - stage.startedAt) / 1000)) : 0;
+  const authorize = async (warnings: PriceReferenceWarning[], fingerprint: string, expiresAt: string): Promise<boolean> => {
+    const stale = warnings.some((warning) => warning.code === 'STALE_PRICE_REFERENCE');
+    if (!stale) { setStage(null); return true; }
+    if (!wallet) throw new Error('Connect a wallet to load its stale-price trade preference.');
+    const settings = await fetchAccountSettingsApi(wallet);
+    const mode = settings.data.stalePriceTrades ?? 'warn';
+    if (mode === 'reject') throw new Error('This trade is blocked by your stale-price preference. Change it in Settings to continue.');
+    if (!stage || stage.fingerprint !== fingerprint || stage.mode !== mode || Date.now() >= stage.expiresAt) {
+      setStage({ key, fingerprint, mode, approved: false, startedAt: Date.now(), expiresAt: new Date(expiresAt).getTime() });
+      setNow(Date.now());
+      return false;
+    }
+    if (mode === 'warn' && !stage.approved) return false;
+    if (mode === 'allow' && remaining > 0) return false;
+    return true;
+  };
+  return { stage, remaining, approve: () => setStage((current) => current?.key === key ? { ...current, approved: true } : current), authorize, clear: () => setStage(null) };
+}
+
+function StaleConsentActions({ stage, remaining, onApprove, onCancel }: { stage: ConsentStage | null; remaining: number; onApprove: () => void; onCancel: () => void }) {
+  if (!stage) return null;
+  if (stage.mode === 'allow') return <p role="status">You can cancel this stale-price trade for {remaining} more seconds. <button type="button" onClick={onCancel}>Cancel trade</button></p>;
+  return stage.approved ? <p role="status">Notice approved. Review the refreshed quote, then Confirm. <button type="button" onClick={onCancel}>Cancel</button></p> : <button type="button" onClick={onApprove}>Approve stale-price notice</button>;
+}
 
 const QUOTE_EXPIRED_MESSAGE = "This execution quote expired before it reached the chain. Get a fresh quote, review it, and sign again.";
 
@@ -50,7 +121,15 @@ function formatWeightDelta(diff: number): string {
   return `00.00%`;
 }
 
-function PriceReferenceNotice({ warnings }: { warnings: PriceReferenceWarning[] }) {
+function formatMinimumOutputs(assetAddresses: string[] | undefined, amounts: string[] | undefined): string[] {
+  return (amounts ?? []).map((amount, index) => {
+    const address = assetAddresses?.[index];
+    const asset = address ? supportedAssets.find((item) => item.address?.toLowerCase() === address.toLowerCase()) : undefined;
+    return `${asset?.symbol ?? (address ? `${address.slice(0, 6)}…${address.slice(-4)}` : `Output ${index + 1}`)}: ${amount} base units`;
+  });
+}
+
+function PriceReferenceNotice({ warnings, minimums = [], slippageBps }: { warnings: PriceReferenceWarning[]; minimums?: string[]; slippageBps?: number }) {
   const warning = warnings.find((item) => item.code === "STALE_PRICE_REFERENCE");
   if (!warning) return null;
 
@@ -76,7 +155,14 @@ function PriceReferenceNotice({ warnings }: { warnings: PriceReferenceWarning[] 
       <p>
         <strong>Using the last available price reference</strong>
         <span>{uniqueLabels.join(", ")} · {formattedReference}</span>
-        <small>Your live route, minimum output, and slippage protection still apply.</small>
+        {warning.assets.map((item) => {
+          const symbol = supportedAssets.find((asset) => asset.address?.toLowerCase() === item.assetAddress.toLowerCase())?.symbol ?? item.assetAddress;
+          const dollars = Number(item.priceUsdE8) / 100_000_000;
+          return <small key={item.assetAddress}>{symbol}: ${dollars.toLocaleString("en-US", { maximumFractionDigits: 4 })} · updated {new Date(item.feedUpdatedAt).toLocaleString()} ({Math.floor(item.ageSeconds / 3600)}h {Math.floor((item.ageSeconds % 3600) / 60)}m old)</small>;
+        })}
+        {minimums.length > 0 && <small>Quoted route minimum output (raw base units): {minimums.join(", ")}</small>}
+        {slippageBps !== undefined && <small>Selected DEX slippage limit: {(slippageBps / 100).toFixed(2)}%.</small>}
+        <small>The indexed price is a quote-time reference. The oracle may read a newer round before mining; the route minimum and onchain oracle loss check still apply.</small>
       </p>
     </div>
   );
@@ -163,6 +249,15 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
   const [previewing, setPreviewing] = useState(false);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [priceWarnings, setPriceWarnings] = useState<PriceReferenceWarning[]>([]);
+  const [quoteMinimums, setQuoteMinimums] = useState<string[]>([]);
+  const [quoteSlippageBps, setQuoteSlippageBps] = useState<number | undefined>();
+  const staleConsent = useStalePriceConsent(address, `${basket.address}:${JSON.stringify(targets)}`);
+  const clearQuoteNotice = () => {
+    setPriceWarnings([]);
+    setQuoteMinimums([]);
+    setQuoteSlippageBps(undefined);
+    staleConsent.clear();
+  };
   const total = useMemo(() => Object.values(targets).reduce((sum, value) => sum + value, 0), [targets]);
 
   const { isPending: isSendPending, sendTransactionAsync } = useSendTransaction();
@@ -251,6 +346,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
     const asset = allAssets.find((a) => a.symbol === tokenSymbol);
     if (asset && asset.tradeable === false) return;
 
+    clearQuoteNotice();
     setTargets((current) => {
       const next = { ...current, [tokenSymbol]: 0 };
       const keys = Object.keys(next);
@@ -280,6 +376,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
     operableKeys.forEach((k, idx) => {
       next[k] = equalShare + (idx === 0 ? remainder : 0);
     });
+    clearQuoteNotice();
     setTargets(next);
   };
 
@@ -321,6 +418,8 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
 
       const quote = res?.data;
       setPriceWarnings(quote?.warnings ?? []);
+      setQuoteMinimums(formatMinimumOutputs(quote?.boughtAssets ?? quote?.rebalance?.boughtAssets ?? (quote?.route?.buyAsset ? [quote.route.buyAsset] : undefined), quote?.minBoughtAmounts?.length ? quote.minBoughtAmounts : quote?.rebalance?.minBoughtAmounts?.length ? quote.rebalance.minBoughtAmounts : quote?.route?.minBuyAmount ? [quote.route.minBuyAmount] : []));
+      setQuoteSlippageBps(quote?.slippageBps);
       const plan = quote?.plan;
       const call = plan?.calls[0];
       const isCurrent = plan
@@ -338,6 +437,9 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
       if (!res.executionAllowed || !isCurrent || !moduleIsBoundedV3 || !callMatchesModule || !isFreshAndSimulated || !call) {
         throw new Error("This rebalance is not a fresh, simulated bounded-execution plan. Request a new quote.");
       }
+
+      const approved = await staleConsent.authorize(quote?.warnings ?? [], staleQuoteFingerprint(quote?.warnings ?? [], quote ?? {}), plan.expiresAt);
+      if (!approved) return;
 
       const tx = await sendTransactionAsync({
         to: call.to as `0x${string}`,
@@ -479,7 +581,9 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
                 </strong>
               </div>
             </div>
-            <PriceReferenceNotice warnings={priceWarnings} />
+            <PriceReferenceNotice warnings={priceWarnings} minimums={quoteMinimums} slippageBps={quoteSlippageBps} />
+            {priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") && <StaleConsentActions stage={staleConsent.stage} remaining={staleConsent.remaining} onApprove={staleConsent.approve} onCancel={staleConsent.clear} />}
+            {executionError?.includes("stale-price preference") && <a href="/app/settings">Change stale-price preference in Settings</a>}
             <DustTradesNotice warnings={priceWarnings} />
             {executionError && (
               <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
@@ -646,7 +750,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
                       </output>
                       <button
                         type="button"
-                        onClick={() => setTargets((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== asset.symbol)))}
+                        onClick={() => { clearQuoteNotice(); setTargets((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== asset.symbol))); }}
                         disabled={selected.length === 1}
                       >
                         Remove
@@ -658,7 +762,7 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
                       max="100"
                       disabled={!isTradeable}
                       value={targets[asset.symbol]}
-                      onChange={(event) => setTargets((current) => ({ ...current, [asset.symbol]: Number(event.target.value) }))}
+                      onChange={(event) => { clearQuoteNotice(); setTargets((current) => ({ ...current, [asset.symbol]: Number(event.target.value) })); }}
                     />
                   </label>
                 );
@@ -692,10 +796,10 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
             </button>
             <button
               className="primary"
-              disabled={(!previewing && (total !== 100 || hasInoperableAssets)) || isPending || isConfirming || isSuccess}
+              disabled={(!previewing && (total !== 100 || hasInoperableAssets)) || isPending || isConfirming || isSuccess || staleConsent.remaining > 0}
               onClick={previewing ? handleExecuteRebalance : () => setPreviewing(true)}
             >
-              {isSuccess ? "Indexing..." : isPending ? "Confirming..." : previewing ? "Execute" : "Review"}{" "}
+              {isSuccess ? "Indexing..." : isPending ? "Confirming..." : previewing ? (staleConsent.stage && (staleConsent.stage.mode === 'warn' ? staleConsent.stage.approved : staleConsent.remaining === 0) ? "Confirm trade" : priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") ? "Review stale quote" : "Execute") : "Review"}{" "}
               <AppIcon type="arrow" />
             </button>
           </>
@@ -717,6 +821,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
   const [withdrawInUsdc, setWithdrawInUsdc] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [priceWarnings, setPriceWarnings] = useState<PriceReferenceWarning[]>([]);
+  const [quoteMinimums, setQuoteMinimums] = useState<string[]>([]);
+  const [quoteSlippageBps, setQuoteSlippageBps] = useState<number | undefined>();
   const isCanonicalLiquidError = isCanonicalLiquidWithdrawalError(actionError, isMint);
 
   const {
@@ -735,6 +841,13 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
   });
 
   const [depositAmount, setDepositAmount] = useState<string>(isMint ? "1000" : (basket.value > 0 ? (basket.value * 0.25).toFixed(0) : "1000"));
+  const staleConsent = useStalePriceConsent(userAddress, `${basket.address}:${kind}:${depositAmount}:${withdrawInUsdc}`);
+  const clearQuoteNotice = () => {
+    setPriceWarnings([]);
+    setQuoteMinimums([]);
+    setQuoteSlippageBps(undefined);
+    staleConsent.clear();
+  };
 
   const { isPending: isWritePending, writeContractAsync } = useWriteContract();
   const { isPending: isSendPending, sendTransactionAsync } = useSendTransaction();
@@ -834,19 +947,6 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
           throw new Error("Enter a USDC amount greater than zero.");
         }
         const amountRaw = usdcAmount.toString();
-        const currentAllowance = (allowanceRaw as bigint) || BigInt(0);
-        if (currentAllowance < usdcAmount) {
-          const approveTxHash = await writeContractAsync({
-            address: usdcAddress,
-            abi: [{ inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' }],
-            functionName: 'approve',
-            args: [moduleAddr, usdcAmount],
-          });
-          if (!publicClient) throw new Error("Wallet client is unavailable on this network.");
-          await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
-          await refetchAllowance();
-        }
-
         const res = await fetchSwapQuote(basket.address, {
           action: 'mint',
           chainId,
@@ -859,6 +959,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
 
         const quote = res?.data;
         setPriceWarnings(quote?.warnings ?? []);
+        setQuoteMinimums(formatMinimumOutputs(quote?.boughtAssets ?? quote?.rebalance?.boughtAssets ?? (quote?.route?.buyAsset ? [quote.route.buyAsset] : undefined), quote?.minBoughtAmounts?.length ? quote.minBoughtAmounts : quote?.rebalance?.minBoughtAmounts?.length ? quote.rebalance.minBoughtAmounts : quote?.route?.minBuyAmount ? [quote.route.minBuyAmount] : []));
+        setQuoteSlippageBps(quote?.slippageBps);
         const plan = quote?.plan;
         const call = plan?.calls[0];
         const routeExpired = !plan || new Date(plan.expiresAt).getTime() <= Date.now();
@@ -871,6 +973,22 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
           && quote.module.address.toLowerCase() === moduleAddr.toLowerCase();
         if (!res.executionAllowed || plan?.action !== 'FUND' || plan.simulation.status !== 'SUCCEEDED' || routeExpired || !callMatchesModule || !planMatchesBasket || !moduleIsBoundedV3 || !call) {
           throw new Error(quote?.preparationReason || "The funding route was not verified for execution.");
+        }
+        const consented = await staleConsent.authorize(quote?.warnings ?? [], staleQuoteFingerprint(quote?.warnings ?? [], quote ?? {}), plan.expiresAt);
+        if (!consented) return;
+        const currentAllowance = (allowanceRaw as bigint) || BigInt(0);
+        if (currentAllowance < usdcAmount) {
+          const approveTxHash = await writeContractAsync({
+            address: usdcAddress,
+            abi: [{ inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], name: 'approve', outputs: [{ name: '', type: 'bool' }], stateMutability: 'nonpayable', type: 'function' }],
+            functionName: 'approve',
+            args: [moduleAddr, usdcAmount],
+          });
+          if (!publicClient) throw new Error("Wallet client is unavailable on this network.");
+          await publicClient.waitForTransactionReceipt({ hash: approveTxHash });
+          await refetchAllowance();
+          setActionError("Allowance set. Review the fresh quote, then confirm the trade.");
+          return;
         }
         if (moduleAddr && moduleAddr !== '0x0000000000000000000000000000000000000000') {
           try {
@@ -927,6 +1045,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         });
         const quote = res.data;
         setPriceWarnings(quote?.warnings ?? []);
+        setQuoteMinimums(formatMinimumOutputs(quote?.boughtAssets ?? quote?.rebalance?.boughtAssets ?? (quote?.route?.buyAsset ? [quote.route.buyAsset] : undefined), quote?.minBoughtAmounts?.length ? quote.minBoughtAmounts : quote?.rebalance?.minBoughtAmounts?.length ? quote.rebalance.minBoughtAmounts : quote?.route?.minBuyAmount ? [quote.route.minBuyAmount] : []));
+        setQuoteSlippageBps(quote?.slippageBps);
         const plan = quote.plan;
         const call = plan?.calls[0];
         const valid = res.executionAllowed
@@ -944,6 +1064,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
           && quote.withdrawValueUsdE8 === withdrawValueUsdE8
           && call?.to.toLowerCase() === moduleAddr.toLowerCase();
         if (!valid || !call) throw new Error("The in-kind withdrawal plan was not verified for execution.");
+        const consented = await staleConsent.authorize(quote?.warnings ?? [], staleQuoteFingerprint(quote?.warnings ?? [], quote ?? {}), plan.expiresAt);
+        if (!consented) return;
         const withdrawTx = await sendTransactionAsync({
           to: call.to as `0x${string}`,
           data: call.calldata as `0x${string}`,
@@ -1024,6 +1146,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                   value={depositAmount}
                   aria-invalid={isCanonicalLiquidError}
                   onChange={(e) => {
+                    clearQuoteNotice();
                     setDepositAmount(e.target.value);
                     if (actionError) setActionError(null);
                   }}
@@ -1051,6 +1174,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                     key={pct}
                     type="button"
                     onClick={() => {
+                      clearQuoteNotice();
                       setDepositAmount(Math.round(basket.value * (pct / 100)).toString());
                       if (actionError) setActionError(null);
                     }}
@@ -1135,7 +1259,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
 
                 <button
                   type="button"
-                  onClick={() => setWithdrawInUsdc(!withdrawInUsdc)}
+                  onClick={() => { clearQuoteNotice(); setWithdrawInUsdc(!withdrawInUsdc); }}
                   aria-pressed={withdrawInUsdc}
                   aria-label="Receive withdrawal in USDC"
                   style={{
@@ -1215,7 +1339,9 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                 <small>No assets move until you approve the transaction in your wallet.</small>
               </p>
             </div>
-            <PriceReferenceNotice warnings={priceWarnings} />
+            <PriceReferenceNotice warnings={priceWarnings} minimums={quoteMinimums} slippageBps={quoteSlippageBps} />
+            {priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") && <StaleConsentActions stage={staleConsent.stage} remaining={staleConsent.remaining} onApprove={staleConsent.approve} onCancel={staleConsent.clear} />}
+            {(actionError ?? "").includes("stale-price preference") && <a href="/app/settings">Change stale-price preference in Settings</a>}
             <DustTradesNotice warnings={priceWarnings} />
             {actionError && !isCanonicalLiquidError && (
               <div role="alert" style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "rgba(217, 255, 70, 0.10)", color: "var(--ink)", fontSize: "13px" }}>
@@ -1239,8 +1365,8 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
         ) : (
           <>
             <button onClick={onClose}>Cancel</button>
-            <button className="primary" disabled={isPending || isConfirming} onClick={handleExecuteAmountAction}>
-              {isPending ? "Confirming..." : "Submit"} <AppIcon type="arrow" />
+            <button className="primary" disabled={isPending || isConfirming || staleConsent.remaining > 0} onClick={handleExecuteAmountAction}>
+              {isPending ? "Confirming..." : staleConsent.stage && (staleConsent.stage.mode === 'warn' ? staleConsent.stage.approved : staleConsent.remaining === 0) ? "Confirm trade" : priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") ? "Review stale quote" : "Submit"} <AppIcon type="arrow" />
             </button>
           </>
         )}

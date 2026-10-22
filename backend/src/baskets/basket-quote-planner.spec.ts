@@ -145,7 +145,12 @@ describe('BasketQuotePlannerService spot rebalance', () => {
     if (!('rebalance' in response.data)) throw new Error('Expected a rebalance execution plan.');
 
     expect(positions.getIndexedPositionSnapshot).toHaveBeenCalledWith(basket, 8453, [overweight, underweight]);
-    expect(positions.assertActionReadiness).toHaveBeenCalledWith(8453, basket, [overweight, underweight, overweight, underweight]);
+    expect(positions.assertActionReadiness).toHaveBeenCalledWith(
+      8453,
+      basket,
+      [overweight, underweight, overweight, underweight],
+      new Map([[overweight, '100000000'], [underweight, '100000000']]),
+    );
     expect(dex.getBestQuote).toHaveBeenCalledWith(expect.objectContaining({
       chainId: 8453,
       sellToken: overweight,
@@ -441,7 +446,14 @@ describe('BasketQuotePlannerService spot rebalance', () => {
       warnings: [{
         code: 'STALE_PRICE_REFERENCE',
         lastPriceReferenceAt: '2026-10-02T17:08:11.000Z',
-        assets: [{ assetAddress: underweight, feedUpdatedAt: '2026-10-02T17:08:11.000Z', ageSeconds: 120_000 }],
+        assets: [{
+          assetAddress: underweight,
+          priceUsdE8: '12345000000',
+          feedUpdatedAt: '2026-10-02T17:08:11.000Z',
+          ageSeconds: 120_000,
+          feedRoundId: '42',
+          quoteBlock: 123,
+        }],
       }],
     });
     // Deliberately diverge the chain clock from the host clock, as local Anvil
