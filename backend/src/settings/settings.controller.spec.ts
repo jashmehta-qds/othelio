@@ -12,9 +12,16 @@ describe('SettingsController security', () => {
     verifySessionToken: vi.fn(),
   };
 
+  const mockAgentSettingsService = {
+    getAgentSettings: vi.fn(),
+    upsertAgentSettings: vi.fn(),
+    generateApiKey: vi.fn(),
+  };
+
   const controller = new SettingsController(
     mockSettingsService as never,
     mockAuthService as never,
+    mockAgentSettingsService as never,
   );
 
   const addressAlice = '0x1111111111111111111111111111111111111111';
