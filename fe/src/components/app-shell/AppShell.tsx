@@ -265,7 +265,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="sidebar-lower">
-          <div className="ui-network-label"><i aria-hidden="true" />{networkLabelForChainId(targetChainId)}</div>
           <section className="account-module">
             {isWalletRestoring ? (
               <div aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "4px 0" }}>

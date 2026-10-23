@@ -1,16 +1,16 @@
 /* The application owns this palette; the marketing surface keeps its identity. */
 .bank-app, .ui-dialog {
-  --canvas: #100b16;
-  --sidebar: #130e1b;
-  --panel: #191222;
-  --panel-2: #241a30;
-  --panel-border: #3a2d49;
-  --ink: #f5f0ff;
-  --muted-ink: #b2a7c2;
-  --line: #34283f;
+  --canvas: #10110f;
+  --sidebar: #0b0c0a;
+  --panel: #161715;
+  --panel-2: #1d1e1b;
+  --panel-border: #292a27;
+  --ink: #eeeee7;
+  --muted-ink: #96988f;
+  --line: #2b2c28;
   --accent: #c4a2ff;
   --accent-strong: #d9c3ff;
-  --accent-soft: #2a1e3e;
+  --accent-soft: #201a2e;
   --positive: #70e0ba;
   --danger: #ff9b9f;
   --ease-out: cubic-bezier(.2,.8,.2,1);
@@ -19,15 +19,15 @@
   font-family: var(--font-atkinson), sans-serif;
   font-size: 14px;
   font-variant-numeric: tabular-nums;
-  scrollbar-color: #574267 var(--canvas);
+  scrollbar-color: #3a3b37 var(--canvas);
 }
 .bank-app { grid-template-columns: 208px minmax(0,1fr); background: var(--canvas); }
 .bank-app *, .ui-dialog * { box-sizing: border-box; }
 .bank-app :is(button,a,input,select,textarea,summary), .ui-dialog :is(button,a,input,select,textarea) { -webkit-tap-highlight-color: transparent; }
 .bank-app :is(button,a,input,select,textarea,summary):focus-visible, .ui-dialog :is(button,a,input,select,textarea):focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .bank-app :is(input,textarea), .ui-dialog :is(input,textarea) { caret-color: var(--accent); }
-.bank-app ::selection, .ui-dialog ::selection { background: #c4a2ff; color: #160c22; }
-.bank-app :is(input,textarea)::placeholder, .ui-dialog :is(input,textarea)::placeholder { color: #a89bb9; }
+.bank-app ::selection, .ui-dialog ::selection { background: #c4a2ff; color: #10110f; }
+.bank-app :is(input,textarea)::placeholder, .ui-dialog :is(input,textarea)::placeholder { color: #898b84; }
 .bank-app button:disabled, .ui-dialog button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
 .bank-app a { text-underline-offset: 4px; }
 .bank-app .bank-sidebar { background: var(--sidebar); padding: 30px 16px 20px; border-right-color: var(--line); }
@@ -61,11 +61,11 @@
   font: inherit; font-size: 14px; font-weight: 600; line-height: 1.3; text-decoration: none;
   cursor: pointer; transition: background 180ms var(--ease-out), border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out), transform 180ms var(--ease-out);
 }
-.bank-app .primary, .ui-button { background: var(--accent); color: #1b0e2c; }
+.bank-app .primary, .ui-button { background: var(--accent); color: #10110f; }
 .bank-app .primary:hover:not(:disabled), .ui-button:hover:not(:disabled) { background: var(--accent-strong); box-shadow: 0 4px 20px #a275ec24; }
 .bank-app .primary:active:not(:disabled), .ui-button:active:not(:disabled) { transform: translateY(1px); }
 .bank-app .secondary, .ui-button[data-variant="secondary"] { color: var(--ink); background: var(--panel-2); border-color: var(--line); box-shadow: none; }
-.bank-app .secondary:hover:not(:disabled), .ui-button[data-variant="secondary"]:hover:not(:disabled) { background: #31233f; border-color: #6a4d85; }
+.bank-app .secondary:hover:not(:disabled), .ui-button[data-variant="secondary"]:hover:not(:disabled) { background: #242522; border-color: #444540; }
 .ui-button[data-variant="ghost"], .ui-icon-button { background: transparent; color: var(--muted-ink); border-color: transparent; box-shadow: none; }
 .ui-button[data-variant="ghost"]:hover, .ui-icon-button:hover { color: var(--ink); background: var(--panel-2); }
 .ui-button[data-variant="danger"] { color: var(--danger); border-color: #713e4b; background: #351b28; box-shadow: none; }
@@ -78,7 +78,7 @@
 .ui-field small { font-size: 12px; color: var(--muted-ink); }
 .ui-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
 .ui-notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; margin: 16px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); color: var(--muted-ink); font-size: 13px; line-height: 1.6; }
-.ui-notice[data-tone="error"] { background: #2f1823; border-color: #633441; color: #ffb8ba; }
+.ui-notice[data-tone="error"] { background: #27161b; border-color: #552834; color: #ffb8ba; }
 .ui-notice[data-tone="success"] { background: #142923; border-color: #305b4b; color: var(--positive); }
 .ui-state { display: grid; justify-items: center; align-content: center; padding: 64px 24px; text-align: center; min-height: 280px; }
 .ui-state-icon { width: 42px; height: 42px; color: var(--accent); margin-bottom: 20px; }
@@ -89,9 +89,9 @@
 .ui-state[data-tone="loading"] .ui-state-icon { animation: ui-spin 2s linear infinite; }
 .ui-state[data-tone="error"] .ui-state-icon { color: var(--danger); }
 @keyframes ui-spin { to { transform: rotate(360deg); } }
-.ui-dialog { padding: 0; width: min(480px,calc(100% - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: auto; border: 1px solid #75568f; border-radius: 16px; background: var(--panel); box-shadow: 0 28px 100px #05020899; overflow: auto; }
+.ui-dialog { padding: 0; width: min(480px,calc(100% - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: auto; border: 1px solid #3a3b37; border-radius: 16px; background: var(--panel); box-shadow: 0 28px 100px #000000cc; overflow: auto; }
 .ui-dialog[open] { animation: ui-dialog-in 240ms var(--ease-out); }
-.ui-dialog::backdrop { background: #08050dc9; backdrop-filter: blur(5px); }
+.ui-dialog::backdrop { background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(6px); }
 .ui-dialog[data-size="wide"] { width: min(760px,calc(100% - 32px)); }
 .ui-dialog[data-kind="sheet"] { margin: 16px 16px 16px auto; width: min(560px,calc(100% - 32px)); max-height: calc(100dvh - 32px); height: calc(100dvh - 32px); }
 .ui-dialog-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 28px 28px 22px; border-bottom: 1px solid var(--line); }
@@ -102,7 +102,7 @@
 @keyframes ui-dialog-in { from { opacity: .5; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .wallet-options { display: grid; gap: 10px; }
 .wallet-option { display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 12px 16px; width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); color: var(--ink); font: inherit; cursor: pointer; text-align: left; transition: border-color 180ms, background 180ms; }
-.wallet-option:hover:not(:disabled) { border-color: var(--accent); background: #30223e; }
+.wallet-option:hover:not(:disabled) { border-color: var(--accent); background: #242522; }
 .wallet-option img, .wallet-option-icon { width: 32px; height: 32px; object-fit: contain; border-radius: 8px; }
 .wallet-option > span:last-child { margin-left: auto; color: var(--muted-ink); font-size: 12px; }
 .wallet-option strong { font-size: 15px; font-weight: 500; }
@@ -134,7 +134,7 @@
 .bank-app .activity-page-list { border-top: 1px solid var(--line); }
 .ui-filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 24px; }
 .ui-filter-bar button { padding: 8px 16px; min-height: 40px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted-ink); cursor: pointer; font: inherit; }
-.ui-filter-bar button[aria-pressed="true"] { border-color: #6a4d85; color: var(--accent); background: var(--accent-soft); }
+.ui-filter-bar button[aria-pressed="true"] { border-color: #444540; color: var(--accent); background: var(--accent-soft); }
 .ui-filter-bar button:hover { color: var(--ink); background: var(--panel-2); }
 .ui-search { min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--ink); font: inherit; }
 .ui-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 16px; margin: 22px 0; }
@@ -147,7 +147,7 @@
   .bank-app .bank-content { padding: 0 20px 110px; }
   .bank-app .mobile-header { display: flex; padding: 20px 0; margin: 0 0 20px; align-items: center; justify-content: space-between; }
   .bank-app .mobile-header .bank-wordmark { padding: 0; font-size: 21px; }
-  .bank-app .mobile-nav { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); position: fixed; bottom: 0; left: 0; right: 0; background: #17101ff5; border-top: 1px solid var(--line); padding: 8px 8px max(8px,env(safe-area-inset-bottom)); z-index: 20; }
+  .bank-app .mobile-nav { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); position: fixed; bottom: 0; left: 0; right: 0; background: #10110ff5; border-top: 1px solid var(--line); padding: 8px 8px max(8px,env(safe-area-inset-bottom)); z-index: 20; }
   .bank-app .mobile-nav a { min-height: 54px; font-size: 10px; gap: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 8px; color: var(--muted-ink); }
   .bank-app .mobile-nav a.active { background: var(--accent-soft); color: var(--accent); }
   .bank-app .mobile-nav svg { width: 20px; height: 20px; }

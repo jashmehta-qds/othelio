@@ -6,7 +6,7 @@ This document records the visual identity, interaction paradigms, and design tok
 ---
 
 ## 1. Direction Contract & Visual Language
-- **Ground & Atmosphere:** Deep ink-plum base (`#100b16`) paired with layered aubergine surfaces (`#191222`, `#241a30`) and delicate purple border contours (`#3a2d49`, `#75568f`).
+- **Ground & Atmosphere:** Clean black base (`#10110f`) paired with layered dark charcoal surfaces (`#161715`, `#1d1e1b`) and refined border contours (`#292a27`, `#2b2c28`).
 - **Typography:** Atkinson Hyperlegible with tabular numeral support (`font-variant-numeric: tabular-nums`). High-contrast crisp white headlines (`#f5f0ff`) with muted lavender secondary text (`#b2a7c2`).
 - **Illumination & Accents:** Violet illumination (`#c4a2ff`, `#d9c3ff`) active highlights tracing cards and interactive limits. Mint green (`#70e0ba`) signals successful confirmation and safe execution.
 - **Motion & Physics:** Smooth transitions (`cubic-bezier(0.2, 0.8, 0.2, 1)`) with native reduced-motion overrides (`@media (prefers-reduced-motion: reduce)`).
