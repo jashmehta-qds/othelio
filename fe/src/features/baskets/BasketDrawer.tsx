@@ -1160,7 +1160,14 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                 : "Redeem value from your portfolio directly to your wallet."}
             </p>
 
-            <label className="amount-field" style={isCanonicalLiquidError ? { border: "1px solid #ef4444", boxShadow: "0 0 0 3px rgba(239, 68, 68, 0.12)" } : undefined}>
+            <label
+              className="amount-field drawer-amount-field"
+              style={{
+                border: isCanonicalLiquidError ? "1px solid #ef4444" : "none",
+                boxShadow: isCanonicalLiquidError ? "0 0 0 3px rgba(239, 68, 68, 0.12)" : "none",
+                outline: "none",
+              }}
+            >
               <span>{isMint ? "You deposit" : "Withdrawal Amount"}</span>
               <div>
                 <input
@@ -1172,7 +1179,12 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
                     setDepositAmount(e.target.value);
                     if (actionError) setActionError(null);
                   }}
-                  style={isCanonicalLiquidError ? { color: "#ef4444" } : undefined}
+                  style={{
+                    border: "none",
+                    outline: "none",
+                    boxShadow: "none",
+                    ...(isCanonicalLiquidError ? { color: "#ef4444" } : {}),
+                  }}
                 />
                 <b>USDC</b>
               </div>

@@ -11,10 +11,19 @@ export function BasketCreationFields({ name, symbol, targets, onName, onSymbol, 
     <p className="transaction-help">These are target weights. Creating the basket does not purchase assets.</p>
   </div>;
   return <div className="transaction-fields">
-    <section><h3>Basket details</h3><div className="transaction-identity">
-      <label className="ui-field">Basket name<input value={name} onChange={event => onName(event.target.value)} placeholder="e.g. Tech essentials" /></label>
-      <label className="ui-field">Symbol <span className="transaction-optional">Optional</span><input value={symbol} onChange={event => onSymbol(event.target.value.toUpperCase())} placeholder="TECH" /></label>
-    </div></section>
+    <section>
+      <h3>Basket details</h3>
+      <div className="transaction-identity">
+        <label className="ui-field">
+          <span className="ui-field-header"><span>Basket name</span></span>
+          <input value={name} onChange={event => onName(event.target.value)} placeholder="e.g. Tech essentials" />
+        </label>
+        <label className="ui-field">
+          <span className="ui-field-header"><span>Symbol</span><span className="transaction-optional">Optional</span></span>
+          <input value={symbol} onChange={event => onSymbol(event.target.value.toUpperCase())} placeholder="TECH" />
+        </label>
+      </div>
+    </section>
     <section><BasketAllocationEditor targets={targets} onChange={onTargets} variant="page" /></section>
   </div>;
 }

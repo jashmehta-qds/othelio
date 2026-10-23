@@ -1,56 +1,114 @@
-.transaction-page { max-width: 960px; margin-inline: auto; }
-.transaction-back { display: inline-flex; margin-bottom: 24px; color: var(--muted-ink); font-size: 14px; }
-.transaction-workspace { padding: 28px 0; }
-.transaction-fields { display: grid; gap: 36px; }
-.transaction-fields h3, .transaction-review h3 { margin: 0 0 18px; font-size: 18px; }
-.transaction-identity { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; }
-.transaction-optional { color: var(--muted-ink); font-size: 12px; font-weight: 400; }
-.transaction-help { color: var(--muted-ink); font-size: 13px; line-height: 1.6; margin: 12px 0; }
-.transaction-page-footer { position: sticky; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); padding: 20px 24px; border-radius: 16px 16px 0 0; z-index: 3; }
-.transaction-footer { display: grid; gap: 14px; width: 100%; }
-.transaction-total { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; font-size: 14px; padding-block: 12px; }
+.transaction-page { max-width: 760px; margin-inline: auto; }
+.transaction-back { display: inline-flex; margin-bottom: 12px; color: var(--muted-ink); font-size: 13px; text-decoration: none; }
+.transaction-back:hover { color: var(--ink); }
+.transaction-page .ui-page-header { margin-bottom: 16px; }
+.transaction-page .ui-page-header h1 { font-size: clamp(22px, 2.4vw, 28px); }
+.transaction-page .ui-page-header p { font-size: 13px; margin: 4px 0 0; }
+.transaction-workspace { padding: 8px 0 16px; }
+.transaction-fields { display: grid; gap: 20px; }
+.transaction-fields h3, .transaction-review h3 { margin: 0 0 10px; font-size: 15px; font-weight: 600; color: var(--ink); }
+
+/* Identity inputs - unified height and baseline alignment */
+.transaction-identity { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; align-items: start; }
+.transaction-identity .ui-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 0; }
+.ui-field-header { display: flex; justify-content: space-between; align-items: baseline; height: 16px; font-size: 12px; font-weight: 500; color: var(--muted-ink); }
+.transaction-optional { color: var(--muted-ink); font-size: 11px; font-weight: 400; opacity: 0.8; }
+.transaction-identity input, .allocation-search input {
+  min-height: 38px !important;
+  padding: 8px 12px !important;
+  font-size: 13px !important;
+  border-radius: 8px !important;
+}
+
+.transaction-help { color: var(--muted-ink); font-size: 12px; line-height: 1.5; margin: 8px 0; }
+.transaction-page-footer { position: sticky; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); padding: 12px 20px; border-radius: 12px 12px 0 0; z-index: 3; }
+.transaction-footer { display: grid; gap: 10px; width: 100%; }
+.transaction-total { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; font-size: 13px; padding-block: 4px; }
 .transaction-total > span { color: var(--muted-ink); }
 .transaction-total strong { font-variant-numeric: tabular-nums; }
-.transaction-total small { color: var(--muted-ink); font-weight: 400; margin-left: 12px; }
-.transaction-actions { display: flex; justify-content: flex-end; gap: 12px; }
-.transaction-actions > button { flex: 1; }
-.transaction-summary { margin: 20px 0 30px; }
-.transaction-summary > div { display: flex; justify-content: space-between; gap: 24px; padding: 15px 0; border-bottom: 1px solid var(--line); }
+.transaction-total small { color: var(--muted-ink); font-weight: 400; margin-left: 10px; }
+.transaction-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.transaction-actions > button { flex: 1; min-height: 40px; font-size: 13px; padding: 8px 16px; border-radius: 8px; }
+.transaction-summary { margin: 14px 0 20px; }
+.transaction-summary > div { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .transaction-summary dt { color: var(--muted-ink); }
 .transaction-summary dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.allocation-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 22px; }
-.allocation-heading h3 { margin: 0 0 6px; }
-.allocation-heading p { margin: 0; color: var(--muted-ink); font-size: 13px; }
-.allocation-heading button { flex-shrink: 0; }
-.allocation-search { position: relative; }
-.allocation-results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; max-height: 280px; overflow: auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; z-index: 10; }
-.allocation-results > p { padding: 12px; }
-.allocation-result { display: flex; align-items: center; width: 100%; gap: 12px; padding: 14px; background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); text-align: left; cursor: pointer; }
+
+/* Allocation editor compact layout */
+.allocation-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.allocation-heading h3 { margin: 0 0 2px; font-size: 15px; }
+.allocation-heading p { margin: 0; color: var(--muted-ink); font-size: 12px; }
+.allocation-heading button { flex-shrink: 0; min-height: 32px; padding: 5px 12px; font-size: 12px; border-radius: 7px; }
+.allocation-search { position: relative; margin-bottom: 8px; }
+.allocation-search .ui-field { margin-bottom: 0; display: flex; flex-direction: column; gap: 6px; }
+.allocation-results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 240px; overflow: auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; z-index: 10; }
+.allocation-results > p { padding: 10px 12px; font-size: 12px; }
+.allocation-result { display: flex; align-items: center; width: 100%; gap: 10px; padding: 10px 12px; background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); text-align: left; cursor: pointer; font-size: 13px; }
 .allocation-result:hover { background: var(--accent-soft); }
 .allocation-result > span:nth-child(2) { flex: 1; min-width: 0; }
-.allocation-result small, .allocation-asset small { display: block; color: var(--muted-ink); margin-top: 4px; overflow-wrap: anywhere; }
+.allocation-result small, .allocation-asset small { display: block; color: var(--muted-ink); margin-top: 2px; font-size: 11px; overflow-wrap: anywhere; }
 .allocation-result:disabled { opacity: .55; cursor: not-allowed; }
-.allocation-empty { margin-top: 24px; }
-.allocation-row { display: grid; grid-template-columns: 1fr 100px auto; gap: 18px; align-items: center; padding: 22px 0; border-bottom: 1px solid var(--line); }
-.allocation-asset { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.allocation-weight { display: flex; align-items: center; border: 1px solid var(--line); background: var(--panel-2); border-radius: 10px; padding-right: 10px; }
-.allocation-weight input { min-width: 0; width: 100%; min-height: 44px; color: var(--ink); background: transparent; border: 0; padding: 8px; text-align: right; font: inherit; font-variant-numeric: tabular-nums; }
-.allocation-slider { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
-.transaction-amount { font-size: 28px !important; font-variant-numeric: tabular-nums; }
-.transaction-percent { display: flex; gap: 8px; margin: 12px 0 24px; }
-.transaction-percent button { flex: 1; }
-.transaction-modes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+
+.allocation-empty { min-height: 120px !important; padding: 20px 16px !important; margin-top: 8px !important; }
+.allocation-empty h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.allocation-empty p { margin: 0; font-size: 12px; max-width: 42ch; }
+
+.allocation-row { display: grid; grid-template-columns: 1fr 88px auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.allocation-asset { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 13px; }
+.allocation-asset strong { font-size: 13px; }
+.allocation-weight { display: flex; align-items: center; border: 1px solid var(--line); background: var(--panel-2); border-radius: 7px; padding-right: 8px; }
+.allocation-weight input { min-width: 0; width: 100%; min-height: 32px; color: var(--ink); background: transparent; border: 0; padding: 4px 6px; text-align: right; font: inherit; font-size: 13px; font-variant-numeric: tabular-nums; }
+.allocation-weight span { font-size: 12px; color: var(--muted-ink); }
+.allocation-slider { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin-top: 1px; height: 4px; }
+.allocation-row > button { min-height: 30px; padding: 4px 8px; font-size: 12px; }
+
+.transaction-amount { font-size: 26px !important; font-variant-numeric: tabular-nums; }
+.transaction-percent { display: flex; gap: 6px; margin: 8px 0 18px; }
+.transaction-percent button { flex: 1; min-height: 32px; font-size: 12px; }
+.transaction-modes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+
 @media (max-width: 600px) {
-  .transaction-identity { grid-template-columns: 1fr; }
-  .allocation-heading { align-items: flex-start; flex-direction: column; }
-  .allocation-row { grid-template-columns: 1fr 84px; gap: 12px; }
+  .transaction-identity { grid-template-columns: 1fr; gap: 10px; }
+  .allocation-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .allocation-row { grid-template-columns: 1fr 80px; gap: 8px; }
   .allocation-row > button { grid-column: 1; grid-row: 2; justify-self: start; }
   .allocation-slider { grid-row: 3; }
-  .transaction-total small { display: block; margin-left: 0; margin-top: 4px; }
-  .transaction-page-footer { padding: 16px; bottom: 76px; }
+  .transaction-total small { display: block; margin-left: 0; margin-top: 2px; }
+  .transaction-page-footer { padding: 12px 16px; bottom: 76px; }
 }
-.transaction-drawer-content section { padding: 24px 0; border-top: 1px solid var(--line); }
-.transaction-drawer-content .safety-note small, .transaction-drawer-content .review-note small { font-size: 12px; line-height: 1.6; }
-.transaction-drawer-content input:not([type="range"]):not([type="checkbox"]), .transaction-drawer-content select { font-size: 16px; min-height: 44px; }
-.transaction-drawer-content .quote-summary { font-size: 14px; }
+
+/* ==========================================================================
+   Drawers (Side Component / Sheets) Specific Styles
+   ========================================================================== */
+.transaction-drawer-content section { padding: 18px 0; border-top: 1px solid var(--line); }
+.transaction-drawer-content .safety-note small, .transaction-drawer-content .review-note small { font-size: 12px; line-height: 1.5; }
+.transaction-drawer-content .quote-summary { font-size: 13px; }
 .transaction-drawer-content .shield { display: none; }
+
+/* Specific for drawers only: completely remove border and focus outline on amount input */
+.ui-dialog[data-kind="sheet"] .amount-field,
+.transaction-drawer-content .amount-field,
+.drawer-amount-field {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.ui-dialog[data-kind="sheet"] .amount-field input,
+.transaction-drawer-content .amount-field input,
+.drawer-amount-field input {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.ui-dialog[data-kind="sheet"] .amount-field input:focus,
+.ui-dialog[data-kind="sheet"] .amount-field input:focus-visible,
+.transaction-drawer-content .amount-field input:focus,
+.transaction-drawer-content .amount-field input:focus-visible,
+.drawer-amount-field input:focus,
+.drawer-amount-field input:focus-visible {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
