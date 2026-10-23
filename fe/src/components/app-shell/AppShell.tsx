@@ -272,17 +272,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="sidebar-lower">
-          <section
-            className="account-module"
-            style={(isWalletRestoring || !(mounted && isConnected && address)) ? {
-              background: "linear-gradient(135deg, rgba(219, 255, 117, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)",
-              border: "1px solid rgba(219, 255, 117, 0.25)",
-              borderRadius: "16px",
-              padding: "16px",
-            } : undefined}
-          >
+          <section className="account-module">
             {isWalletRestoring ? (
-              <div aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "4px 0" }}>
+              <div aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "16px" }}>
                 <div style={{ height: "14px", width: "58%", borderRadius: "4px", background: "var(--panel-2)" }} />
                 <div style={{ height: "11px", width: "78%", borderRadius: "4px", background: "var(--panel-2)" }} />
                 <span style={{ color: "var(--muted-ink)", fontSize: "12px" }}>Restoring wallet…</span>
@@ -400,19 +392,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </span>
                 </header>
 
-                <div className="account-balance">
-                  <span>Connect Wallet</span>
-                  <p style={{ fontSize: '12px', color: 'var(--muted-ink)', margin: '4px 0 0', lineHeight: 1.4 }}>
-                    Connect and sign with your Web3 wallet to manage baskets.
-                  </p>
-                </div>
-
-                <div className="account-available" style={{ paddingTop: '8px' }}>
+                <div className="account-balance" style={{ textAlign: 'center', padding: '16px 14px 14px' }}>
+                  {authError && (
+                    <div style={{ color: "#ef4444", fontSize: "11px", marginBottom: "12px", lineHeight: 1.4, padding: "8px 10px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.25)", textAlign: "left" }}>
+                      {authError}
+                    </div>
+                  )}
                   <button
                     onClick={handleConnectWallet}
                     disabled={isWalletConnecting}
-                    className="primary connect-wallet-button"
-                    style={{ width: '100%', fontSize: '13px', justifyContent: 'center', padding: '10px 14px', borderRadius: '10px' }}
+                    className="secondary connect-wallet-button"
+                    style={{
+                      width: '100%',
+                      minHeight: '38px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      justifyContent: 'center',
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      background: 'var(--panel-2)',
+                      border: '1px solid var(--line)',
+                      color: 'var(--ink)',
+                      cursor: isWalletConnecting ? 'not-allowed' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    }}
                   >
                     {isWalletConnecting ? "Authenticating..." : "Connect Wallet"}
                   </button>
