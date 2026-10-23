@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
-import { AppIcon } from "@/components/app-shell/AppIcon";
+import { BasketCreationFields, BasketCreationFooter } from "@/components/BasketCreationFields";
+import "@/components/transactions.css";
 import { extractCreatedBasketAddress, registerConfirmedBasket } from "@/lib/createSeed";
-import { WALLET_REQUEST_REJECTED_MESSAGE, walletActionError } from "@/lib/walletErrors";
+import { walletActionError } from "@/lib/walletErrors";
 import { useHydrated } from "@/hooks/useHydrated";
-import { BasketAllocationEditor, basketTargetAssets, basketTargetTotal, type BasketTargetMap } from "@/components/BasketAllocationEditor";
+import { basketTargetAssets, basketTargetTotal, type BasketTargetMap } from "@/components/BasketAllocationEditor";
 
 export default function CreateBasketPage() {
   const router = useRouter();
@@ -20,12 +21,15 @@ export default function CreateBasketPage() {
   const [symbol, setSymbol] = useState("");
   const [targets, setTargets] = useState<BasketTargetMap>({});
 
+  const [previewing, setPreviewing] = useState(false);
   const [transactionError, setTransactionError] = useState<string | null>(null);
 
   const targetChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 8453);
   const publicClient = usePublicClient({ chainId: targetChainId });
   const { isPending: isApproving, writeContractAsync } = useWriteContract();
-  const isPending = isApproving;
+  const [isWorking, setIsWorking] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const isPending = isApproving || isWorking;
   const hasConnectedWallet = isHydrated && isConnected && Boolean(address);
 
   const handleExecute = async () => {
@@ -34,6 +38,8 @@ export default function CreateBasketPage() {
       return;
     }
 
+    if (isPending) return;
+    setIsWorking(true);
     setTransactionError(null);
     try {
       if (Object.keys(targets).length === 0 || basketTargetTotal(targets) !== 100) {
@@ -71,6 +77,7 @@ export default function CreateBasketPage() {
         args: [cleanName],
         gas: gasLimit,
       });
+      setIsConfirming(true);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: createTxHash });
       if (receipt.status !== "success") {
         throw new Error("Basket creation transaction failed.");
@@ -93,167 +100,20 @@ export default function CreateBasketPage() {
       router.push(`/app/baskets/${basketAddress}`);
     } catch (error) {
       setTransactionError(walletActionError(error, "Unable to create the basket."));
+    } finally {
+      setIsWorking(false);
+      setIsConfirming(false);
     }
   };
 
+  const fields = <BasketCreationFields name={name} symbol={symbol} targets={targets} onName={setName} onSymbol={setSymbol} onTargets={setTargets} reviewing={previewing} />;
+  const footer = <BasketCreationFooter targets={targets} reviewing={previewing} busy={isPending} confirming={isConfirming} connected={hasConnectedWallet} error={transactionError} onBack={() => setPreviewing(false)} onContinue={previewing ? handleExecute : () => setPreviewing(true)} />;
   return (
-    <div className="app-page-frame">
-      {/* Top Navigation Breadcrumbs */}
-      <div style={{ marginBottom: "24px" }}>
-        <Link
-          href="/app/baskets"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "6px",
-            fontSize: "13px",
-            color: "var(--muted-ink)",
-            textDecoration: "none",
-            fontWeight: 600,
-          }}
-        >
-          ← Back to Baskets
-        </Link>
-      </div>
-
-      <header style={{ marginBottom: "32px" }}>
-        <h1 className="page-title">
-          Create New Basket
-        </h1>
-        <p className="page-description">
-          Define basket identity and target asset weights.
-        </p>
-      </header>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "32px", alignItems: "start" }}>
-        {/* Main Creation Form Area */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
-          {/* Section 1: Basket identity */}
-          <div
-            style={{
-              padding: "24px",
-              background: "var(--panel)",
-              borderRadius: "16px",
-              border: "1px solid var(--line)",
-            }}
-          >
-            <h3 style={{ fontSize: "15px", fontWeight: 700, marginBottom: "16px" }}>1. Basket identity</h3>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: "14px" }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted-ink)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Basket Name</span>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Momentum Tech Core"
-                    style={{
-                      padding: "11px 14px",
-                      background: "var(--panel-2)",
-                      border: "1px solid var(--panel-border)",
-                      borderRadius: "10px",
-                      color: "var(--ink)",
-                      fontSize: "14px",
-                      outline: "none",
-                    }}
-                  />
-                </label>
-
-                <label style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--muted-ink)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Symbol</span>
-                  <input
-                    type="text"
-                    value={symbol}
-                    onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                    placeholder="MCORE"
-                    style={{
-                      padding: "11px 14px",
-                      background: "var(--panel-2)",
-                      border: "1px solid var(--panel-border)",
-                      borderRadius: "10px",
-                      color: "var(--ink)",
-                      fontSize: "14px",
-                      outline: "none",
-                      fontWeight: 700,
-                    }}
-                  />
-                </label>
-              </div>
-
-            </div>
-          </div>
-
-          <div style={{ padding: "24px", background: "var(--panel)", borderRadius: "16px", border: "1px solid var(--line)" }}>
-            <BasketAllocationEditor targets={targets} onChange={setTargets} variant="page" />
-          </div>
-        </div>
-
-        {/* Sticky Right Column Summary Card */}
-        <div style={{ position: "sticky", top: "32px", display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div
-            style={{
-              padding: "24px",
-              background: "var(--panel)",
-              borderRadius: "16px",
-              border: "1px solid var(--line)",
-            }}
-          >
-            <h3 style={{ fontSize: "16px", fontWeight: 700, marginBottom: "16px" }}>Basket Summary</h3>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px", borderBottom: "1px solid var(--line)", paddingBottom: "16px", marginBottom: "16px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--muted-ink)" }}>Name</span>
-                <strong>{name || "—"}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--muted-ink)" }}>Symbol</span>
-                <strong>{symbol || "—"}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--muted-ink)" }}>Funding</span>
-                <strong>Add USDC after creation</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "var(--muted-ink)" }}>Target allocation</span>
-                <strong>{Object.keys(targets).length > 0 ? `${Object.keys(targets).length} Assets (${basketTargetTotal(targets)}%)` : "—"}</strong>
-              </div>
-            </div>
-
-            <button
-              className="primary"
-              disabled={!hasConnectedWallet || isPending || Object.keys(targets).length === 0 || basketTargetTotal(targets) !== 100}
-              onClick={handleExecute}
-              style={{
-                width: "100%",
-                padding: "14px",
-                fontSize: "14px",
-                fontWeight: 700,
-                borderRadius: "12px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-              }}
-            >
-              {isPending ? "Waiting Wallet..." : !hasConnectedWallet ? "Connect wallet first" : "Create basket"}
-              <AppIcon type="arrow" />
-            </button>
-
-            {transactionError && (
-              <div
-                role={transactionError === WALLET_REQUEST_REJECTED_MESSAGE ? "status" : "alert"}
-                style={{ color: transactionError === WALLET_REQUEST_REJECTED_MESSAGE ? "var(--muted-ink)" : "#ef4444", fontSize: "12px", marginTop: "12px", textAlign: "center" }}
-              >
-                <strong style={{ display: "block", marginBottom: "3px" }}>
-                  {transactionError === WALLET_REQUEST_REJECTED_MESSAGE ? "Transaction cancelled" : "Could not create basket"}
-                </strong>
-                <span>{transactionError}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+    <div className="app-page-frame transaction-page">
+      <Link className="transaction-back" href="/app/baskets">Back to baskets</Link>
+      <header className="ui-page-header"><div><h1>{previewing ? "Review your basket" : "Create a basket"}</h1><p>Choose your assets and allocation. Fund your basket after creation.</p></div></header>
+      <div className="transaction-workspace">{fields}</div>
+      <div className="transaction-page-footer">{footer}</div>
     </div>
   );
 }

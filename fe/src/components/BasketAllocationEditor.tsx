@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import "./transactions.css";
 import StockLogo from "@/components/StockLogo";
 import { AppIcon } from "@/components/app-shell/AppIcon";
 import { supportedAssets, type Holding } from "@/lib/baskets";
@@ -18,13 +19,6 @@ export function basketTargetAssets(targets: BasketTargetMap) {
 
 export function basketTargetTotal(targets: BasketTargetMap) {
   return Object.values(targets).reduce((sum, weight) => sum + weight, 0);
-}
-
-function formatPaddedPercent(val: number): string {
-  const rounded = Math.round(Math.abs(val) * 100) / 100;
-  const parts = rounded.toFixed(2).split(".");
-  const integerPart = parts[0].padStart(2, "0");
-  return `${integerPart}.${parts[1]}`;
 }
 
 export function BasketAllocationEditor({ targets, onChange, variant = "drawer" }: { targets: BasketTargetMap; onChange: (targets: BasketTargetMap) => void; variant?: "page" | "drawer" }) {
@@ -110,156 +104,22 @@ export function BasketAllocationEditor({ targets, onChange, variant = "drawer" }
     onChange(next);
   };
 
-  const isPage = variant === "page";
-
-  return <div>
-    <div style={{ marginBottom: isPage ? "20px" : "20px", position: "relative" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isPage ? "16px" : "8px" }}>
-        {isPage ? <div>
-          <h3 style={{ fontSize: "15px", fontWeight: 700 }}>2. Basket Composition</h3>
-          <span style={{ fontSize: "12px", color: "var(--muted-ink)" }}>Select tokenized stocks to include in index</span>
-        </div> : <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--muted-ink)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          Add Stock Tokens ({selected.length} Selected)
-        </span>}
-        <button type="button" className="equalize-weights-button" onClick={splitEvenly} disabled={selected.length < 2}>
-          <AppIcon type="sync" /> Split evenly
-        </button>
-      </div>
-      <div style={{ position: "relative" }}>
-        <input
-          value={searchQuery}
-          onFocus={() => setIsDropdownOpen(true)}
-          onChange={(event) => { setSearchQuery(event.target.value); setIsDropdownOpen(true); }}
-          placeholder={isPage ? "+ Search & add stock token (e.g. NVDA, AAPL, MSFT, TSLA)..." : "+ Search & add stock (e.g. NVDA, AAPL, MSFT)..."}
-          style={{
-            width: "100%",
-            padding: isPage ? "12px 14px" : "9px 12px",
-            background: "var(--panel-2)",
-            border: "1px solid var(--panel-border)",
-            borderRadius: "10px",
-            color: "var(--ink)",
-            fontSize: isPage ? "13px" : "12px",
-            outline: "none",
-          }}
-        />
-        {isDropdownOpen && available.length > 0 && <div style={{
-          position: "absolute", top: "100%", left: 0, right: 0, marginTop: isPage ? "6px" : "4px",
-          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: isPage ? "12px" : "10px",
-          boxShadow: isPage ? "0 12px 32px rgba(0,0,0,0.4)" : "0 8px 24px rgba(0,0,0,0.4)",
-          zIndex: 30, maxHeight: isPage ? "220px" : "180px", overflowY: "auto",
-        }}>
-          {available.map((asset) => {
-            const isTradeable = asset.tradeable !== false;
-            return (
-              <div
-                key={asset.symbol}
-                onClick={() => isTradeable && addAsset(asset.symbol)}
-                title={isTradeable ? undefined : "This asset is not currently enabled for trading on Base mainnet."}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: isPage ? "10px 14px" : "8px 12px",
-                  cursor: isTradeable ? "pointer" : "not-allowed",
-                  opacity: isTradeable ? 1 : 0.5,
-                  borderBottom: "1px solid var(--line)",
-                  transition: "background 0.15s ease",
-                }}
-                onMouseEnter={(event) => {
-                  if (isTradeable) event.currentTarget.style.background = "var(--panel-2)";
-                }}
-                onMouseLeave={(event) => {
-                  if (isTradeable) event.currentTarget.style.background = "transparent";
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: isPage ? "10px" : "8px" }}>
-                  <StockLogo symbol={asset.symbol} size={isPage ? 24 : 22} roundedFull />
-                  <strong style={{ fontSize: isPage ? "13px" : "12px" }}>{asset.symbol}</strong>
-                  <small style={{ color: "var(--muted-ink)", fontSize: isPage ? "12px" : "11px" }}>{asset.name}</small>
-                </div>
-                {isTradeable ? (
-                  <span style={{ fontSize: isPage ? "12px" : "11px", color: "var(--accent)", fontWeight: 700 }}>+ Add</span>
-                ) : (
-                  <span
-                    style={{
-                      fontSize: isPage ? "11px" : "10px",
-                      color: "var(--muted-ink)",
-                      background: "var(--panel-2)",
-                      padding: "2px 6px",
-                      borderRadius: "4px",
-                      border: "1px solid var(--panel-border)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Unavailable
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>}
-      </div>
+  return <div className="allocation-editor" data-variant={variant}>
+    <div className="allocation-heading"><div><h3>Assets & allocation</h3><p>Choose stocks and set their share of your basket.</p></div><button type="button" className="ui-button" data-variant="secondary" onClick={splitEvenly} disabled={selected.length < 2}><AppIcon type="sync" /> Split evenly</button></div>
+    <div className="allocation-search" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setIsDropdownOpen(false); }}>
+      <label className="ui-field">Find an asset<input value={searchQuery} onFocus={() => setIsDropdownOpen(true)} onChange={event => { setSearchQuery(event.target.value); setIsDropdownOpen(true); }} onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); setIsDropdownOpen(false); } }} placeholder="Search by name or symbol" aria-expanded={isDropdownOpen} aria-controls="allocation-results" /></label>
+      {isDropdownOpen && <div id="allocation-results" className="allocation-results">
+        {available.length === 0 ? <p className="transaction-help">No matching assets. Try another name or symbol.</p> : available.map(asset => <button type="button" key={asset.symbol} disabled={asset.tradeable === false} onClick={() => addAsset(asset.symbol)} className="allocation-result"><StockLogo symbol={asset.symbol} size={28} roundedFull /><span><strong>{asset.symbol}</strong><small>{asset.name}</small></span><span>{asset.tradeable === false ? "Unavailable" : "Add"}</span></button>)}
+      </div>}
     </div>
-
-    {selected.length > 0 && <div style={{ marginBottom: isPage ? "24px" : "20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: isPage ? "12px" : "11px", marginBottom: isPage ? "8px" : "6px", color: "var(--muted-ink)" }}>
-        <span>{isPage ? "Weight Allocation Breakdown" : "Basket Allocation Breakdown"}</span>
-        <strong style={{ color: total === 100 ? "var(--positive)" : "var(--danger)" }}>{total}% Total</strong>
-      </div>
-      <div style={{ height: isPage ? "10px" : "8px", width: "100%", borderRadius: "99px", background: "var(--panel-2)", display: "flex", overflow: "hidden", gap: "2px" }}>
-        {selected.map((asset) => <div key={asset.symbol} title={`${asset.symbol}: ${targets[asset.symbol]}%`} style={{ width: `${targets[asset.symbol]}%`, height: "100%", background: asset.color || "var(--accent)", transition: "width 0.25s ease" }} />)}
-      </div>
-    </div>}
-
-    {selected.length === 0 ? <div style={{
-      padding: isPage ? "36px 20px" : "24px 16px", textAlign: "center", background: "var(--panel-2)",
-      borderRadius: "12px", border: "1px dashed var(--line)", marginBottom: isPage ? 0 : "20px",
-    }}>
-      <p style={{ margin: 0, fontSize: isPage ? "13px" : "12px", color: "var(--muted-ink)" }}>
-        No stock tokens added yet. Use the search {isPage ? "field" : "input"} above to pick your basket assets.
-      </p>
-    </div> : <div className="drawer-weight-editor" style={isPage ? undefined : { paddingRight: "4px" }}>
-      {selected.map((asset) => {
-        const isTradeable = asset.tradeable !== false;
-        return (
-          <label key={asset.symbol} style={isPage ? { padding: "16px 0" } : undefined}>
-            <span>
-              <StockLogo symbol={asset.symbol} size={isPage ? 32 : 28} roundedFull />
-              <span>
-                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <strong style={isPage ? { fontSize: "14px" } : undefined}>{asset.symbol}</strong>
-                  {!isTradeable && (
-                    <span style={{
-                      fontSize: "10px",
-                      color: "var(--muted-ink)",
-                      background: "var(--panel-2)",
-                      padding: "1px 5px",
-                      borderRadius: "4px",
-                      border: "1px solid var(--panel-border)",
-                      fontWeight: 600,
-                    }}>
-                      Unavailable
-                    </span>
-                  )}
-                </span>
-                <small>{asset.name}</small>
-              </span>
-            </span>
-            <span className="weight-actions">
-              <output style={isPage ? { fontSize: "22px" } : undefined}>{formatPaddedPercent(targets[asset.symbol] ?? 0)}%</output>
-              <button type="button" onClick={() => removeAsset(asset.symbol)}>Remove</button>
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              disabled={!isTradeable}
-              value={targets[asset.symbol]}
-              onChange={(event) => onChange({ ...targets, [asset.symbol]: Number(event.target.value) })}
-            />
-          </label>
-        );
-      })}
-    </div>}
+    {selected.length === 0 ? <div className="ui-state allocation-empty"><h4>Build your basket</h4><p>Search for a stock to start. Adding or removing an asset splits weights evenly.</p></div> : <>
+      <div className="transaction-total"><span>{selected.length} assets selected</span><strong>{total}% allocated</strong></div>
+      <div className="allocation-rows">{selected.map(asset => <div className="allocation-row" key={asset.symbol}>
+        <div className="allocation-asset"><StockLogo symbol={asset.symbol} size={32} roundedFull /><span><strong>{asset.symbol}</strong><small>{asset.name}{asset.tradeable === false ? " · Unavailable" : ""}</small></span></div>
+        <label className="allocation-weight"><input aria-label={`${asset.symbol} target percentage`} type="number" min="0" max="100" step="0.01" disabled={asset.tradeable === false} value={targets[asset.symbol]} onChange={event => onChange({ ...targets, [asset.symbol]: Math.min(100, Math.max(0, Number(event.target.value) || 0)) })} /><span>%</span></label>
+        <button type="button" className="ui-button" data-variant="ghost" aria-label={`Remove ${asset.symbol}`} onClick={() => removeAsset(asset.symbol)}>Remove</button>
+        <input className="allocation-slider" aria-label={`${asset.symbol} allocation slider`} type="range" min="0" max="100" disabled={asset.tradeable === false} value={targets[asset.symbol]} onChange={event => onChange({ ...targets, [asset.symbol]: Number(event.target.value) })} />
+      </div>)}</div><p className="transaction-help">Adding or removing assets splits the allocation evenly. Adjust individual weights to suit your basket.</p>
+    </>}
   </div>;
 }

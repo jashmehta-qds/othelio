@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, useWriteContract, usePublicClient } from "wagmi";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
-import { AppIcon } from "@/components/app-shell/AppIcon";
+import { BasketCreationFields, BasketCreationFooter } from "@/components/BasketCreationFields";
+import { Dialog } from "@/components/ui/Dialog";
+import "@/components/transactions.css";
 import { extractCreatedBasketAddress, registerConfirmedBasket } from "@/lib/createSeed";
 import { walletActionError } from "@/lib/walletErrors";
-import { BasketAllocationEditor, basketTargetAssets, basketTargetTotal, type BasketTargetMap } from "@/components/BasketAllocationEditor";
+import { basketTargetAssets, basketTargetTotal, type BasketTargetMap } from "@/components/BasketAllocationEditor";
 
 export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const router = useRouter();
@@ -22,26 +24,19 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
   const targetChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 8453);
   const publicClient = usePublicClient({ chainId: targetChainId });
   const { isPending: isApproving, writeContractAsync } = useWriteContract();
-  const isPending = isApproving;
-  const isConfirming = false;
+  const [isWorking, setIsWorking] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const isPending = isApproving || isWorking;
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const handleExecute = async () => {
     if (!isConnected || !address) {
-      alert("Please connect your Web3 wallet first.");
+      setTransactionError("Connect your wallet before creating a basket.");
       return;
     }
 
+    if (isPending) return;
+    setIsWorking(true);
     setTransactionError(null);
     try {
       if (Object.keys(targets).length === 0 || basketTargetTotal(targets) !== 100) {
@@ -83,6 +78,7 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
         args: [cleanName],
         gas: gasLimit,
       });
+      setIsConfirming(true);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: createTxHash });
       if (!receipt || receipt.status !== "success") throw new Error("Basket creation transaction failed.");
 
@@ -103,150 +99,15 @@ export function CreateBasketModal({ isOpen, onClose }: { isOpen: boolean; onClos
       router.push(`/app/baskets/${basketAddress}`);
     } catch (error) {
       setTransactionError(walletActionError(error, "Unable to create the basket."));
+    } finally {
+      setIsWorking(false);
+      setIsConfirming(false);
     }
   };
 
+  const fields = <BasketCreationFields name={name} symbol={symbol} targets={targets} onName={setName} onSymbol={setSymbol} onTargets={setTargets} reviewing={previewing} />;
+  const footer = <BasketCreationFooter targets={targets} reviewing={previewing} busy={isPending} confirming={isConfirming} connected={isConnected} error={transactionError} onBack={previewing ? () => setPreviewing(false) : onClose} onContinue={previewing ? handleExecute : () => setPreviewing(true)} />;
   return (
-    <>
-      <button className="drawer-backdrop" onClick={onClose} aria-label="Close basket creation" />
-      <aside className="rebalance-drawer rebalance-editor" aria-label="Create basket drawer">
-        <div className="drawer-scroll" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-          <header>
-            <div>
-              <h2>{previewing ? "Staged Basket" : "Create Basket"}</h2>
-              <span>{previewing ? "Review basket details before signing" : "Configure identity and target allocation"}</span>
-            </div>
-            <button onClick={onClose} aria-label="Close create drawer">×</button>
-          </header>
-
-          {previewing ? (
-            <>
-              <div className="safety-note">
-                <span className="shield">✓</span>
-                <p>
-                  <strong>Nothing has moved yet</strong>
-                  <small>This preview is side-effect-free. Your wallet signs only after final review.</small>
-                </p>
-              </div>
-
-              <div className="quote-summary" style={{ marginTop: "16px" }}>
-                <div>
-                  <span>Basket Name</span>
-                  <strong>{name}</strong>
-                </div>
-                <div>
-                  <span>Ticker Symbol</span>
-                  <strong>{symbol}</strong>
-                </div>
-                <div>
-                  <span>Basket Composition</span>
-                  <strong>{Object.keys(targets).length} Assets ({basketTargetTotal(targets)}%)</strong>
-                </div>
-                <div>
-                  <span>Status</span>
-                  <strong>{isConfirming ? "Confirming..." : isPending ? "Waiting wallet..." : "Ready"}</strong>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="drawer-intro">
-                Set basket details, add stock tokens to your composition, and set target weights.
-              </p>
-
-              {/* 1. Basket Details Row */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: "10px" }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--muted-ink)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Basket Name</span>
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. Momentum Tech Core"
-                      style={{
-                        padding: "9px 12px",
-                        background: "var(--panel-2)",
-                        border: "1px solid var(--panel-border)",
-                        borderRadius: "10px",
-                        color: "var(--ink)",
-                        fontSize: "13px",
-                        outline: "none",
-                      }}
-                    />
-                  </label>
-
-                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--muted-ink)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Symbol</span>
-                    <input
-                      type="text"
-                      value={symbol}
-                      onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                      placeholder="MCORE"
-                      style={{
-                        padding: "9px 12px",
-                        background: "var(--panel-2)",
-                        border: "1px solid var(--panel-border)",
-                        borderRadius: "10px",
-                        color: "var(--ink)",
-                        fontSize: "13px",
-                        outline: "none",
-                        fontWeight: 700,
-                      }}
-                    />
-                  </label>
-                </div>
-
-                <small style={{ fontSize: "10px", color: "var(--muted-ink)" }}>Create the basket first. You can add USDC with a fresh quoted trade afterward.</small>
-              </div>
-
-              <BasketAllocationEditor targets={targets} onChange={setTargets} />
-
-            </>
-          )}
-
-          
-        </div>
-
-        <footer style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {!previewing && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px", padding: "2px 0" }}>
-              <span style={{ color: "var(--muted-ink)", fontWeight: 500 }}>Total allocation</span>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <small style={{ fontSize: "11px", fontWeight: 600, color: basketTargetTotal(targets) === 100 && Object.keys(targets).length > 0 ? "var(--positive)" : "var(--danger)" }}>
-                  {Object.keys(targets).length === 0 ? "Add 1+ stock" : basketTargetTotal(targets) === 100 ? "" : `${basketTargetTotal(targets) > 100 ? "-" : "+"}${Math.abs(100 - basketTargetTotal(targets))}% needed`}
-                </small>
-                <strong style={{ fontSize: "15px", fontWeight: 700, color: basketTargetTotal(targets) === 100 && Object.keys(targets).length > 0 ? "var(--positive)" : "var(--ink)" }}>{basketTargetTotal(targets)}%</strong>
-              </div>
-            </div>
-          )}
-          {transactionError && (
-            <p role="status" style={{ margin: 0, color: "var(--muted-ink)", fontSize: "12px", textAlign: "center" }}>
-              {transactionError}
-            </p>
-          )}
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: "9px" }}>
-            <button onClick={previewing ? () => setPreviewing(false) : onClose}>
-              {previewing ? "Edit weights" : "Cancel"}
-            </button>
-            <button
-              className="primary"
-              disabled={isPending || isConfirming || Object.keys(targets).length === 0 || basketTargetTotal(targets) !== 100}
-              onClick={previewing ? handleExecute : () => setPreviewing(true)}
-            >
-              {previewing
-                ? isConfirming
-                  ? "Confirming..."
-                  : isPending
-                  ? "Waiting..."
-                  : "Submit Transaction"
-                : "Review basket"}
-              <AppIcon type="arrow" />
-            </button>
-          </div>
-        </footer>
-      </aside>
-    </>
+    <Dialog open={isOpen} onClose={onClose} title={previewing ? "Review basket" : "Create basket"} description="Choose your assets and allocation. Fund your basket after creation." kind="sheet" size="wide" footer={footer}>{fields}</Dialog>
   );
 }

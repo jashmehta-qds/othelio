@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Providers } from "@/providers/Providers";
 import "./globals.css";
+import "./workspace.css";
 
 export const metadata: Metadata = {
   title: "Othelio — Build the basket you want to own",

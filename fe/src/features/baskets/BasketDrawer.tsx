@@ -1,3 +1,5 @@
+import { Dialog } from "@/components/ui/Dialog";
+import "@/components/transactions.css";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useChainId, useReadContract, useWriteContract, useSendTransaction, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
@@ -255,19 +257,7 @@ function useCatalogHoldings(): Holding[] {
 }
 
 export function BasketDrawer({ basket, action, onClose }: { basket: Basket; action: Exclude<BasketAction, null>; onClose: () => void }) {
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = previousOverflow; };
-  }, []);
-
-  const backdrop = <button className="drawer-backdrop" onClick={onClose} aria-label="Close basket action" />;
-
-  if (action === "rebalance") {
-    return <>{backdrop}<RebalanceDrawer basket={basket} onClose={onClose} /></>;
-  }
-
-  return <>{backdrop}<AmountDrawer basket={basket} kind={action} onClose={onClose} /></>;
+  return action === "rebalance" ? <RebalanceDrawer basket={basket} onClose={onClose} /> : <AmountDrawer basket={basket} kind={action} onClose={onClose} />;
 }
 
 function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => void }) {
@@ -487,15 +477,29 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
   };
 
   return (
-    <aside className="rebalance-drawer rebalance-editor" aria-label="Rebalance basket">
-      <div className="drawer-scroll" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-        <header>
-          <div>
-            <h2>{isAllocationIndexed ? "Rebalance Confirmed" : isSuccess ? "Indexing Rebalance" : previewing ? "Review Rebalance" : "Rebalance"}</h2>
-            <span>{isAllocationIndexed ? "Allocation Updated" : isSuccess ? "Transaction Confirmed" : previewing ? "Preview & Sign" : "Edit weights"}</span>
-          </div>
-          <button onClick={onClose} aria-label="Close rebalance">×</button>
-        </header>
+    <Dialog open onClose={onClose} title={isAllocationIndexed ? "Rebalance confirmed" : isSuccess ? "Updating allocation" : previewing ? "Review rebalance" : "Rebalance basket"} description={basket.name} kind="sheet" size="wide" footer={<div className="transaction-actions">
+        {isAllocationIndexed ? (
+          <button className="ui-button" style={{ width: "100%" }} onClick={onClose}>
+            Close
+          </button>
+        ) : (
+          <>
+            <button className="ui-button" data-variant="secondary" onClick={previewing ? () => setPreviewing(false) : onClose}>
+              {previewing ? "Edit" : "Cancel"}
+            </button>
+            <button
+              className="ui-button"
+              disabled={(!previewing && (total !== 100 || hasInoperableAssets)) || isPending || isConfirming || isSuccess || staleConsent.remaining > 0 || Boolean(staleConsent.stage?.mode === 'warn' && !staleConsent.stage.approved) || staleConsent.stage?.mode === 'reject'}
+              onClick={previewing ? handleExecuteRebalance : () => setPreviewing(true)}
+            >
+              {isSuccess ? "Updating allocation…" : isConfirming ? "Waiting for confirmation…" : isPending ? "Waiting for wallet…" : previewing ? (staleConsent.stage && (staleConsent.stage.mode === 'warn' ? staleConsent.stage.approved : staleConsent.stage.mode === 'allow' ? staleConsent.remaining === 0 : false) ? "Confirm trade" : priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") ? "Review stale quote" : "Confirm in wallet") : "Review"}{" "}
+              <AppIcon type="arrow" />
+            </button>
+          </>
+        )}
+      </div>}>
+      <div className="transaction-drawer-content">
+
 
         {isAllocationIndexed ? (
           <div style={{ textAlign: "center", padding: "32px 16px" }}>
@@ -815,28 +819,8 @@ function RebalanceDrawer({ basket, onClose }: { basket: Basket; onClose: () => v
         )}
       </div>
 
-      <footer>
-        {isAllocationIndexed ? (
-          <button className="primary" style={{ width: "100%" }} onClick={onClose}>
-            Close
-          </button>
-        ) : (
-          <>
-            <button onClick={previewing ? () => setPreviewing(false) : onClose}>
-              {previewing ? "Edit" : "Cancel"}
-            </button>
-            <button
-              className="primary"
-              disabled={(!previewing && (total !== 100 || hasInoperableAssets)) || isPending || isConfirming || isSuccess || staleConsent.remaining > 0 || Boolean(staleConsent.stage?.mode === 'warn' && !staleConsent.stage.approved) || staleConsent.stage?.mode === 'reject'}
-              onClick={previewing ? handleExecuteRebalance : () => setPreviewing(true)}
-            >
-              {isSuccess ? "Indexing..." : isPending ? "Confirming..." : previewing ? (staleConsent.stage && (staleConsent.stage.mode === 'warn' ? staleConsent.stage.approved : staleConsent.stage.mode === 'allow' ? staleConsent.remaining === 0 : false) ? "Confirm trade" : priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") ? "Review stale quote" : "Execute") : "Review"}{" "}
-              <AppIcon type="arrow" />
-            </button>
-          </>
-        )}
-      </footer>
-    </aside>
+
+    </Dialog>
   );
 }
 
@@ -1114,15 +1098,22 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
   };
 
   return (
-    <aside className="rebalance-drawer amount-drawer" aria-label={`${isMint ? "Add funds to" : "Withdraw from"} ${basket.name}`}>
-      <div className="drawer-scroll">
-        <header>
-          <div>
-            <h2>{isMint ? "Add funds" : "Withdraw"}</h2>
-            <span>{isSuccess ? "Transaction Confirmed" : "Preview"}</span>
-          </div>
-          <button onClick={onClose} aria-label={`Close ${kind}`}>×</button>
-        </header>
+    <Dialog open onClose={onClose} title={isMint ? "Add funds" : "Withdraw funds"} description={basket.name} kind="sheet" size="wide" footer={<div className="transaction-actions">
+        {isSuccess ? (
+          <button className="ui-button" style={{ width: "100%" }} onClick={onClose}>
+            Close
+          </button>
+        ) : (
+          <>
+            <button className="ui-button" data-variant="secondary" onClick={onClose}>Cancel</button>
+            <button className="ui-button" disabled={isPending || isConfirming || staleConsent.remaining > 0 || Boolean(staleConsent.stage?.mode === 'warn' && !staleConsent.stage.approved) || staleConsent.stage?.mode === 'reject'} onClick={handleExecuteAmountAction}>
+              {isConfirming ? "Waiting for confirmation…" : isPending ? "Waiting for wallet…" : staleConsent.stage && (staleConsent.stage.mode === 'warn' ? staleConsent.stage.approved : staleConsent.stage.mode === 'allow' ? staleConsent.remaining === 0 : false) ? "Confirm trade" : priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") ? "Review stale quote" : "Confirm in wallet"} <AppIcon type="arrow" />
+            </button>
+          </>
+        )}
+      </div>}>
+      <div className="transaction-drawer-content">
+
 
         {isSuccess ? (
           <div style={{ textAlign: "center", padding: "32px 16px" }}>
@@ -1386,20 +1377,7 @@ function AmountDrawer({ basket, kind, onClose }: { basket: Basket; kind: "mint" 
           </>
         )}
       </div>
-      <footer>
-        {isSuccess ? (
-          <button className="primary" style={{ width: "100%" }} onClick={onClose}>
-            Close
-          </button>
-        ) : (
-          <>
-            <button onClick={onClose}>Cancel</button>
-            <button className="primary" disabled={isPending || isConfirming || staleConsent.remaining > 0 || Boolean(staleConsent.stage?.mode === 'warn' && !staleConsent.stage.approved) || staleConsent.stage?.mode === 'reject'} onClick={handleExecuteAmountAction}>
-              {isPending ? "Confirming..." : staleConsent.stage && (staleConsent.stage.mode === 'warn' ? staleConsent.stage.approved : staleConsent.stage.mode === 'allow' ? staleConsent.remaining === 0 : false) ? "Confirm trade" : priceWarnings.some((warning) => warning.code === "STALE_PRICE_REFERENCE") ? "Review stale quote" : "Submit"} <AppIcon type="arrow" />
-            </button>
-          </>
-        )}
-      </footer>
-    </aside>
+
+    </Dialog>
   );
 }

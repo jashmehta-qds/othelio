@@ -23,6 +23,8 @@ const navigation: { id: AppNavId; label: string; href: string }[] = [
 
 import { WalletConnectModal } from "@/components/WalletConnectModal";
 import { useAuth } from "@/context/AuthContext";
+import { Dialog } from "@/components/ui/Dialog";
+import { networkLabelForChainId } from "@/lib/network";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -217,13 +219,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return total;
   }, [mounted, isConnected, address, basketsResponse]);
 
-  // Derive monthly gain dynamically based on basket holdings/activity
-  const monthlyGainText = useMemo(() => {
-    if (!basketsResponse?.data || basketsResponse.data.length === 0) return "+$0.00";
-    // For newly deployed on-chain baskets without historical pricing drift
-    return "+$0.00";
-  }, [basketsResponse]);
-
   const userInitials = useMemo(() => {
     if (!userName) return address ? address.slice(2, 4).toUpperCase() : "??";
     return userName
@@ -238,62 +233,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <main className="bank-app" data-theme="dark">
-      {/* Onboarding Modal for New Connected Users */}
-      {showOnboarding && (
-        <div className="drawer-backdrop" style={{ display: 'grid', placeItems: 'center', zIndex: 100 }}>
-          <div className="glass-panel" style={{ width: '90%', maxWidth: '420px', padding: '28px', borderRadius: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-              <OthelioLogo size={32} />
-              <h2 style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>Welcome to Othelio</h2>
-            </div>
-            <p style={{ color: 'var(--muted-ink)', fontSize: '13px', marginBottom: '20px' }}>
-              Connected with <code style={{ color: 'var(--accent)' }}>{address ? formatAddress(address) : ''}</code>. Please enter a display name for your profile.
-            </p>
-            <form onSubmit={handleSaveName}>
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: 'var(--muted-ink)', marginBottom: '6px' }}>Display Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Satoshi Nakamoto"
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '10px',
-                    border: '1px solid var(--line)',
-                    background: 'var(--panel-2)',
-                    color: 'var(--ink)',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                  autoFocus
-                  required
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (address) {
-                      const fallback = `Wallet ${address.slice(0, 6)}`;
-                      localStorage.setItem(`othelio_user_${address.toLowerCase()}`, fallback);
-                      setUserName(fallback);
-                      setShowOnboarding(false);
-                    }
-                  }}
-                  style={{ background: 'transparent', border: '1px solid var(--line)', padding: '8px 16px', borderRadius: '10px', color: 'var(--muted-ink)', fontSize: '13px', cursor: 'pointer' }}
-                >
-                  Skip
-                </button>
-                <button type="submit" className="primary" style={{ padding: '8px 20px', fontSize: '13px' }}>
-                  Save Profile
-                </button>
-              </div>
-            </form>
+      <a href="#workspace-content" className="ui-skip-link">Skip to content</a>
+      <Dialog open={showOnboarding} onClose={() => setShowOnboarding(false)} title="Make yourself at home" description="Add an optional display name. It stays on this device.">
+        <form onSubmit={handleSaveName}>
+          <label className="ui-field"><span>Display name</span><input value={nameInput} onChange={(event) => setNameInput(event.target.value)} placeholder="Your name" maxLength={48} required /></label>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button type="button" className="ui-button" data-variant="ghost" onClick={() => {
+              if (address) localStorage.setItem(`othelio_user_${address.toLowerCase()}`, `Wallet ${address.slice(0, 6)}`);
+              setShowOnboarding(false);
+            }}>Skip for now</button>
+            <button type="submit" className="ui-button">Save name</button>
           </div>
-        </div>
-      )}
+        </form>
+      </Dialog>
 
       {/* Left Sidebar */}
       <aside className="bank-sidebar">
@@ -304,7 +256,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="bank-nav" aria-label="Primary navigation">
             {navigation.map((item) => (
-              <Link key={item.id} href={item.href} className={isActive(item.href) ? "active" : ""}>
+              <Link key={item.id} href={item.href} className={isActive(item.href) ? "active" : ""} aria-current={isActive(item.href) ? "page" : undefined}>
                 <AppIcon type={item.id} />
                 <span>{item.label}</span>
               </Link>
@@ -313,15 +265,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="sidebar-lower">
-          <section
-            className="account-module"
-            style={(isWalletRestoring || !(mounted && isConnected && address)) ? {
-              background: "linear-gradient(135deg, rgba(219, 255, 117, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)",
-              border: "1px solid rgba(219, 255, 117, 0.25)",
-              borderRadius: "16px",
-              padding: "16px",
-            } : undefined}
-          >
+          <div className="ui-network-label"><i aria-hidden="true" />{networkLabelForChainId(targetChainId)}</div>
+          <section className="account-module">
             {isWalletRestoring ? (
               <div aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "4px 0" }}>
                 <div style={{ height: "14px", width: "58%", borderRadius: "4px", background: "var(--panel-2)" }} />
@@ -334,7 +279,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="avatar">{userInitials}</span>
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <strong style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {userName || "Alex Carter"}
+                      {userName || "Your wallet"}
                     </strong>
                     <small>{formatAddress(address)}</small>
                   </span>
@@ -369,14 +314,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span>Total portfolio</span>
                   <strong>
                     {isBasketsLoading ? (
-                      <span className="animate-pulse" style={{ opacity: 0.5 }}>Calculated...</span>
+                      <span className="animate-pulse" style={{ opacity: 0.5 }}>Loading…</span>
                     ) : (
                       `$${formatCompactNumber(totalSumNAV)}`
                     )}
                   </strong>
-                  <small>
-                    <b>{monthlyGainText}</b> this month
-                  </small>
+
                 </div>
 
                 {isWrongNetwork ? (
@@ -431,13 +374,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ) : (
               <>
                 <header>
-                  <span className="avatar" style={{ background: 'rgba(219, 255, 117, 0.15)', color: 'var(--accent)', display: 'grid', placeItems: 'center' }}>
+                  <span className="avatar" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', display: 'grid', placeItems: 'center' }}>
                     <span style={{ width: '16px', height: '16px', display: 'block' }}>
                       <AppIcon type="lock" />
                     </span>
                   </span>
                   <span>
-                    <strong style={{ color: 'var(--ink)' }}>Not Connected</strong>
+                    <strong style={{ color: 'var(--ink)' }}>Your wallet</strong>
                   </span>
                 </header>
 
@@ -455,7 +398,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     className="primary connect-wallet-button"
                     style={{ width: '100%', fontSize: '13px', justifyContent: 'center', padding: '10px 14px', borderRadius: '10px' }}
                   >
-                    {isWalletConnecting ? "Authenticating..." : "Connect Wallet"}
+                    {isWalletConnecting ? "Authenticating..." : "Connect wallet"}
                   </button>
                 </div>
               </>
@@ -465,7 +408,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content Area */}
-      <section className="bank-content">
+      <section className="bank-content" id="workspace-content" tabIndex={-1}>
         <header className="mobile-header">
           <Link href="/" className="bank-wordmark">
             <OthelioLogo size={26} />
@@ -488,8 +431,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </section>
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
-        {navigation.slice(0, 4).map((item) => (
-          <Link key={item.id} href={item.href} className={isActive(item.href) ? "active" : ""}>
+        {navigation.map((item) => (
+          <Link key={item.id} href={item.href} className={isActive(item.href) ? "active" : ""} aria-current={isActive(item.href) ? "page" : undefined}>
             <AppIcon type={item.id} />
             <span>{item.label}</span>
           </Link>
