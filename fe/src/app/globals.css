@@ -3,7 +3,7 @@
 :root {
   --background: #10110f;
   --foreground: #eeeee7;
-  --accent: #d7ff46;
+  --accent: #ff5729;
   --border: #292a27;
   --card: #161715;
   --muted: #898b84;
@@ -200,7 +200,7 @@ body {
   width: 280px;
   height: 280px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(219, 255, 117, 0.12) 0%, rgba(138, 164, 255, 0.06) 45%, transparent 70%);
+  background: radial-gradient(circle, rgba(255, 87, 41, 0.16) 0%, rgba(255, 87, 41, 0.05) 45%, transparent 70%);
   pointer-events: none;
   z-index: 1;
   animation: pulse-glow 6s ease-in-out infinite alternate;
@@ -418,8 +418,8 @@ body {
 .wordmark:hover .brand-logo-vector,
 .concept-wordmark:hover .brand-logo-vector {
   transform: scale(1.08) rotate(6deg);
-  filter: drop-shadow(0 0 10px rgba(219, 255, 117, 0.4));
-  color: #dbff75;
+  filter: drop-shadow(0 0 10px rgba(255, 87, 41, 0.4));
+  color: var(--accent);
 }
 
 .bank-nav {

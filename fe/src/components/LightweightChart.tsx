@@ -42,7 +42,7 @@ export default function LightweightChart({
   title,
   subtitle,
   showVolume = false,
-  color = "#d7ff46", // Acid green
+  color = "#ff5729", // Orange shader accent
   showTimeframeSelector = true,
   onTimeframeChange,
   selectedTimeframe = "1M",
@@ -130,8 +130,8 @@ export default function LightweightChart({
 
     if (type === "area") {
       const areaSeries = chart.addSeries(AreaSeries, {
-        topColor: color === "#d7ff46" ? "rgba(215, 255, 70, 0.35)" : "rgba(255, 255, 255, 0.3)",
-        bottomColor: color === "#d7ff46" ? "rgba(215, 255, 70, 0.0)" : "rgba(0, 0, 0, 0)",
+        topColor: color === "#ff5729" || color === "#d7ff46" ? "rgba(255, 87, 41, 0.35)" : "rgba(255, 255, 255, 0.3)",
+        bottomColor: color === "#ff5729" || color === "#d7ff46" ? "rgba(255, 87, 41, 0.0)" : "rgba(0, 0, 0, 0)",
         lineColor: color,
         lineWidth: 2,
         priceFormat: {
@@ -148,11 +148,11 @@ export default function LightweightChart({
       areaSeries.setData(formattedData);
     } else {
       const candlestickSeries = chart.addSeries(CandlestickSeries, {
-        upColor: "#d7ff46",
+        upColor: "#ff5729",
         downColor: "#ff4e50",
-        borderUpColor: "#d7ff46",
+        borderUpColor: "#ff5729",
         borderDownColor: "#ff4e50",
-        wickUpColor: "#d7ff46",
+        wickUpColor: "#ff5729",
         wickDownColor: "#ff4e50",
       });
 

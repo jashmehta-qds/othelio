@@ -8,9 +8,9 @@
   --ink: #eeeee7;
   --muted-ink: #96988f;
   --line: #2b2c28;
-  --accent: #c4a2ff;
-  --accent-strong: #d9c3ff;
-  --accent-soft: #201a2e;
+  --accent: #ff5729;
+  --accent-strong: #ff7043;
+  --accent-soft: #27140c;
   --positive: #70e0ba;
   --danger: #ff9b9f;
   --ease-out: cubic-bezier(.2,.8,.2,1);
@@ -26,7 +26,7 @@
 .bank-app :is(button,a,input,select,textarea,summary), .ui-dialog :is(button,a,input,select,textarea) { -webkit-tap-highlight-color: transparent; }
 .bank-app :is(button,a,input,select,textarea,summary):focus-visible, .ui-dialog :is(button,a,input,select,textarea):focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .bank-app :is(input,textarea), .ui-dialog :is(input,textarea) { caret-color: var(--accent); }
-.bank-app ::selection, .ui-dialog ::selection { background: #c4a2ff; color: #10110f; }
+.bank-app ::selection, .ui-dialog ::selection { background: #ff5729; color: #10110f; }
 .bank-app :is(input,textarea)::placeholder, .ui-dialog :is(input,textarea)::placeholder { color: #898b84; }
 .bank-app button:disabled, .ui-dialog button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
 .bank-app a { text-underline-offset: 4px; }
@@ -35,8 +35,8 @@
 .bank-app .bank-wordmark:hover .brand-logo-vector { color: var(--accent); filter: none; transform: none; }
 .bank-app .bank-nav { margin-top: 36px; gap: 6px; }
 .bank-app .bank-nav a { border-radius: 8px; min-height: 40px; padding: 0 12px; font-size: 13px; }
-.bank-app .bank-nav a.active { background: var(--accent-soft); color: #e3d1ff; }
-.bank-app .bank-nav a.active::after { width: 4px; height: 4px; box-shadow: 0 0 10px #c4a2ff; }
+.bank-app .bank-nav a.active { background: var(--accent-soft); color: #ffd8cc; }
+.bank-app .bank-nav a.active::after { width: 4px; height: 4px; box-shadow: 0 0 10px #ff5729; }
 .bank-app .bank-content { min-width: 0; padding: 42px clamp(24px,4vw,64px) 64px; }
 .bank-app .app-page-frame { width: 100%; max-width: 1240px; margin: 0 auto; }
 .bank-app .page-title { font-family: var(--font-atkinson), sans-serif; font-size: clamp(27px,2.7vw,36px); font-weight: 600; letter-spacing: -.035em; line-height: 1.15; }
@@ -53,7 +53,7 @@
   cursor: pointer; transition: background 180ms var(--ease-out), border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out), transform 180ms var(--ease-out);
 }
 .bank-app .primary, .ui-button { background: var(--accent); color: #10110f; }
-.bank-app .primary:hover:not(:disabled), .ui-button:hover:not(:disabled) { background: var(--accent-strong); box-shadow: 0 4px 20px #a275ec24; }
+.bank-app .primary:hover:not(:disabled), .ui-button:hover:not(:disabled) { background: var(--accent-strong); box-shadow: 0 4px 20px rgba(255, 87, 41, 0.28); }
 .bank-app .primary:active:not(:disabled), .ui-button:active:not(:disabled) { transform: translateY(1px); }
 .bank-app .secondary, .ui-button[data-variant="secondary"] { color: var(--ink); background: var(--panel-2); border-color: var(--line); box-shadow: none; }
 .bank-app .secondary:hover:not(:disabled), .ui-button[data-variant="secondary"]:hover:not(:disabled) { background: #242522; border-color: #444540; }

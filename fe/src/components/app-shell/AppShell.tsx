@@ -382,7 +382,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ) : (
               <>
                 <header>
-                  <span className="avatar" style={{ background: 'rgba(219, 255, 117, 0.15)', color: 'var(--accent)', display: 'grid', placeItems: 'center' }}>
+                  <span className="avatar" style={{ background: 'rgba(255, 87, 41, 0.15)', color: 'var(--accent)', display: 'grid', placeItems: 'center' }}>
                     <span style={{ width: '16px', height: '16px', display: 'block' }}>
                       <AppIcon type="lock" />
                     </span>
