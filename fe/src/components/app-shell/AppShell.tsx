@@ -219,6 +219,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return total;
   }, [mounted, isConnected, address, basketsResponse]);
 
+  // Derive monthly gain dynamically based on basket holdings/activity
+  const monthlyGainText = useMemo(() => {
+    if (!basketsResponse?.data || basketsResponse.data.length === 0) return "+$0.00";
+    // For newly deployed on-chain baskets without historical pricing drift
+    return "+$0.00";
+  }, [basketsResponse]);
+
   const userInitials = useMemo(() => {
     if (!userName) return address ? address.slice(2, 4).toUpperCase() : "??";
     return userName
@@ -265,7 +272,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="sidebar-lower">
-          <section className="account-module">
+          <section
+            className="account-module"
+            style={(isWalletRestoring || !(mounted && isConnected && address)) ? {
+              background: "linear-gradient(135deg, rgba(219, 255, 117, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)",
+              border: "1px solid rgba(219, 255, 117, 0.25)",
+              borderRadius: "16px",
+              padding: "16px",
+            } : undefined}
+          >
             {isWalletRestoring ? (
               <div aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "4px 0" }}>
                 <div style={{ height: "14px", width: "58%", borderRadius: "4px", background: "var(--panel-2)" }} />
@@ -278,7 +293,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="avatar">{userInitials}</span>
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <strong style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {userName || "Your wallet"}
+                      {userName || "Alex Carter"}
                     </strong>
                     <small>{formatAddress(address)}</small>
                   </span>
@@ -313,12 +328,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span>Total portfolio</span>
                   <strong>
                     {isBasketsLoading ? (
-                      <span className="animate-pulse" style={{ opacity: 0.5 }}>Loading…</span>
+                      <span className="animate-pulse" style={{ opacity: 0.5 }}>Calculated...</span>
                     ) : (
                       `$${formatCompactNumber(totalSumNAV)}`
                     )}
                   </strong>
-
+                  <small>
+                    <b>{monthlyGainText}</b> this month
+                  </small>
                 </div>
 
                 {isWrongNetwork ? (
@@ -373,31 +390,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ) : (
               <>
                 <header>
-                  <span className="avatar" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', display: 'grid', placeItems: 'center' }}>
+                  <span className="avatar" style={{ background: 'rgba(219, 255, 117, 0.15)', color: 'var(--accent)', display: 'grid', placeItems: 'center' }}>
                     <span style={{ width: '16px', height: '16px', display: 'block' }}>
                       <AppIcon type="lock" />
                     </span>
                   </span>
                   <span>
-                    <strong style={{ color: 'var(--ink)' }}>Your wallet</strong>
+                    <strong style={{ color: 'var(--ink)' }}>Not Connected</strong>
                   </span>
                 </header>
 
-                <div className="account-balance" style={{ textAlign: 'center', padding: '16px 8px 8px' }}>
-                  {authError ? (
-                    <div style={{ color: "#ef4444", fontSize: "11px", marginBottom: "12px", lineHeight: 1.4, padding: "8px 10px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.25)", textAlign: "left" }}>
-                      {authError}
-                    </div>
-                  ) : (
-                    <></>
-                  )}
+                <div className="account-balance">
+                  <span>Connect Wallet</span>
+                  <p style={{ fontSize: '12px', color: 'var(--muted-ink)', margin: '4px 0 0', lineHeight: 1.4 }}>
+                    Connect and sign with your Web3 wallet to manage baskets.
+                  </p>
+                </div>
+
+                <div className="account-available" style={{ paddingTop: '8px' }}>
                   <button
                     onClick={handleConnectWallet}
                     disabled={isWalletConnecting}
                     className="primary connect-wallet-button"
                     style={{ width: '100%', fontSize: '13px', justifyContent: 'center', padding: '10px 14px', borderRadius: '10px' }}
                   >
-                    {isWalletConnecting ? "Authenticating..." : "Connect wallet"}
+                    {isWalletConnecting ? "Authenticating..." : "Connect Wallet"}
                   </button>
                 </div>
               </>

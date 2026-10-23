@@ -44,15 +44,6 @@
 .bank-app .index-head, .ui-page-header { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 32px; }
 .ui-page-header h1 { margin: 0; }
 .ui-page-header p { margin: 8px 0 0; color: var(--muted-ink); }
-.bank-app .account-module { background: transparent; border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 20px 0 0; }
-.bank-app .account-module header { padding: 0; border: 0; }
-.bank-app .account-module .avatar { border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
-.bank-app .account-module header small { font-size: 12px; }
-.bank-app .account-balance { padding: 16px 0; }
-.bank-app .account-balance > strong { font-size: 25px; }
-.bank-app .account-available { padding: 12px 0 0; }
-.ui-network-label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-ink); padding: 0 0 18px; }
-.ui-network-label i { height: 6px; width: 6px; background: var(--accent); border-radius: 50%; }
 .ui-skip-link { position: fixed; top: -80px; left: 16px; z-index: 10000; padding: 12px 20px; background: var(--ink); color: var(--canvas); border-radius: 8px; }
 .ui-skip-link:focus { top: 16px; }
 .bank-app .primary, .bank-app .secondary, .ui-button, .ui-icon-button {
