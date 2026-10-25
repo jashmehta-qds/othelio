@@ -279,21 +279,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .entry(circuit_key("events", using_secondary))
                                 .or_default()
                                 .failure();
-                            if let Some(secondary) = secondary_rpc_url.as_ref() {
-                                if let Ok(candidate) = Provider::<Http>::try_from(secondary.clone())
-                                {
-                                    provider = Arc::new(candidate);
-                                    using_secondary = true;
-                                    next_primary_probe = std::time::Instant::now()
-                                        + Duration::from_secs(configured_u64(
-                                            "INDEXER_RPC_CIRCUIT_COOLDOWN_SECS",
-                                            30,
-                                        ));
-                                    warn!(
-                                        failure_count = rpc_failure_count,
-                                        provider = provider_name(using_secondary),
-                                        "event worker RPC failed; switching provider"
-                                    );
+                            if !using_secondary {
+                                if let Some(secondary) = secondary_rpc_url.as_ref() {
+                                    if let Ok(candidate) =
+                                        Provider::<Http>::try_from(secondary.clone())
+                                    {
+                                        provider = Arc::new(candidate);
+                                        using_secondary = true;
+                                        next_primary_probe = std::time::Instant::now()
+                                            + Duration::from_secs(configured_u64(
+                                                "INDEXER_RPC_CIRCUIT_COOLDOWN_SECS",
+                                                30,
+                                            ));
+                                        warn!(
+                                            failure_count = rpc_failure_count,
+                                            provider = provider_name(using_secondary),
+                                            "event worker RPC failed; switching provider"
+                                        );
+                                    }
                                 }
                             }
                             record_worker_failure(&pool, chain_id, "events", &e.to_string())
@@ -393,16 +396,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 &e.to_string(),
                             )
                             .await?;
-                            if let Some(secondary) = secondary_rpc_url.as_ref() {
-                                if let Ok(candidate) = Provider::<Http>::try_from(secondary.clone())
-                                {
-                                    provider = Arc::new(candidate);
-                                    using_secondary = true;
-                                    next_primary_probe = std::time::Instant::now()
-                                        + Duration::from_secs(configured_u64(
-                                            "INDEXER_RPC_CIRCUIT_COOLDOWN_SECS",
-                                            30,
-                                        ));
+                            if !using_secondary {
+                                if let Some(secondary) = secondary_rpc_url.as_ref() {
+                                    if let Ok(candidate) =
+                                        Provider::<Http>::try_from(secondary.clone())
+                                    {
+                                        provider = Arc::new(candidate);
+                                        using_secondary = true;
+                                        next_primary_probe = std::time::Instant::now()
+                                            + Duration::from_secs(configured_u64(
+                                                "INDEXER_RPC_CIRCUIT_COOLDOWN_SECS",
+                                                30,
+                                            ));
+                                    }
                                 }
                             }
                             release_worker_lease(&pool, chain_id, "reconciliation").await?;
@@ -427,28 +433,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(e) => {
                 rpc_failure_count = rpc_failure_count.saturating_add(1);
                 warn!(provider = provider_name(using_secondary), error = %e, failure_count = rpc_failure_count, "event worker head read failed");
-                if let Some(secondary) = secondary_rpc_url.as_ref() {
-                    if let Ok(candidate) = Provider::<Http>::try_from(secondary.clone()) {
-                        warn!(
-                            failure_count = rpc_failure_count,
-                            "primary RPC unhealthy; switching to secondary endpoint"
-                        );
-                        provider = Arc::new(candidate);
-                        using_secondary = true;
-                        next_primary_probe = std::time::Instant::now()
-                            + Duration::from_secs(configured_u64(
-                                "INDEXER_RPC_CIRCUIT_COOLDOWN_SECS",
-                                30,
-                            ));
-                        continue;
+                if !using_secondary {
+                    if let Some(secondary) = secondary_rpc_url.as_ref() {
+                        if let Ok(candidate) = Provider::<Http>::try_from(secondary.clone()) {
+                            warn!(
+                                failure_count = rpc_failure_count,
+                                "primary RPC unhealthy; switching to secondary endpoint"
+                            );
+                            provider = Arc::new(candidate);
+                            using_secondary = true;
+                            next_primary_probe = std::time::Instant::now()
+                                + Duration::from_secs(configured_u64(
+                                    "INDEXER_RPC_CIRCUIT_COOLDOWN_SECS",
+                                    30,
+                                ));
+                            continue;
+                        }
                     }
                 }
                 let backoff = rpc_retry_delay(rpc_failure_count);
                 warn!(
+                    provider = provider_name(using_secondary),
                     failure_count = rpc_failure_count,
                     retry_in_secs = backoff.as_secs(),
                     error = ?e,
-                    "[RPC Error] Failed to get latest block number; keeping indexer alive and backing off"
+                    "[RPC Error] RPC head read failed; keeping indexer alive and backing off"
                 );
                 tokio::time::sleep(backoff).await;
             }
