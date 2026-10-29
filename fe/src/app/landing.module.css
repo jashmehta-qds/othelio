@@ -30,9 +30,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  max-width: 1480px;
   height: 88px;
-  padding: 0 clamp(24px, 5vw, 78px);
+  padding: 0 clamp(12px, 1vw, 78px);
   margin: 0 auto;
 }
 
@@ -84,8 +83,9 @@
   justify-content: space-between;
   gap: clamp(20px, 3vw, 60px);
   width: min(100%, 1440px);
-  min-height: calc(100svh - 144px);
-  padding: 24px clamp(24px, 5vw, 78px);
+  min-height: calc(100svh - 150px);
+  max-height: 860px;
+  padding: 16px clamp(24px, 5vw, 78px);
   margin: 0 auto;
   isolation: isolate;
 }
@@ -99,13 +99,21 @@
 
 .heroCopy h1 {
   margin: 0;
-  font: 700 clamp(48px, 5.8vw, 83px)/1.05 var(--font-heading), sans-serif;
+  font: 700 clamp(44px, 5.2vw, 76px)/1.05 var(--font-heading), sans-serif;
   letter-spacing: -.04em;
   text-wrap: balance;
 }
 
 .heroCopy h1 span {
   color: var(--acid);
+}
+
+.heroSubtitle {
+  max-width: 480px;
+  margin: 20px 0 32px;
+  color: #a9ada2;
+  font-size: clamp(15px, 1.2vw, 17px);
+  line-height: 1.6;
 }
 
 .heroVisual {
@@ -150,6 +158,7 @@
   font-size: 12px;
   text-decoration: none;
   letter-spacing: .04em;
+  padding-top: 18px;
 }
 
 .scrollCue span {

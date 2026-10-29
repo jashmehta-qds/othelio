@@ -2,10 +2,23 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export default function LiveIndexCounter({ initialValue = 104.28 }: { initialValue?: number }) {
-  const [value, setValue] = useState(initialValue);
+export default function LiveIndexCounter({
+  initialValue = 104.28,
+  value: controlledValue,
+}: {
+  initialValue?: number;
+  value?: number;
+}) {
+  const [value, setValue] = useState(controlledValue ?? initialValue);
   const [flashClass, setFlashClass] = useState<string>("");
-  const prevRef = useRef(initialValue);
+  const prevRef = useRef(controlledValue ?? initialValue);
+
+  useEffect(() => {
+    if (controlledValue !== undefined) {
+      setValue(controlledValue);
+      prevRef.current = controlledValue;
+    }
+  }, [controlledValue]);
 
   useEffect(() => {
     const interval = setInterval(() => {

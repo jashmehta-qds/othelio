@@ -1,6 +1,6 @@
 .scene {
   position: relative;
-  width: min(100%, 560px);
+  width: min(100%, clamp(300px, 34vw, 440px));
   aspect-ratio: 1;
   flex: 0 0 auto;
   isolation: isolate;

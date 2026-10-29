@@ -1,0 +1,269 @@
+.holdings {
+  --e: cubic-bezier(0.16, 1, 0.3, 1);
+  --e2: cubic-bezier(0.33, 1, 0.68, 1);
+  --io: cubic-bezier(0.65, 0, 0.35, 1);
+  --paper: #eeeee7;
+  --coal: #10110f;
+  --acid: #d7ff46;
+  --border: #33382f;
+  --muted: #8e9885;
+
+  position: relative;
+  border-top: 1px solid #5b6450;
+  border-bottom: 1px solid #5b6450;
+  opacity: 0;
+  transform: translateY(20px);
+  filter: blur(4px);
+  transition: opacity 0.75s var(--e2), transform 0.9s var(--e), filter 0.75s var(--e2);
+}
+
+.holdings.in {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+
+.holdings::before {
+  content: "";
+  position: absolute;
+  width: 360px;
+  height: 360px;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  transform: translate(-50%, -50%);
+  border: 1px solid #282e23;
+  border-radius: 50%;
+  box-shadow: 0 0 0 90px rgba(40, 46, 35, 0.22);
+  pointer-events: none;
+}
+
+.holdingsHeader,
+.holding,
+.holdingsFoot {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+}
+
+.holdingsHeader {
+  gap: 16px;
+  min-height: 92px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.holdingsMark {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #49513f;
+  border-radius: 50%;
+  color: var(--paper);
+  background: rgba(24, 28, 22, 0.4);
+  flex-shrink: 0;
+}
+
+.headerTitles {
+  display: grid;
+  gap: 4px;
+}
+
+.headerTitles span {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.headerTitles strong {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--paper);
+}
+
+/* Polished status pill */
+.statusBadge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: 100px;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.statusIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statusBadge.balanced {
+  background: rgba(215, 255, 70, 0.06);
+  color: var(--acid);
+  border: 1px solid rgba(215, 255, 70, 0.2);
+}
+
+.beaconDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acid);
+  box-shadow: 0 0 6px var(--acid);
+}
+
+.statusBadge.drift {
+  background: rgba(229, 169, 59, 0.1);
+  color: #e5a93b;
+  border: 1px solid rgba(229, 169, 59, 0.3);
+}
+
+.statusBadge.rebalancing {
+  background: rgba(0, 164, 239, 0.1);
+  color: #00a4ef;
+  border: 1px solid rgba(0, 164, 239, 0.3);
+}
+
+.spinIcon svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.statusBadge.settled {
+  background: rgba(215, 255, 70, 0.18);
+  color: var(--acid);
+  border: 1px solid var(--acid);
+  box-shadow: 0 0 14px rgba(215, 255, 70, 0.2);
+}
+
+.holdingsList {
+  display: flex;
+  flex-direction: column;
+}
+
+.holding {
+  position: relative;
+  min-height: 81px;
+  gap: 18px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.holdingBar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  opacity: 0.07;
+  pointer-events: none;
+  transition: width 0.85s var(--io);
+}
+
+.holdingDrifting .holdingBar {
+  opacity: 0.13;
+}
+
+.holdingIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.symbolInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.holdingSymbol {
+  color: var(--paper);
+  font: 700 18px/1 var(--font-heading), sans-serif;
+  letter-spacing: -0.01em;
+}
+
+.holdingName {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.weightCol {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.holdingWeight {
+  font: 500 28px/1 var(--font-heading), sans-serif;
+  letter-spacing: -0.03em;
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+  transition: color 0.35s ease;
+}
+
+.holdingDrifting .holdingWeight {
+  color: #e5a93b;
+}
+
+.targetSub {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.holdingsFoot {
+  justify-content: space-between;
+  min-height: 70px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.holdingsFoot span:last-child {
+  color: var(--acid);
+  font-size: 20px;
+}
+
+@media (max-width: 600px) {
+  .statusBadge {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
+  .holdingWeight {
+    font-size: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .holdings {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+  .holdingBar {
+    transition: none;
+  }
+  .spinIcon svg {
+    animation: none;
+  }
+}
