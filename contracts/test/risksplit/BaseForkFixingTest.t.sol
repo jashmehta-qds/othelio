@@ -11,7 +11,7 @@ import {TokenizedAssetConstants} from "../../src/constants/TokenizedAssetConstan
 contract BaseForkFixingTest is Test {
     uint256 public constant BASE_FORK_BLOCK = 53_400_000;
     address public constant FEED_MSFT = TokenizedAssetConstants.FEED_MSFT; // 0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c
-    address public constant MSFTc = TokenizedAssetConstants.MSFTc;         // 0xB200000000000000000000Ab99cFa739E253872B
+    address public constant MSFTc = TokenizedAssetConstants.MSFTc; // 0xB200000000000000000000Ab99cFa739E253872B
 
     SettlementAdapter internal adapter;
     SeriesFactory internal factory;
@@ -29,13 +29,8 @@ contract BaseForkFixingTest is Test {
         assertEq(adapter.decimals(), 8, "MSFT feed decimals must be 8");
         assertEq(address(adapter.priceFeed()), FEED_MSFT, "Price feed address mismatch");
 
-        (
-            uint80 latestRound,
-            int256 latestPrice,
-            ,
-            uint256 latestUpdated,
-            uint80 answeredIn
-        ) = AggregatorV3Interface(FEED_MSFT).latestRoundData();
+        (uint80 latestRound, int256 latestPrice,, uint256 latestUpdated, uint80 answeredIn) =
+            AggregatorV3Interface(FEED_MSFT).latestRoundData();
 
         assertGt(latestRound, 0, "Invalid latest round");
         assertGt(latestPrice, 0, "Price must be positive");
@@ -48,13 +43,8 @@ contract BaseForkFixingTest is Test {
     }
 
     function test_Fork_LiveFixingVerificationAndProof() public {
-        (
-            uint80 latestRound,
-            int256 latestPrice,
-            ,
-            uint256 latestUpdated,
-
-        ) = AggregatorV3Interface(FEED_MSFT).latestRoundData();
+        (uint80 latestRound, int256 latestPrice,, uint256 latestUpdated,) =
+            AggregatorV3Interface(FEED_MSFT).latestRoundData();
 
         // Suppose series expiry is set exactly to the observation timestamp latestUpdated
         uint256 expiry = latestUpdated;
@@ -84,27 +74,17 @@ contract BaseForkFixingTest is Test {
     }
 
     function test_Fork_LiveSeriesSettlement() public {
-        (
-            uint80 latestRound,
-            int256 latestPrice,
-            ,
-            uint256 latestUpdated,
-
-        ) = AggregatorV3Interface(FEED_MSFT).latestRoundData();
+        (uint80 latestRound, int256 latestPrice,, uint256 latestUpdated,) =
+            AggregatorV3Interface(FEED_MSFT).latestRoundData();
 
         uint256 floorPrice = 450e8; // $450
-        uint256 capPrice = 550e8;   // $550
+        uint256 capPrice = 550e8; // $550
 
         // Create series with expiry in the future relative to block.timestamp
         uint256 expiry = block.timestamp + 3600;
+        factory.setApprovedExpiry(MSFTc, expiry, true);
 
-        address seriesAddr = factory.createSeries(
-            MSFTc,
-            floorPrice,
-            capPrice,
-            expiry,
-            address(adapter)
-        );
+        address seriesAddr = factory.createSeries(MSFTc, floorPrice, capPrice, expiry, address(adapter));
         RiskSplitSeries series = RiskSplitSeries(seriesAddr);
 
         // Warp past series expiry

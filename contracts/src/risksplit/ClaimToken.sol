@@ -14,12 +14,9 @@ contract ClaimToken is ERC20, IClaimToken {
         _;
     }
 
-    constructor(
-        string memory name_,
-        string memory symbol_,
-        address seriesVault_,
-        uint8 decimals_
-    ) ERC20(name_, symbol_) {
+    constructor(string memory name_, string memory symbol_, address seriesVault_, uint8 decimals_)
+        ERC20(name_, symbol_)
+    {
         if (seriesVault_ == address(0)) revert ZeroAddress();
         seriesVault = seriesVault_;
         _tokenDecimals = decimals_;

@@ -55,24 +55,12 @@ contract MockOracle is AggregatorV3Interface {
         roundId++;
     }
 
-    function getRoundData(uint80 _roundId) external view override returns (
-        uint80,
-        int256,
-        uint256,
-        uint256,
-        uint80
-    ) {
+    function getRoundData(uint80 _roundId) external view override returns (uint80, int256, uint256, uint256, uint80) {
         if (_roundId > roundId) revert("No data present");
         return (_roundId, price, updatedAt, updatedAt, _roundId);
     }
 
-    function latestRoundData() external view override returns (
-        uint80,
-        int256,
-        uint256,
-        uint256,
-        uint80
-    ) {
+    function latestRoundData() external view override returns (uint80, int256, uint256, uint256, uint80) {
         return (roundId, price, updatedAt, updatedAt, roundId);
     }
 }
@@ -91,7 +79,7 @@ contract RiskSplitSeriesTest is Test {
     address internal bob = address(0xB0B);
 
     uint256 internal constant FLOOR_PRICE = 45e8; // $45
-    uint256 internal constant CAP_PRICE = 55e8;   // $55
+    uint256 internal constant CAP_PRICE = 55e8; // $55
     uint256 internal constant HEARTBEAT = 24 hours;
     uint256 internal expiry;
 
@@ -102,14 +90,9 @@ contract RiskSplitSeriesTest is Test {
         factory = new SeriesFactory();
 
         expiry = block.timestamp + 7 days;
+        factory.setApprovedExpiry(address(stock), expiry, true);
 
-        address seriesAddr = factory.createSeries(
-            address(stock),
-            FLOOR_PRICE,
-            CAP_PRICE,
-            expiry,
-            address(adapter)
-        );
+        address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
 
         series = RiskSplitSeries(seriesAddr);
         protectedToken = ClaimToken(address(series.protectedToken()));
@@ -160,7 +143,9 @@ contract RiskSplitSeriesTest is Test {
             MockDecimalStockToken token = new MockDecimalStockToken(units);
             uint256 oneToken = 10 ** units;
             token.mint(alice, oneToken);
-            address vaultAddress = factory.createSeries(address(token), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
+            factory.setApprovedExpiry(address(token), expiry, true);
+            address vaultAddress =
+                factory.createSeries(address(token), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
             RiskSplitSeries vault = RiskSplitSeries(vaultAddress);
             ClaimToken p = ClaimToken(address(vault.protectedToken()));
             ClaimToken u = ClaimToken(address(vault.upsideToken()));

@@ -121,14 +121,9 @@ contract RiskSplitInvariantTest is Test {
         factory = new SeriesFactory();
 
         uint256 expiry = block.timestamp + 7 days;
+        factory.setApprovedExpiry(address(stock), expiry, true);
 
-        address seriesAddr = factory.createSeries(
-            address(stock),
-            FLOOR_PRICE,
-            CAP_PRICE,
-            expiry,
-            address(adapter)
-        );
+        address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
 
         series = RiskSplitSeries(seriesAddr);
         protectedToken = ClaimToken(address(series.protectedToken()));

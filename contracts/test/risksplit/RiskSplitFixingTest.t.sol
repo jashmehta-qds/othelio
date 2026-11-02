@@ -28,31 +28,22 @@ contract MultiRoundMockOracle is AggregatorV3Interface {
         setRound(initialRoundId, initialPrice, initialTimestamp, initialTimestamp, initialRoundId);
     }
 
-    function setRound(
-        uint80 roundId,
-        int256 answer,
-        uint256 startedAt,
-        uint256 updatedAt,
-        uint80 answeredInRound
-    ) public {
-        rounds[roundId] = Round({
-            answer: answer,
-            startedAt: startedAt,
-            updatedAt: updatedAt,
-            answeredInRound: answeredInRound
-        });
+    function setRound(uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
+        public
+    {
+        rounds[roundId] =
+            Round({answer: answer, startedAt: startedAt, updatedAt: updatedAt, answeredInRound: answeredInRound});
         if (roundId > latestRound) {
             latestRound = roundId;
         }
     }
 
-    function getRoundData(uint80 _roundId) external view override returns (
-        uint80 roundId,
-        int256 answer,
-        uint256 startedAt,
-        uint256 updatedAt,
-        uint80 answeredInRound
-    ) {
+    function getRoundData(uint80 _roundId)
+        external
+        view
+        override
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
+    {
         Round memory r = rounds[_roundId];
         if (r.updatedAt == 0 && r.answer == 0) {
             revert("No round data");
@@ -60,13 +51,12 @@ contract MultiRoundMockOracle is AggregatorV3Interface {
         return (_roundId, r.answer, r.startedAt, r.updatedAt, r.answeredInRound);
     }
 
-    function latestRoundData() external view override returns (
-        uint80 roundId,
-        int256 answer,
-        uint256 startedAt,
-        uint256 updatedAt,
-        uint80 answeredInRound
-    ) {
+    function latestRoundData()
+        external
+        view
+        override
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
+    {
         Round memory r = rounds[latestRound];
         return (latestRound, r.answer, r.startedAt, r.updatedAt, r.answeredInRound);
     }
@@ -93,14 +83,9 @@ contract RiskSplitFixingTest is Test {
 
         expiry = 2000;
         vm.warp(1000);
+        factory.setApprovedExpiry(address(stock), expiry, true);
 
-        address seriesAddr = factory.createSeries(
-            address(stock),
-            FLOOR_PRICE,
-            CAP_PRICE,
-            expiry,
-            address(adapter)
-        );
+        address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
         series = RiskSplitSeries(seriesAddr);
     }
 

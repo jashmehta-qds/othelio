@@ -18,6 +18,7 @@ interface IRiskSplitSeries {
         uint256 protectedFraction,
         uint256 upsideFraction
     );
+    event TokensInitialized(address protectedToken, address upsideToken);
     event ProtectedRedeemed(address indexed caller, uint256 amount, uint256 underlyingOut);
     event UpsideRedeemed(address indexed caller, uint256 amount, uint256 underlyingOut);
 
@@ -31,13 +32,20 @@ interface IRiskSplitSeries {
     error ZeroAddress();
     error InvalidParameters();
     error FeeOnTransferNotSupported();
+    error AlreadyInitialized();
 
     // View Functions
+    function factory() external view returns (address);
     function underlying() external view returns (IERC20);
     function floorPrice() external view returns (uint256);
     function capPrice() external view returns (uint256);
     function expiry() external view returns (uint256);
     function settlementAdapter() external view returns (address);
+    function referenceFeed() external view returns (address);
+    function referenceRoundId() external view returns (uint80);
+    function referencePrice() external view returns (uint256);
+    function referenceBlock() external view returns (uint256);
+    function formulaVersion() external view returns (uint256);
     function protectedToken() external view returns (IClaimToken);
     function upsideToken() external view returns (IClaimToken);
     function isSettled() external view returns (bool);
@@ -48,6 +56,7 @@ interface IRiskSplitSeries {
     function upsideFraction() external view returns (uint256);
 
     // State Changing Functions
+    function initializeTokens(address protectedToken_, address upsideToken_) external;
     function mint(uint256 amount) external returns (uint256);
     function combineAndRedeem(uint256 amount) external returns (uint256);
     function settle(uint256 settlementPrice) external;

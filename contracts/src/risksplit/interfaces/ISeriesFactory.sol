@@ -5,17 +5,43 @@ pragma solidity ^0.8.24;
 /// @notice Interface for deploying and tracking RiskSplitSeries vaults.
 interface ISeriesFactory {
     event SeriesCreated(
+        address indexed seriesAddress, address indexed underlying, uint256 floorPrice, uint256 capPrice, uint256 expiry
+    );
+    event SeriesCreatedWithReference(
         address indexed seriesAddress,
         address indexed underlying,
         uint256 floorPrice,
         uint256 capPrice,
-        uint256 expiry
+        uint256 expiry,
+        address referenceFeed,
+        uint80 referenceRoundId,
+        uint256 referencePrice
     );
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event PublicCreationToggled(bool enabled);
+    event ExpiryApprovalUpdated(address indexed underlying, uint256 indexed timestamp, bool approved);
 
     error InvalidPriceRange();
     error ExpiryInPast();
     error ZeroAddress();
+    error Unauthorized();
+    error UnapprovedExpiry();
+    error DuplicateSeriesTerms();
+    error InvalidDecimals();
+    error InvalidAdapter();
     error SeriesAlreadyExists();
+
+    function owner() external view returns (address);
+    function pendingOwner() external view returns (address);
+    function publicCreationEnabled() external view returns (bool);
+    function approvedExpiry(address underlying, uint256 timestamp) external view returns (bool);
+    function seriesByTermKey(bytes32 termKey) external view returns (address);
+
+    function transferOwnership(address newOwner) external;
+    function acceptOwnership() external;
+    function setPublicCreationEnabled(bool enabled) external;
+    function setApprovedExpiry(address underlying, uint256 timestamp, bool approved) external;
 
     /// @notice Creates a new series vault deterministically
     /// @param underlying Address of the underlying stock token

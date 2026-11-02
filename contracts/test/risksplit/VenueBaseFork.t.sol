@@ -44,11 +44,10 @@ struct OrderInfo {
 }
 
 interface IZeroExExchangeProxy {
-    function fillLimitOrder(
-        LimitOrder calldata order,
-        Signature calldata signature,
-        uint128 takerTokenFillAmount
-    ) external payable returns (uint128 takerTokenFilledAmount, uint128 makerTokenFilledAmount);
+    function fillLimitOrder(LimitOrder calldata order, Signature calldata signature, uint128 takerTokenFillAmount)
+        external
+        payable
+        returns (uint128 takerTokenFilledAmount, uint128 makerTokenFilledAmount);
 
     function cancelLimitOrder(LimitOrder calldata order) external;
 
@@ -75,25 +74,13 @@ contract VenueBaseForkTest is Test {
     string public constant ZERO_EX_DOMAIN_NAME = "ZeroEx";
     string public constant ZERO_EX_DOMAIN_VERSION = "1.0.0";
 
-    bytes32 public constant EIP712_DOMAIN_TYPEHASH = keccak256(
-        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-    );
+    bytes32 public constant EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
 
     bytes32 public constant LIMIT_ORDER_TYPEHASH = keccak256(
-        "LimitOrder("
-        "address makerToken,"
-        "address takerToken,"
-        "uint128 makerAmount,"
-        "uint128 takerAmount,"
-        "uint128 takerTokenFeeAmount,"
-        "address maker,"
-        "address taker,"
-        "address sender,"
-        "address feeRecipient,"
-        "bytes32 pool,"
-        "uint64 expiry,"
-        "uint256 salt"
-        ")"
+        "LimitOrder(" "address makerToken," "address takerToken," "uint128 makerAmount," "uint128 takerAmount,"
+        "uint128 takerTokenFeeAmount," "address maker," "address taker," "address sender," "address feeRecipient,"
+        "bytes32 pool," "uint64 expiry," "uint256 salt" ")"
     );
 
     IZeroExExchangeProxy internal exchangeProxy;
@@ -169,15 +156,16 @@ contract VenueBaseForkTest is Test {
         vm.startPrank(recipient);
         IERC20(USDC).approve(AERODROME_ROUTER, usdcAmount);
         bytes memory path = abi.encodePacked(USDC, int24(10), MSFTc);
-        msftOut = IAerodromeSlipstreamSwapRouter(AERODROME_ROUTER).exactInput(
-            IAerodromeSlipstreamSwapRouter.ExactInputParams({
-                path: path,
-                recipient: recipient,
-                deadline: block.timestamp + 300,
-                amountIn: usdcAmount,
-                amountOutMinimum: 0
-            })
-        );
+        msftOut = IAerodromeSlipstreamSwapRouter(AERODROME_ROUTER)
+            .exactInput(
+                IAerodromeSlipstreamSwapRouter.ExactInputParams({
+                    path: path,
+                    recipient: recipient,
+                    deadline: block.timestamp + 300,
+                    amountIn: usdcAmount,
+                    amountOutMinimum: 0
+                })
+            );
         vm.stopPrank();
     }
 
@@ -192,7 +180,7 @@ contract VenueBaseForkTest is Test {
         // Maker sells 100 ClaimTokens (8 decimals) for 50 USDC (6 decimals)
         // Rate: 0.50 USDC per Claim
         uint128 makerAmount = 100 * 1e8; // 100 PROT claims
-        uint128 takerAmount = 50 * 1e6;  // 50 USDC
+        uint128 takerAmount = 50 * 1e6; // 50 USDC
 
         deal(address(claimToken), maker, makerAmount);
         deal(USDC, taker, takerAmount);

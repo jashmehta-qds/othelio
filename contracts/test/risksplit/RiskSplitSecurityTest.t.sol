@@ -73,14 +73,9 @@ contract RiskSplitSecurityTest is Test {
         factory = new SeriesFactory();
 
         expiry = block.timestamp + 7 days;
+        factory.setApprovedExpiry(address(stock), expiry, true);
 
-        address seriesAddr = factory.createSeries(
-            address(stock),
-            FLOOR_PRICE,
-            CAP_PRICE,
-            expiry,
-            address(adapter)
-        );
+        address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
 
         series = RiskSplitSeries(seriesAddr);
         protectedToken = ClaimToken(address(series.protectedToken()));
@@ -97,13 +92,8 @@ contract RiskSplitSecurityTest is Test {
 
     function test_Security_ReentrancyBlocked() public {
         MaliciousReentrantToken badToken = new MaliciousReentrantToken();
-        address seriesAddr = factory.createSeries(
-            address(badToken),
-            FLOOR_PRICE,
-            CAP_PRICE,
-            expiry,
-            address(adapter)
-        );
+        factory.setApprovedExpiry(address(badToken), expiry, true);
+        address seriesAddr = factory.createSeries(address(badToken), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
         RiskSplitSeries badSeries = RiskSplitSeries(seriesAddr);
         badToken.setTarget(seriesAddr);
 
@@ -121,13 +111,8 @@ contract RiskSplitSecurityTest is Test {
 
     function test_Security_FeeOnTransferRejected() public {
         DeceptiveFeeToken feeToken = new DeceptiveFeeToken();
-        address seriesAddr = factory.createSeries(
-            address(feeToken),
-            FLOOR_PRICE,
-            CAP_PRICE,
-            expiry,
-            address(adapter)
-        );
+        factory.setApprovedExpiry(address(feeToken), expiry, true);
+        address seriesAddr = factory.createSeries(address(feeToken), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
         RiskSplitSeries feeSeries = RiskSplitSeries(seriesAddr);
 
         feeToken.approve(seriesAddr, type(uint256).max);
@@ -218,7 +203,6 @@ contract RiskSplitSecurityTest is Test {
         oracle.setPrice(70e8, expiry);
         vm.warp(expiry + 1);
         adapter.settleSeries(address(series));
-
 
         uint256 balBefore = stock.balanceOf(attacker);
         vm.prank(attacker);

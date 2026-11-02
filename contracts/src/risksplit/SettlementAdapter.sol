@@ -20,13 +20,7 @@ contract SettlementAdapter is ISettlementAdapter {
 
     /// @notice Returns the validated current price and timestamp from the feed (spot check)
     function getSettlementPrice() public view override returns (uint256 price, uint256 updatedAt) {
-        (
-            uint80 roundId,
-            int256 answer,
-            ,
-            uint256 roundUpdatedAt,
-            uint80 answeredInRound
-        ) = priceFeed.latestRoundData();
+        (uint80 roundId, int256 answer,, uint256 roundUpdatedAt, uint80 answeredInRound) = priceFeed.latestRoundData();
 
         if (roundId == 0) revert RoundNotComplete();
         if (answer == 0) revert ZeroPrice();
@@ -42,13 +36,8 @@ contract SettlementAdapter is ISettlementAdapter {
     function verifyFixingRound(uint256 expiry, uint80 roundId) public view override returns (FixingData memory fixing) {
         if (roundId == 0) revert RoundNotComplete();
 
-        (
-            uint80 rId,
-            int256 answer,
-            uint256 startedAt,
-            uint256 updatedAt,
-            uint80 answeredInRound
-        ) = priceFeed.getRoundData(roundId);
+        (uint80 rId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) =
+            priceFeed.getRoundData(roundId);
 
         if (rId == 0) revert RoundNotComplete();
         if (answer == 0) revert ZeroPrice();
@@ -71,11 +60,7 @@ contract SettlementAdapter is ISettlementAdapter {
         // 1. Try the next round in the same phase
         uint80 nextInPhase = (uint80(phaseId) << 64) | (aggRoundId + 1);
         try priceFeed.getRoundData(nextInPhase) returns (
-            uint80,
-            int256,
-            uint256,
-            uint256 nextUpdated,
-            uint80 nextAnswered
+            uint80, int256, uint256, uint256 nextUpdated, uint80 nextAnswered
         ) {
             if (nextUpdated > 0 && nextAnswered >= nextInPhase) {
                 nextFound = true;
@@ -87,11 +72,7 @@ contract SettlementAdapter is ISettlementAdapter {
         if (!nextFound) {
             uint80 nextPhaseFirst = (uint80(phaseId + 1) << 64) | 1;
             try priceFeed.getRoundData(nextPhaseFirst) returns (
-                uint80,
-                int256,
-                uint256,
-                uint256 nextPhaseUpdated,
-                uint80 nextPhaseAnswered
+                uint80, int256, uint256, uint256 nextPhaseUpdated, uint80 nextPhaseAnswered
             ) {
                 if (nextPhaseUpdated > 0 && nextPhaseAnswered >= nextPhaseFirst) {
                     nextFound = true;
@@ -102,28 +83,18 @@ contract SettlementAdapter is ISettlementAdapter {
 
         // 3. If neither next round exists yet, verify candidate is currently the latest round in the feed
         if (!nextFound) {
-            (uint80 latestRoundId, , , , ) = priceFeed.latestRoundData();
+            (uint80 latestRoundId,,,,) = priceFeed.latestRoundData();
             if (latestRoundId != roundId) revert NotLastPreExpiryRound();
         }
 
         return FixingData({
-            roundId: roundId,
-            price: uint256(answer),
-            updatedAt: updatedAt,
-            feed: address(priceFeed),
-            decimals: decimals
+            roundId: roundId, price: uint256(answer), updatedAt: updatedAt, feed: address(priceFeed), decimals: decimals
         });
     }
 
     /// @notice Discovers the unique last pre-expiry round from the feed
     function getFixingRound(uint256 expiry) public view override returns (FixingData memory fixing) {
-        (
-            uint80 currentRoundId,
-            ,
-            ,
-            uint256 currentUpdatedAt,
-
-        ) = priceFeed.latestRoundData();
+        (uint80 currentRoundId,,, uint256 currentUpdatedAt,) = priceFeed.latestRoundData();
 
         if (currentRoundId == 0) revert RoundNotComplete();
 
@@ -149,11 +120,7 @@ contract SettlementAdapter is ISettlementAdapter {
 
             uint80 candidate = (uint80(phaseId) << 64) | aggRoundId;
             try priceFeed.getRoundData(candidate) returns (
-                uint80,
-                int256,
-                uint256,
-                uint256 candidateUpdated,
-                uint80 candidateAnswered
+                uint80, int256, uint256, uint256 candidateUpdated, uint80 candidateAnswered
             ) {
                 if (candidateUpdated > 0 && candidateAnswered >= candidate && candidateUpdated <= expiry) {
                     return verifyFixingRound(expiry, candidate);
