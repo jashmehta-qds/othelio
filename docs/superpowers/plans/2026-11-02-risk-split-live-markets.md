@@ -41,10 +41,10 @@
 
 **Interfaces:** Produce a documented `VenueAdapter` contract for the app/backend: typed order shape and EIP-712 domain, `getOrderStatus`, `buildFillTx`, `buildCancelTx`, onchain fill/cancel event signatures and required token approvals. This may be a TypeScript interface in `packages/shared/src/risksplit/venue.ts` once venue proof passes.
 
-- [ ] Pin Base block, token and USDC addresses, venue deployment/address/code hash, official ABI/source and fee model. Verify the candidate token is B20 initialized, has the stated decimals, and can transfer/approve through the venue. Record any testnet gaps.
-- [ ] Write a failing/throwaway test for two real ERC-20 pairs with 6/8/18 decimal combinations: maker signs, opposing wallet fills, partial fill, remainder fill, cancellation, replay rejection, and reverted fill recovery. Explicitly test whether two resting signed orders can be crossed without a taker wallet transaction.
-- [ ] Run the fork test against pinned Base state and capture transaction receipts/gas; test order expiry at or before series expiry and allowance revocation.
-- [ ] Decide and document either (a) the verified existing settlement primitive and taker-driven matching path, or (b) a revised reviewed venue. If neither passes, stop before production book implementation; a custom exchange requires its own design, threat model and audit.
+- [x] Pin Base block, token and USDC addresses, venue deployment/address/code hash, official ABI/source and fee model. Verify the candidate token is B20 initialized, has the stated decimals, and can transfer/approve through the venue. Record any testnet gaps.
+- [x] Write a failing/throwaway test for two real ERC-20 pairs with 6/8/18 decimal combinations: maker signs, opposing wallet fills, partial fill, remainder fill, cancellation, replay rejection, and reverted fill recovery. Explicitly test whether two resting signed orders can be crossed without a taker wallet transaction.
+- [x] Run the fork test against pinned Base state and capture transaction receipts/gas; test order expiry at or before series expiry and allowance revocation.
+- [x] Decide and document either (a) the verified existing settlement primitive and taker-driven matching path, or (b) a revised reviewed venue. If neither passes, stop before production book implementation; a custom exchange requires its own design, threat model and audit.
 
 **Gate:** One claim-like token/USDC order can be signed, partially filled and cancelled on a pinned Base fork without Othelio custody. This is independent of current 0x Swap API liquidity.
 
