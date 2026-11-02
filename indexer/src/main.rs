@@ -6,6 +6,7 @@ mod lending;
 mod oracle;
 mod price_worker;
 mod reconciliation;
+mod risksplit;
 mod utils;
 
 use dotenvy::dotenv;
@@ -63,6 +64,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let factory_addr_str = std::env::var("FACTORY_ADDRESS")
         .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
+    let risk_split_factory_addr_str = std::env::var("RISK_SPLIT_FACTORY_ADDRESS")
+        .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
     let module_addr_str = std::env::var("MODULE_ADDRESS")
         .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
     let registry_addr_str = std::env::var("ASSET_REGISTRY_ADDRESS")
@@ -89,10 +92,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()?;
 
     let factory_addr: Address = factory_addr_str.parse()?;
+    let risk_split_factory_addr: Address = risk_split_factory_addr_str.parse().unwrap_or(Address::zero());
     let module_addr: Address = module_addr_str.parse()?;
     let registry_addr: Address = registry_addr_str.parse()?;
     let usdc_addr: Address = usdc_addr_str.parse()?;
-    let event_addresses = event_filter_addresses(factory_addr, module_addr, &lending_pool_addrs);
 
     info!("🚀 [Rust Othelio Indexer] Initializing on Chain ID {} (Valuation Interval: {}s, Confirmations: {})...", chain_id, valuation_interval_secs, indexer_confirmations);
 
@@ -100,6 +103,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .max_connections(5)
         .connect(&db_url)
         .await?;
+
+    let mut risk_split_state = risksplit::RiskSplitState::load_from_db(&pool, chain_id, risk_split_factory_addr).await.unwrap_or_else(|e| {
+        warn!(error = %e, "Failed to load risksplit state from DB; initializing clean");
+        risksplit::RiskSplitState::new(risk_split_factory_addr)
+    });
 
     let primary_provider = Arc::new(Provider::<Http>::try_from(rpc_url.clone())?);
     let secondary_provider = secondary_rpc_url
@@ -232,6 +240,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let worker_timeout =
                         Duration::from_secs(configured_u64("INDEXER_RPC_TIMEOUT_SECS", 30));
                     let events_owner = lease_owner("events");
+                    let event_addresses = event_filter_addresses(
+                        factory_addr,
+                        module_addr,
+                        &lending_pool_addrs,
+                        &risk_split_state.filter_addresses(),
+                    );
                     match tokio::time::timeout(
                         worker_timeout,
                         fetch_and_process_ranges(
@@ -240,6 +254,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             chain_id,
                             registry_addr,
                             usdc_addr,
+                            &mut risk_split_state,
                             &event_addresses,
                             current_block,
                             latest_block,

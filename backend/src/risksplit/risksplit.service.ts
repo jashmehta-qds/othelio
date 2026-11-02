@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject, ServiceUnavailableException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
   RiskSplitSeriesModel,
@@ -7,6 +7,7 @@ import {
   PayoffPoint,
   PayoffCurveResponse,
   QuoteResponse,
+  IndexerFreshness,
 } from './risksplit.types';
 
 export const WAD = 1000000000000000000n; // 1e18
@@ -186,9 +187,75 @@ export class RiskSplitService {
     return points;
   }
 
+  async getIndexerFreshness(chainId: number): Promise<IndexerFreshness> {
+    if (!this.db) {
+      return {
+        isFresh: true,
+        observedHeadBlock: 0,
+        lastIndexedBlock: 0,
+        blockLag: 0,
+      };
+    }
+
+    try {
+      const res = await this.db.query(
+        `SELECT next_block, observed_head_block, observed_head_at
+         FROM indexer_worker_state
+         WHERE chain_id = $1 AND worker_name = 'events'
+         LIMIT 1`,
+        [chainId]
+      );
+
+      if (!res.rows || res.rows.length === 0) {
+        return {
+          isFresh: false,
+          observedHeadBlock: 0,
+          lastIndexedBlock: 0,
+          blockLag: 0,
+        };
+      }
+
+      const row = res.rows[0];
+      const lastIndexedBlock = row.next_block == null ? 0 : Math.max(0, Number(row.next_block) - 1);
+      const observedHeadBlock = row.observed_head_block == null ? lastIndexedBlock : Number(row.observed_head_block);
+      const observedHeadAt = row.observed_head_at ? new Date(row.observed_head_at).toISOString() : null;
+      const blockLag = Math.max(0, observedHeadBlock - lastIndexedBlock);
+
+      const maxPermittedLag = Number(process.env.INDEXER_MAX_BLOCK_LAG ?? 50);
+      const maxAgeSecs = Number(process.env.INDEXER_HEAD_OBSERVATION_MAX_AGE_SECS ?? 60);
+
+      const isAgeFresh = row.observed_head_at
+        ? Date.now() - new Date(row.observed_head_at).getTime() <= maxAgeSecs * 1000
+        : true;
+
+      const isFresh = blockLag <= maxPermittedLag && isAgeFresh;
+
+      return {
+        isFresh,
+        observedHeadBlock,
+        lastIndexedBlock,
+        blockLag,
+        observedHeadAt,
+      };
+    } catch (err) {
+      this.logger.warn(`Failed to query indexer worker state: ${err}`);
+      return {
+        isFresh: false,
+        observedHeadBlock: 0,
+        lastIndexedBlock: 0,
+        blockLag: 0,
+      };
+    }
+  }
+
   async getSeriesList(chainId: number, underlying?: string): Promise<RiskSplitSeriesModel[]> {
     if (this.db) {
       try {
+        const freshness = await this.getIndexerFreshness(chainId);
+        if (process.env.NODE_ENV === 'production' && !freshness.isFresh) {
+          throw new ServiceUnavailableException('Risk Split indexer state is lagging or unavailable');
+        }
+
         let query = 'SELECT * FROM risk_split_series WHERE chain_id = $1';
         const params: any[] = [chainId];
         if (underlying) {
@@ -197,11 +264,20 @@ export class RiskSplitService {
         }
         query += ' ORDER BY expiry_timestamp ASC';
         const res = await this.db.query(query, params);
-        return res.rows.map(this.mapSeriesRow);
+        return res.rows.map((row) => ({
+          ...this.mapSeriesRow(row),
+          asOfBlock: freshness.lastIndexedBlock,
+          indexerFreshness: freshness,
+        }));
       } catch (err) {
+        if (err instanceof ServiceUnavailableException) throw err;
         this.logger.error(`Failed DB query for series list: ${err}`);
         throw err;
       }
+    }
+
+    if (process.env.NODE_ENV !== 'test') {
+      throw new ServiceUnavailableException('Database unavailable for live Risk Split markets');
     }
 
     return Array.from(this.mockSeries.values()).filter(
@@ -213,15 +289,30 @@ export class RiskSplitService {
     const norm = seriesAddress.toLowerCase();
     if (this.db) {
       try {
+        const freshness = await this.getIndexerFreshness(chainId);
+        if (process.env.NODE_ENV === 'production' && !freshness.isFresh) {
+          throw new ServiceUnavailableException('Risk Split indexer state is lagging or unavailable');
+        }
+
         const res = await this.db.query(
           'SELECT * FROM risk_split_series WHERE chain_id = $1 AND LOWER(series_address) = $2',
           [chainId, norm]
         );
-        return res.rows.length > 0 ? this.mapSeriesRow(res.rows[0]) : null;
+        if (res.rows.length === 0) return null;
+        return {
+          ...this.mapSeriesRow(res.rows[0]),
+          asOfBlock: freshness.lastIndexedBlock,
+          indexerFreshness: freshness,
+        };
       } catch (err) {
+        if (err instanceof ServiceUnavailableException) throw err;
         this.logger.error(`Failed DB query for series ${norm}: ${err}`);
         throw err;
       }
+    }
+
+    if (process.env.NODE_ENV !== 'test') {
+      throw new ServiceUnavailableException('Database unavailable for live Risk Split markets');
     }
 
     return this.mockSeries.get(norm) || null;
@@ -422,6 +513,13 @@ export class RiskSplitService {
       creationFeedUpdatedAt: row.creation_feed_updated_at ? new Date(row.creation_feed_updated_at).toISOString() : null,
       creationReferenceBlock: row.creation_reference_block == null ? null : Number(row.creation_reference_block),
       creationReferenceVerified: Boolean(row.creation_reference_verified),
+      factoryAddress: row.factory_address?.trim() ?? null,
+      formulaVersion: row.formula_version ? Number(row.formula_version) : 1,
+      settledRoundId: row.settled_round_id?.toString() ?? null,
+      settledFeedUpdatedAt: row.settled_feed_updated_at ? new Date(row.settled_feed_updated_at).toISOString() : null,
+      operationsAuditStatus: row.operations_audit_status?.trim() ?? 'NORMAL',
+      operationsAuditNote: row.operations_audit_note?.trim() ?? null,
+      lastIndexedBlock: row.last_indexed_block ? Number(row.last_indexed_block) : 0,
       isSettled: Boolean(row.is_settled),
       settledPrice: row.settled_price ? row.settled_price.toString() : null,
       protectedFraction: row.protected_fraction ? row.protected_fraction.toString() : null,

@@ -50,3 +50,49 @@ abigen!(
     SnapshotAggregator,
     r#"[function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)]"#
 );
+
+abigen!(
+    IRiskSplitEvents,
+    r#"[
+        event SeriesCreated(address indexed series, address indexed underlying, uint256 floorPrice, uint256 capPrice, uint256 expiry, address settlementAdapter)
+        event SeriesCreatedWithReference(address indexed series, address indexed underlying, uint256 floorPrice, uint256 capPrice, uint256 expiry, address settlementAdapter, address referenceFeed, uint80 referenceRoundId, uint256 referencePrice, uint256 referenceBlock)
+        event TokensInitialized(address protectedToken, address upsideToken)
+        event Minted(address indexed user, uint256 amount)
+        event PairRedeemed(address indexed user, uint256 amount)
+        event Settled(uint256 settlementPrice, uint256 protectedFraction, uint256 upsideFraction)
+        event SettledWithFixing(uint256 settlementPrice, uint80 roundId, uint256 observedTimestamp, uint256 protectedFraction, uint256 upsideFraction)
+        event ProtectedRedeemed(address indexed user, uint256 amount, uint256 underlyingReturned)
+        event UpsideRedeemed(address indexed user, uint256 amount, uint256 underlyingReturned)
+        event Transfer(address indexed from, address indexed to, uint256 value)
+    ]"#
+);
+
+abigen!(
+    SeriesFactoryView,
+    r#"[
+        function allSeriesLength() view returns (uint256)
+        function allSeries(uint256 index) view returns (address)
+        function isSeries(address series) view returns (bool)
+    ]"#
+);
+
+abigen!(
+    RiskSplitSeriesView,
+    r#"[
+        function protectedToken() view returns (address)
+        function upsideToken() view returns (address)
+        function referenceFeed() view returns (address)
+        function referenceRoundId() view returns (uint80)
+        function referencePrice() view returns (uint256)
+        function referenceBlock() view returns (uint256)
+        function formulaVersion() view returns (uint256)
+        function factory() view returns (address)
+        function isSettled() view returns (bool)
+        function settledPrice() view returns (uint256)
+        function settledRoundId() view returns (uint80)
+        function settledTimestamp() view returns (uint256)
+        function protectedFraction() view returns (uint256)
+        function upsideFraction() view returns (uint256)
+    ]"#
+);
+

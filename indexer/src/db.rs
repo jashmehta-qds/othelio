@@ -154,6 +154,7 @@ pub async fn validate_or_rollback_checkpoint(
     ] {
         sqlx::query(query).bind(chain_id).bind(ancestor as i64).execute(&mut *tx).await?;
     }
+    crate::risksplit::rollback_risksplit_reorg(&mut tx, chain_id, ancestor).await?;
     sqlx::query("UPDATE lending_transaction_lifecycles SET status='PENDING',confirmed_action=NULL,receipt_log_index=NULL,receipt_block_number=NULL,receipt_block_hash=NULL,updated_at=NOW() WHERE chain_id=$1 AND receipt_block_number > $2")
         .bind(chain_id).bind(ancestor as i64).execute(&mut *tx).await?;
     sqlx::query("UPDATE indexer_state SET next_block=$1,updated_at=NOW() WHERE chain_id=$2")

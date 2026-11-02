@@ -5,6 +5,7 @@ use crate::accounting::{
 };
 use crate::lending::index_lending_event;
 use crate::oracle::{save_indexed_target_weights, write_event_valuation_checkpoint};
+use crate::risksplit::RiskSplitState;
 use crate::utils::{configured_u64, fmt_addr};
 use ethers::abi::RawLog;
 use ethers::prelude::*;
@@ -304,6 +305,7 @@ pub fn event_filter_addresses(
     factory_addr: Address,
     module_addr: Address,
     lending_pool_addrs: &[Address],
+    risksplit_addrs: &[Address],
 ) -> Vec<Address> {
     let mut addresses = Vec::new();
     if factory_addr != Address::zero() {
@@ -318,6 +320,14 @@ pub fn event_filter_addresses(
             .copied()
             .filter(|address| *address != Address::zero()),
     );
+    addresses.extend(
+        risksplit_addrs
+            .iter()
+            .copied()
+            .filter(|address| *address != Address::zero()),
+    );
+    addresses.sort();
+    addresses.dedup();
     addresses
 }
 
@@ -405,6 +415,7 @@ pub async fn fetch_and_process_ranges(
     chain_id: i64,
     registry_addr: Address,
     usdc_addr: Address,
+    risk_split_state: &mut RiskSplitState,
     addresses: &[Address],
     from_block: u64,
     latest_block: u64,
@@ -432,6 +443,7 @@ pub async fn fetch_and_process_ranges(
             chain_id,
             registry_addr,
             usdc_addr,
+            risk_split_state,
             range,
             owner,
         )
@@ -446,6 +458,7 @@ pub async fn process_block_range(
     chain_id: i64,
     registry_addr: Address,
     usdc_addr: Address,
+    risk_split_state: &mut RiskSplitState,
     fetched: FetchedBlockRange,
     owner: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -464,6 +477,10 @@ pub async fn process_block_range(
         let block_hash = format!("{:#x}", log.block_hash.unwrap_or_default());
         let block_number = log.block_number.unwrap_or_default().as_u64();
         let log_index = log.log_index.unwrap_or_default().as_u32() as i32;
+
+        if crate::risksplit::process_risksplit_log(risk_split_state, &mut range_tx, chain_id, &log).await? {
+            continue;
+        }
 
         // Construct RawLog directly without cloning the full Log struct
         let raw_log = RawLog {

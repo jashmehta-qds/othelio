@@ -84,10 +84,10 @@
 
 **Interfaces:** Factory events create series rows with verified reference/fixing metadata; series and claim events update positions/flows. Public `GET /v1/risksplit/series` returns only chain-verified registered series; detail includes `asOfBlock`, indexer freshness, status and claim addresses. No production mock fallback.
 
-- [ ] Write failing indexer fixture tests for series creation, mint, pair redemption, claim transfer, settlement, both redemptions, duplicate logs, restart and reorg rollback. Prove balances reconcile with onchain `balanceOf` for sampled holders.
-- [ ] Implement event discovery from the configured new factory, dynamic series/claim tracking, idempotent block commits and reorg rewind. Backfill from factory deployment block before serving live markets.
-- [ ] Add migration for reference/fixing metadata and operations audit fields. Make backend return stale/unavailable rather than plausible but old markets when indexer health fails.
-- [ ] Run `cargo test` in `indexer`, backend targeted tests and a fork replay. Compare factory `allSeriesLength` and onchain state to DB at the same block.
+- [x] Write failing indexer fixture tests for series creation, mint, pair redemption, claim transfer, settlement, both redemptions, duplicate logs, restart and reorg rollback. Prove balances reconcile with onchain `balanceOf` for sampled holders.
+- [x] Implement event discovery from the configured new factory, dynamic series/claim tracking, idempotent block commits and reorg rewind. Backfill from factory deployment block before serving live markets.
+- [x] Add migration for reference/fixing metadata and operations audit fields. Make backend return stale/unavailable rather than plausible but old markets when indexer health fails.
+- [x] Run `cargo test` in `indexer`, backend targeted tests and a fork replay. Compare factory `allSeriesLength` and onchain state to DB at the same block.
 
 **Gate:** After a live series transaction, admin and public APIs converge on the same confirmed factory/series state; restarts and reorgs recover without manual DB edits.
 

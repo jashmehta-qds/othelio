@@ -1,3 +1,11 @@
+export interface IndexerFreshness {
+  isFresh: boolean;
+  observedHeadBlock: number;
+  lastIndexedBlock: number;
+  blockLag: number;
+  observedHeadAt?: string | null;
+}
+
 export interface RiskSplitSeriesModel {
   chainId: number;
   seriesAddress: string;
@@ -16,6 +24,15 @@ export interface RiskSplitSeriesModel {
   creationFeedUpdatedAt?: string | null;
   creationReferenceBlock?: number | null;
   creationReferenceVerified?: boolean;
+  factoryAddress?: string | null;
+  formulaVersion?: number;
+  settledRoundId?: string | null;
+  settledFeedUpdatedAt?: string | null;
+  operationsAuditStatus?: string;
+  operationsAuditNote?: string | null;
+  lastIndexedBlock?: number;
+  asOfBlock?: number;
+  indexerFreshness?: IndexerFreshness;
   isSettled: boolean;
   settledPrice: string | null;
   protectedFraction: string | null;
