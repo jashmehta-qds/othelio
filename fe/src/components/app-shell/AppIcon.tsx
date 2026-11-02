@@ -1,9 +1,10 @@
-export type AppNavId = "overview" | "baskets" | "borrow" | "activity" | "agents" | "settings";
+export type AppNavId = "overview" | "baskets" | "borrow" | "activity" | "agents" | "settings" | "risk-split";
 
 export function AppIcon({ type }: { type: AppNavId | "arrow" | "plus" | "lock" | "clock" | "sync" | "check" | "trend-up" | "trend-down" | "shield" | "alert" | "coins" | "percent" | "bank" | "heart" }) {
   const paths: Record<string, React.ReactNode> = {
     overview: <><path d="M4 10.5 12 4l8 6.5"/><path d="M6.5 9.5V20h11V9.5M10 20v-6h4v6"/></>,
     baskets: <><path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z"/><path d="m4 12 8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/></>,
+    "risk-split": <><path d="m16 3-8 18M7 7h5M12 17h5"/><circle cx="6" cy="7" r="2"/><circle cx="18" cy="17" r="2"/></>,
     borrow: <><path d="M3 21h18M3 10h18M5 10v11M9 10v11M15 10v11M19 10v11M12 3l9 4H3l9-4Z"/></>,
     activity: <path d="M4 12h3l2-5 4 10 2-5h5"/>,
     agents: <><circle cx="12" cy="8" r="3"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/></>,

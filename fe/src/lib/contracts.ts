@@ -193,6 +193,133 @@ export const OTHELIO_PORTFOLIO_MODULE_ABI = [
     stateMutability: 'pure',
   },
 ] as const;
+export const RISK_SPLIT_SERIES_ABI = [
+  {
+    type: 'function',
+    name: 'underlying',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'protectedToken',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'upsideToken',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'floorPrice',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'capPrice',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'expiry',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'isSettled',
+    inputs: [],
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'settledPrice',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'protectedFraction',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'upsideFraction',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'mint',
+    inputs: [{ name: 'amount', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'combineAndRedeem',
+    inputs: [{ name: 'amount', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'redeemProtected',
+    inputs: [{ name: 'amount', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'redeemUpside',
+    inputs: [{ name: 'amount', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+] as const;
+
+export const SETTLEMENT_ADAPTER_ABI = [
+  {
+    type: 'function',
+    name: 'settleSeries',
+    inputs: [{ name: 'series', type: 'address' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'maxStaleness',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getSettlementPrice',
+    inputs: [],
+    outputs: [
+      { name: 'price', type: 'uint256' },
+      { name: 'updatedAt', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+  },
+] as const;
 
 export const OTHELIO_FACTORY_ABI = [
   {

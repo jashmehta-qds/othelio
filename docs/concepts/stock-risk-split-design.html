@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Othelio / Stock risk split</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0b1020;--panel:#131b31;--panel2:#19243d;--line:#2b3852;--ink:#f5f7fc;--muted:#a9b5c8;--mint:#65e0bd;--amber:#f4bd70;--blue:#8cb6ff;--red:#f4919d}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 87% 5%,#203553 0,transparent 31%),var(--bg);color:var(--ink);font:15px/1.55 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:var(--blue)}button,input{font:inherit}button{cursor:pointer}main{max-width:1160px;padding:56px 28px 110px;margin:auto}h1,h2,h3,p{margin-top:0}h1{max-width:780px;font-size:clamp(38px,6vw,68px);letter-spacing:-.055em;line-height:1.04;margin:16px 0 24px}h2{font-size:27px;letter-spacing:-.035em;margin-bottom:10px}h3{font-size:17px;letter-spacing:-.01em;margin-bottom:8px}.eyebrow{color:var(--mint);font-size:12px;letter-spacing:.18em;text-transform:uppercase;font-weight:800}.lead{max-width:775px;color:#d0d9e7;font-size:18px}.muted{color:var(--muted)}.tiny{font-size:12px}.section{margin-top:75px}.topline{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.badge{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;padding:6px 11px;color:var(--muted);font-size:12px;white-space:nowrap}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:24px}.panel-soft{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:16px}.flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:24px}.step{min-height:130px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:17px}.step strong{display:block;font-size:18px;margin-bottom:6px}.step .num{display:block;color:var(--mint);font-size:11px;letter-spacing:.16em;font-weight:800;margin-bottom:16px}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 28px}.control label{display:flex;justify-content:space-between;gap:10px;font-weight:650}.control output{font-variant-numeric:tabular-nums;color:var(--mint)}input[type=range]{width:100%;accent-color:var(--mint);margin:13px 0 0}.outputs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:22px 0}.metric{padding:17px;border:1px solid var(--line);border-radius:13px;background:var(--panel2)}.metric span{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;font-size:28px;letter-spacing:-.04em;font-variant-numeric:tabular-nums}.metric.protected strong{color:var(--mint)}.metric.upside strong{color:var(--amber)}.chart-wrap{width:100%;overflow:auto}svg{display:block;width:100%;min-width:560px;height:auto}.legend{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:10px 0 0}.legend b{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px}.formula{font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;color:#dce7f4;background:#0e1629;border:1px solid var(--line);padding:18px;border-radius:12px}.state{font-variant-numeric:tabular-nums}.ledger{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;text-align:center;margin:26px 0}.ledger .box{border:1px solid var(--line);background:var(--panel2);border-radius:14px;padding:18px}.ledger .big{font-size:30px;font-weight:800;line-height:1.15}.ledger .arrow{font-size:24px;color:var(--muted)}.rule{border-left:3px solid var(--mint);padding:2px 0 2px 16px;margin:18px 0;color:#dce7f4}.danger{border-left-color:var(--amber)}.option{display:flex;align-items:center;gap:10px;margin:16px 0}.option input{accent-color:var(--mint)}.choice{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.choice div{border-top:2px solid var(--line);padding-top:13px}.choice strong{display:block}.splitline{height:1px;background:var(--line);margin:32px 0}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:530px}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}td:last-child,th:last-child{text-align:right}ol,ul{padding-left:20px}li{margin:8px 0}.pill{display:inline-block;padding:3px 8px;border-radius:7px;background:#203349;color:var(--mint);font-size:12px;font-weight:700}.warning{color:var(--amber)}.source{font-size:13px;color:var(--muted)}.source a{color:var(--blue)}@media(max-width:760px){main{padding:34px 17px 80px}.topline{display:block}.topline .badge{margin-top:12px}.grid,.controls,.choice{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.step{min-height:105px}.ledger{grid-template-columns:1fr}.ledger .arrow{transform:rotate(90deg)}.outputs{grid-template-columns:1fr 1fr}.outputs .metric:first-child{grid-column:1/-1}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Othelio / Concept design / 30 October 2026</div>
+    <div class="topline"><h1>One stock. Two claims. One shared market.</h1><span class="badge">Design exploration · not a live product</span></div>
+    <p class="lead">Deposit MSFTc once to create a matched <strong>Protected</strong> and <strong>Upside</strong> pair. Everyone in the same series holds fungible claims with the same settlement rule. Each user chooses their risk by trading or holding a mix.</p>
+    <div class="flow" aria-label="Product flow">
+      <div class="step"><span class="num">01 / LOCK</span><strong>Deposit MSFTc</strong><span class="muted">A shared vault holds the underlying stock tokens.</span></div>
+      <div class="step"><span class="num">02 / MINT</span><strong>Receive a pair</strong><span class="muted">1 Protected + 1 Upside for each 1 MSFTc.</span></div>
+      <div class="step"><span class="num">03 / CHOOSE</span><strong>Trade exposure</strong><span class="muted">Keep either claim, both claims, or a chosen mix.</span></div>
+      <div class="step"><span class="num">04 / REDEEM</span><strong>Return the pair</strong><span class="muted">Burn 1 + 1 to withdraw 1 MSFTc before expiry.</span></div>
+      <div class="step"><span class="num">05 / SETTLE</span><strong>Divide backing</strong><span class="muted">At expiry, allocate MSFTc by the published payoff rule.</span></div>
+    </div>
+  </header>
+
+  <section class="section" aria-labelledby="payoff-heading">
+    <div class="topline"><div><div class="eyebrow">01 / Economics</div><h2 id="payoff-heading">Test the payoff</h2><p class="muted">This is a fully backed example. Change the assumed settlement value and the series terms.</p></div><span class="badge">Illustrative dollar values per deposited MSFTc</span></div>
+    <div class="grid">
+      <div class="panel">
+        <div class="controls">
+          <div class="control"><label for="settlement">Stock value at settlement <output id="settlement-value">$70</output></label><input id="settlement" type="range" min="0" max="200" step="1" value="70"></div>
+          <div class="control"><label for="protected-floor">Protected target floor <output id="floor-value">$45</output></label><input id="protected-floor" type="range" min="0" max="50" step="1" value="45"></div>
+          <div class="control"><label for="protected-cap">Protected upside cap <output id="cap-value">$55</output></label><input id="protected-cap" type="range" min="50" max="100" step="1" value="55"></div>
+        </div>
+        <div class="outputs" aria-live="polite">
+          <div class="metric"><span>MSFTc backing</span><strong id="stock-output">$70</strong></div>
+          <div class="metric protected"><span>Protected claim</span><strong id="protected-output">$45</strong></div>
+          <div class="metric upside"><span>Upside claim</span><strong id="upside-output">$25</strong></div>
+        </div>
+        <div class="chart-wrap"><svg id="payoff-chart" viewBox="0 0 640 310" role="img" aria-label="Settlement payoff across possible MSFTc values"></svg></div>
+        <div class="legend"><span><b style="background:var(--blue)"></b>Stock backing</span><span><b style="background:var(--mint)"></b>Protected</span><span><b style="background:var(--amber)"></b>Upside</span></div>
+      </div>
+      <div class="panel">
+        <h3>Enforceable payout rule</h3>
+        <div class="formula">Protected(S) = min(S, max(F, min(S ÷ 2, C)))
+Upside(S)    = S − Protected(S)
+
+S = MSFTc value at settlement
+F = protected target floor
+C = protected upside cap</div>
+        <p class="rule"><strong>Conservation:</strong> Protected + Upside always equals the value of the MSFTc locked for the pair. Neither claim can go below zero.</p>
+        <p class="rule danger"><strong>Protection limit:</strong> If MSFTc falls below the target floor, the Protected claim receives all remaining backing and still loses value. There is no unconditional dollar guarantee without additional collateral.</p>
+        <p class="muted tiny">This explorer shows settlement payoffs, not fair trading prices today. Before expiry, time, volatility, demand, and market spreads affect each claim’s price.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="pool-heading">
+    <div class="eyebrow">02 / Fungibility</div><h2 id="pool-heading">A later depositor joins the same series</h2>
+    <p class="muted">A user’s purchase price does not create a new market. The claim’s contract terms identify the series.</p>
+    <div class="grid">
+      <div class="panel">
+        <h3>Shared vault accounting</h3>
+        <div class="ledger"><div class="box"><div class="big">10</div><div class="muted">MSFTc locked<br>10 Protected + 10 Upside issued</div></div><div class="arrow" aria-hidden="true">→</div><div class="box"><div class="big">11</div><div class="muted">MSFTc locked<br>11 Protected + 11 Upside issued</div></div></div>
+        <p class="rule">The eleventh depositor receives <strong>the same Protected and Upside tokens</strong> as the first ten. Each matched pair always has a claim on one MSFTc.</p>
+      </div>
+      <div class="panel">
+        <h3>Entry price changes; contract terms do not</h3>
+        <div class="control"><label for="entry-spot">MSFTc market price now <output id="entry-spot-value">$120</output></label><input id="entry-spot" type="range" min="50" max="180" step="1" value="120"></div>
+        <div class="control" style="margin-top:18px"><label for="protected-quote">Illustrative Protected quote <output id="protected-quote-value">$52</output></label><input id="protected-quote" type="range" min="0" max="55" step="1" value="52"></div>
+        <div class="outputs" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div class="metric protected"><span>Protected market price</span><strong id="protected-market">$52</strong></div><div class="metric upside"><span>Implied Upside price</span><strong id="upside-market">$68</strong></div></div>
+        <p class="muted tiny">The quote is an editable assumption, not an Othelio valuation or executable offer. Actual bids and asks can differ, and transaction costs create a parity band. Under a standard nonnegative-rate cash valuation, the Protected quote cannot exceed its terminal cap.</p>
+      </div>
+    </div>
+    <p class="rule"><strong>Shared-market test:</strong> A $100 entrant and a $120 entrant can own identical claims. But a claim with a personal floor tied to each user’s purchase price would pay different amounts to different holders; it cannot be one fungible token.</p>
+  </section>
+
+  <section class="section" aria-labelledby="market-heading">
+    <div class="eyebrow">03 / Market design</div><h2 id="market-heading">One place to choose exposure</h2>
+    <div class="choice">
+      <div><span class="pill">Protected</span><h3>Keep more of the downside buffer</h3><p class="muted">Mint a pair and sell Upside, or purchase Protected directly. Your risk depends on the price you actually pay.</p></div>
+      <div><span class="pill">Upside</span><h3>Take the residual risk</h3><p class="muted">Buy Upside to receive value the Protected holder gives up above its cap and absorb losses first. It can expire worthless.</p></div>
+      <div><span class="pill">Neutral</span><h3>Hold the stock exposure</h3><p class="muted">Hold MSFTc itself or one matched pair. Neutral is a portfolio choice, not a third issued token.</p></div>
+    </div>
+    <div class="splitline"></div>
+    <div class="grid">
+      <div class="panel"><h3>Pricing and liquidity</h3><ol><li>Use the current executable MSFTc market price as the pair’s trading anchor.</li><li>Publish indicative values from a transparent options-style model using term, volatility, and the payoff rule.</li><li>Let market makers or an order book post executable bids and asks for each claim.</li><li>Route pair minting and redemption through the same interface so arbitrage can discipline the <em>sum</em> of claim prices.</li></ol><p class="muted tiny">Pair parity constrains Protected + Upside ≈ MSFTc. It does not determine the price of either claim on its own.</p></div>
+      <div class="panel"><h3>One series means one set of terms</h3><div class="tablewrap"><table><thead><tr><th>Parameter</th><th>Who sets it</th><th>Can it vary by holder?</th></tr></thead><tbody><tr><td>Underlying token address</td><td>Series</td><td>No</td></tr><tr><td>Expiry and settlement source</td><td>Series</td><td>No</td></tr><tr><td>Floor, cap, payoff formula</td><td>Series</td><td>No</td></tr><tr><td>Deposit time and paid price</td><td>User / market</td><td>Yes</td></tr><tr><td>Protected / Upside mix</td><td>User trades</td><td>Yes</td></tr></tbody></table></div><p class="muted tiny">Different floors, caps, or expiries require separate series, even if they share vault infrastructure and the same app interface.</p></div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="build-heading">
+    <div class="eyebrow">04 / Implementation boundaries</div><h2 id="build-heading">What the pilot would need</h2>
+    <div class="grid">
+      <div class="panel"><h3>Contract and accounting</h3><ul><li>Immutable series ID: chain, verified B20 address, expiry, floor, cap, formula version, settlement source.</li><li>Escrow-backed mint and matched-pair redemption; track raw B20 units and verify outstanding claims never exceed escrow.</li><li>At expiry, compute each claim’s share fraction from a validated total-return token price; settle using portions of the escrowed B20, with explicit rounding rules.</li><li>Handle B20 transfer restrictions, pauses, dividends, splits, and issuer multiplier changes without double counting.</li></ul></div>
+      <div class="panel"><h3>Market and user experience</h3><ul><li>One shared trading interface for the active MSFTc series, with visible bids, asks, depth, spread, and an order limit.</li><li>Show <strong>payoff at expiry</strong> separately from <strong>market price now</strong>; display maximum loss from the user’s actual entry price.</li><li>Settle at a defined market-hours observation; document feed interruption and corporate-action fallback rules before launch.</li><li>Restrict eligible participants and confirm the issuer permits transfers into the vault and to eventual recipients.</li></ul></div>
+    </div>
+    <div class="panel" style="margin-top:20px"><h3>Decisions before implementation</h3><div class="tablewrap"><table><thead><tr><th>Decision</th><th>Suggested pilot choice</th><th>Why it matters</th></tr></thead><tbody><tr><td>Underlying</td><td>One liquid B20 stock, e.g. MSFTc</td><td>Focus liquidity and isolate token behavior</td></tr><tr><td>Term</td><td>Fixed weekly series</td><td>A clear convergence and settlement event</td></tr><tr><td>Protection</td><td>Target floor limited by escrow value</td><td>Fully collateralized without an outside guarantor</td></tr><tr><td>Trading venue</td><td>Shared order book or quoted market with limits</td><td>Price discovery for both claims</td></tr><tr><td>Settlement reference</td><td>Verified B20 total-return feed at a specified regular-hours time</td><td>Deterministic allocation and corporate-action handling</td></tr></tbody></table></div></div>
+    <p class="source" style="margin-top:22px">Design references: <a href="https://x.com/0xbeans/status/2115423663231303727">Isolated Exposure Tokens</a> inspired the paired, fungible claim and shared redemption structure; this directional payoff is a separate proposal. <a href="https://www.base.org/blog/b20-tokenized-stocks-on-base">Base B20 mechanics</a> inform raw balance and multiplier handling. <a href="https://prd-web.optionseducation.org/optionsoverview/options-pricing">Options Industry Council</a> explains the factors affecting prices before expiry.</p>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => '$' + Number(n).toFixed(0);
+  const payoff = (s, f, c) => { const protectedValue = Math.min(s, Math.max(f, Math.min(s / 2, c))); return [protectedValue, s - protectedValue]; };
+  const x = (v) => 48 + (v / 200) * 552;
+  const y = (v) => 268 - (v / 200) * 224;
+  function drawChart(s, f, c) {
+    const svg = $('payoff-chart');
+    const marks = [0,50,100,150,200].map(v => `<line x1="${x(v)}" y1="44" x2="${x(v)}" y2="268" stroke="var(--line)"/><text x="${x(v)}" y="289" text-anchor="middle" fill="var(--muted)" font-size="11">${fmt(v)}</text><line x1="48" y1="${y(v)}" x2="600" y2="${y(v)}" stroke="var(--line)"/><text x="40" y="${y(v)+4}" text-anchor="end" fill="var(--muted)" font-size="11">${v}</text>`).join('');
+    const line = (kind) => Array.from({length:201},(_,v) => `${v ? 'L':'M'}${x(v).toFixed(2)},${y(kind === 0 ? v : payoff(v,f,c)[kind-1]).toFixed(2)}`).join(' ');
+    const [pd,pu] = payoff(s,f,c);
+    svg.innerHTML = `<title>Settlement payoff by MSFTc value</title><desc>Protected plus Upside equals the stock backing at every possible settlement value.</desc>${marks}<path d="${line(0)}" fill="none" stroke="var(--blue)" stroke-width="2.3"/><path d="${line(1)}" fill="none" stroke="var(--mint)" stroke-width="3"/><path d="${line(2)}" fill="none" stroke="var(--amber)" stroke-width="3"/><line x1="${x(s)}" y1="44" x2="${x(s)}" y2="268" stroke="var(--ink)" stroke-opacity=".65" stroke-dasharray="4 5"/><circle cx="${x(s)}" cy="${y(pd)}" r="5" fill="var(--mint)"/><circle cx="${x(s)}" cy="${y(pu)}" r="5" fill="var(--amber)"/><text x="49" y="24" fill="var(--muted)" font-size="11">CLAIM VALUE ($)</text><text x="600" y="305" text-anchor="end" fill="var(--muted)" font-size="11">MSFTc VALUE AT SETTLEMENT ($)</text>`;
+  }
+  function updatePayoff(){const s=+$('settlement').value,f=+$('protected-floor').value,c=+$('protected-cap').value;const [pd,pu]=payoff(s,f,c);$('settlement-value').textContent=fmt(s);$('floor-value').textContent=fmt(f);$('cap-value').textContent=fmt(c);$('stock-output').textContent=fmt(s);$('protected-output').textContent=fmt(pd);$('upside-output').textContent=fmt(pu);drawChart(s,f,c);updateMarket()}
+  function updateMarket(){const spot=+$('entry-spot').value;const quote=$('protected-quote');quote.max=String(Math.min(spot,+$('protected-cap').value));if(+quote.value>+quote.max)quote.value=quote.max;const protectedQuote=+quote.value;$('entry-spot-value').textContent=fmt(spot);$('protected-quote-value').textContent=fmt(protectedQuote);$('protected-market').textContent=fmt(protectedQuote);$('upside-market').textContent=fmt(spot-protectedQuote)}
+  ['settlement','protected-floor','protected-cap'].forEach(id=>$(id).addEventListener('input',updatePayoff));
+  ['entry-spot','protected-quote'].forEach(id=>$(id).addEventListener('input',updateMarket));
+  updatePayoff();updateMarket();
+</script>
+</body>
+</html>

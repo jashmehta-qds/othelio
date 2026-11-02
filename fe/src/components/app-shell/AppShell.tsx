@@ -16,6 +16,7 @@ import { useWalletRestoring } from "@/hooks/useWalletRestoring";
 const navigation: { id: AppNavId; label: string; href: string }[] = [
   { id: "overview", label: "Overview", href: "/app/overview" },
   { id: "baskets", label: "Baskets", href: "/app/baskets" },
+  { id: "risk-split", label: "Risk Split", href: "/app/risk-split" },
   { id: "activity", label: "Activity", href: "/app/activity" },
   { id: "agents", label: "Agents", href: "/app/agents" },
   { id: "settings", label: "Settings", href: "/app/settings" },

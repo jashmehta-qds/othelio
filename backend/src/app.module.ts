@@ -7,10 +7,11 @@ import { LendingModule } from './lending/lending.module';
 import { SettingsModule } from './settings/settings.module';
 import { AuthModule } from './auth/auth.module';
 import { AgentModule } from './agent/agent.module';
+import { RiskSplitModule } from './risksplit/risksplit.module';
 import { HealthController } from './health.controller';
 
 @Module({
-  imports: [DatabaseModule, BasketsModule, PrepareModule, DexModule, LendingModule, SettingsModule, AuthModule, AgentModule],
+  imports: [DatabaseModule, BasketsModule, PrepareModule, DexModule, LendingModule, SettingsModule, AuthModule, AgentModule, RiskSplitModule],
   controllers: [HealthController],
 })
 export class AppModule {}
