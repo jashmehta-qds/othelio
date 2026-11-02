@@ -110,8 +110,8 @@ contract RiskSplitSecurityTest is Test {
         badToken.approve(seriesAddr, type(uint256).max);
         badSeries.mint(10 ether);
 
+        oracle.setPrice(50e8, expiry);
         vm.warp(expiry + 1);
-        oracle.setPrice(50e8, block.timestamp);
         adapter.settleSeries(seriesAddr);
 
         // When redeeming, badToken.transfer will attempt reentrancy, which must revert
@@ -156,8 +156,8 @@ contract RiskSplitSecurityTest is Test {
     }
 
     function test_Security_DoubleSettlementRejected() public {
+        oracle.setPrice(50e8, expiry);
         vm.warp(expiry + 1);
-        oracle.setPrice(50e8, block.timestamp);
         adapter.settleSeries(address(series));
 
         // Second call must revert
@@ -171,7 +171,7 @@ contract RiskSplitSecurityTest is Test {
         vm.expectRevert(IRiskSplitSeries.SeriesExpired.selector);
         series.mint(1 ether);
 
-        oracle.setPrice(50e8, block.timestamp);
+        oracle.setPrice(50e8, expiry);
         adapter.settleSeries(address(series));
         vm.prank(attacker);
         vm.expectRevert(IRiskSplitSeries.SeriesExpired.selector);
@@ -193,20 +193,20 @@ contract RiskSplitSecurityTest is Test {
 
     function test_Security_StaleOraclePriceRejected() public {
         vm.warp(expiry + 1);
-        // Stale timestamp (older than heartbeat = 24 hours)
-        oracle.setPrice(50e8, block.timestamp - 25 hours);
+        // Stale timestamp (older than heartbeat = 24 hours relative to expiry)
+        oracle.setPrice(50e8, expiry - 25 hours);
 
         vm.expectRevert(ISettlementAdapter.StalePrice.selector);
         adapter.settleSeries(address(series));
     }
 
     function test_Security_ZeroOrNegativeOraclePriceRejected() public {
+        oracle.setPrice(0, expiry);
         vm.warp(expiry + 1);
-        oracle.setPrice(0, block.timestamp);
         vm.expectRevert(ISettlementAdapter.ZeroPrice.selector);
         adapter.settleSeries(address(series));
 
-        oracle.setPrice(-10e8, block.timestamp);
+        oracle.setPrice(-10e8, expiry);
         vm.expectRevert(ISettlementAdapter.NegativePrice.selector);
         adapter.settleSeries(address(series));
     }
@@ -215,9 +215,10 @@ contract RiskSplitSecurityTest is Test {
         vm.prank(attacker);
         series.mint(1);
 
+        oracle.setPrice(70e8, expiry);
         vm.warp(expiry + 1);
-        oracle.setPrice(70e8, block.timestamp);
         adapter.settleSeries(address(series));
+
 
         uint256 balBefore = stock.balanceOf(attacker);
         vm.prank(attacker);

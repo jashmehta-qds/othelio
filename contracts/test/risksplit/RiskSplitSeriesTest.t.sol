@@ -62,6 +62,7 @@ contract MockOracle is AggregatorV3Interface {
         uint256,
         uint80
     ) {
+        if (_roundId > roundId) revert("No data present");
         return (_roundId, price, updatedAt, updatedAt, _roundId);
     }
 
@@ -182,8 +183,8 @@ contract RiskSplitSeriesTest is Test {
         vm.prank(alice);
         series.mint(10 ether);
 
+        oracle.setPrice(40e8, expiry);
         vm.warp(expiry + 1);
-        oracle.setPrice(40e8, block.timestamp);
 
         adapter.settleSeries(address(series));
 
@@ -211,8 +212,8 @@ contract RiskSplitSeriesTest is Test {
         vm.prank(alice);
         series.mint(10 ether);
 
+        oracle.setPrice(70e8, expiry);
         vm.warp(expiry + 1);
-        oracle.setPrice(70e8, block.timestamp);
 
         adapter.settleSeries(address(series));
 
@@ -240,8 +241,8 @@ contract RiskSplitSeriesTest is Test {
         vm.prank(alice);
         series.mint(10 ether);
 
+        oracle.setPrice(100e8, expiry);
         vm.warp(expiry + 1);
-        oracle.setPrice(100e8, block.timestamp);
 
         adapter.settleSeries(address(series));
 
@@ -265,8 +266,8 @@ contract RiskSplitSeriesTest is Test {
         vm.prank(alice);
         series.mint(10 ether);
 
+        oracle.setPrice(130e8, expiry);
         vm.warp(expiry + 1);
-        oracle.setPrice(130e8, block.timestamp);
 
         adapter.settleSeries(address(series));
 
@@ -290,8 +291,8 @@ contract RiskSplitSeriesTest is Test {
         vm.prank(alice);
         series.mint(10 ether);
 
+        oracle.setPrice(130e8, expiry);
         vm.warp(expiry + 1);
-        oracle.setPrice(130e8, block.timestamp);
         adapter.settleSeries(address(series));
 
         uint256 aliceBalBefore = stock.balanceOf(alice);

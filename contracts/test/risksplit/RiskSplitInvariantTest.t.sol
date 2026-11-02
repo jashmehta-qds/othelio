@@ -70,8 +70,8 @@ contract RiskSplitHandler is Test {
         if (settled) return;
         price = int256(bound(uint256(price), 1e8, 500e8)); // $1 to $500
 
+        oracle.setPrice(price, series.expiry());
         vm.warp(series.expiry() + 1);
-        oracle.setPrice(price, block.timestamp);
         adapter.settleSeries(address(series));
         settled = true;
     }

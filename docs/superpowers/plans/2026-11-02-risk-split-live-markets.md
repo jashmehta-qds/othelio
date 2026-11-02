@@ -54,11 +54,11 @@
 
 **Interfaces:** A series settles with a nominated feed `roundId`; adapter verifies the last valid observation at/before `expiry`, within a feed-specific maximum age, and proves there was no later eligible pre-expiry round. It reports normalized price, feed, round ID and observed timestamp. The series persists fixing identity as well as price. Exact signature is settled in this task before downstream ABI/API work.
 
-- [ ] Record the feed's phase/round behavior and corporate-action/pause characteristics for the launch token. Specify how to prove “last eligible pre-expiry round,” including phase boundaries, and what happens if no sufficiently fresh round exists.
-- [ ] Reject draft expiries outside the launch feed's verified publication window or too close to its boundaries; test Friday/weekend/holiday, early-close and daylight-saving boundaries explicitly.
-- [ ] Write failing tests for delayed calls, stale/incomplete/negative/zero rounds, wrong feed decimals, phase boundary, bad predecessor, unavailable oracle and reorged candidate.
-- [ ] Implement the minimum verifiable fixing path; reject arbitrary latest-price settlement. If the desired feed cannot prove the rule onchain, replace the rule/adapter design before proceeding, with user review of the payoff change.
-- [ ] Run Foundry and Base fork tests. Save exact price-scale and timestamp examples in `fixing-spec.md`.
+- [x] Record the feed's phase/round behavior and corporate-action/pause characteristics for the launch token. Specify how to prove “last eligible pre-expiry round,” including phase boundaries, and what happens if no sufficiently fresh round exists.
+- [x] Reject draft expiries outside the launch feed's verified publication window or too close to its boundaries; test Friday/weekend/holiday, early-close and daylight-saving boundaries explicitly.
+- [x] Write failing tests for delayed calls, stale/incomplete/negative/zero rounds, wrong feed decimals, phase boundary, bad predecessor, unavailable oracle and reorged candidate.
+- [x] Implement the minimum verifiable fixing path; reject arbitrary latest-price settlement. If the desired feed cannot prove the rule onchain, replace the rule/adapter design before proceeding, with user review of the payoff change.
+- [x] Run Foundry and Base fork tests. Save exact price-scale and timestamp examples in `fixing-spec.md`.
 
 **Gate:** A caller cannot change settlement payout by choosing when to call `settleSeries` or by supplying an unrelated or stale feed round. The chosen price is never post-expiry.
 

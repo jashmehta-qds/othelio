@@ -23,8 +23,11 @@ contract RiskSplitSeries is IRiskSplitSeries, ReentrancyGuard {
 
     bool public override isSettled;
     uint256 public override settledPrice;
+    uint80 public override settledRoundId;
+    uint256 public override settledTimestamp;
     uint256 public override protectedFraction;
     uint256 public override upsideFraction;
+
 
     bool private _claimTokensInitialized;
 
@@ -88,11 +91,37 @@ contract RiskSplitSeries is IRiskSplitSeries, ReentrancyGuard {
         return amount;
     }
 
+    function settleWithFixing(
+        uint256 settlementPrice_,
+        uint80 roundId_,
+        uint256 observedTimestamp_
+    ) external override nonReentrant {
+        if (msg.sender != settlementAdapter) revert Unauthorized();
+        if (block.timestamp < expiry) revert ExpiryNotReached();
+        if (isSettled) revert AlreadySettled();
+
+        settledRoundId = roundId_;
+        settledTimestamp = observedTimestamp_;
+        _applySettlement(settlementPrice_);
+
+        emit SettledWithFixing(
+            settlementPrice_,
+            roundId_,
+            observedTimestamp_,
+            protectedFraction,
+            upsideFraction
+        );
+    }
+
     function settle(uint256 settlementPrice_) external override nonReentrant {
         if (msg.sender != settlementAdapter) revert Unauthorized();
         if (block.timestamp < expiry) revert ExpiryNotReached();
         if (isSettled) revert AlreadySettled();
 
+        _applySettlement(settlementPrice_);
+    }
+
+    function _applySettlement(uint256 settlementPrice_) internal {
         isSettled = true;
         settledPrice = settlementPrice_;
 
