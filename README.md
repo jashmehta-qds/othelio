@@ -57,14 +57,7 @@ npm run dev:base
 
 This starts a separate Postgres database on port `5434`, runs the frontend on port `3002` and backend on port `3003`, verifies the RPC reports chain ID `8453`, runs migrations, and then starts all three application services. Wallet-signed actions are real Base transactions. It does not start Anvil and it does not use the fork database. `npm run dev` and `npm run dev:services:fork` remain the safe local-fork workflow.
 
-The Base profile resolves `START_BLOCK=latest` at startup, so it follows new events without replaying the deployment history. If the Base database was already started with an older cursor, reset that one cursor once before restarting:
-
-```bash
-docker compose --env-file .env.base -f docker-compose.staging.yml up -d postgres
-docker compose --env-file .env.base -f docker-compose.staging.yml run --rm database-migrations
-docker compose --env-file .env.base -f docker-compose.staging.yml exec postgres \
-  psql -U othelio -d othelio -c "DELETE FROM indexer_state WHERE chain_id = 8453;"
-```
+With `START_BLOCK=latest`, the Base profile moves both saved event cursors to the current head on each startup. Events emitted while the local stack was stopped are skipped. Use a numeric `START_BLOCK` when you need to resume the saved cursor or replay history.
 
 The default `BATCH_SIZE=9` produces a 10-block inclusive range for Alchemy free-tier RPCs, which limit `eth_getLogs` ranges. Use a larger value only with an RPC plan that supports it.
 

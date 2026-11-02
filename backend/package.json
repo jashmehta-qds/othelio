@@ -4,8 +4,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "dev": "tsx watch --exclude '../node_modules/**' --exclude 'node_modules/**' src/main.ts",
-    "dev:base": "tsx watch src/main.ts",
+    "dev": "npm run build && concurrently -k \"tsc --watch -p tsconfig.json\" \"node --watch dist/main.js\"",
+    "dev:base": "npm run build && node dist/main.js",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",

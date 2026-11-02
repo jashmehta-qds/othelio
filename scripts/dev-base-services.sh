@@ -74,11 +74,26 @@ if [[ "${START_BLOCK:-}" == "latest" ]]; then
   # The Rust indexer treats START_BLOCK as an inclusive anchor and subtracts
   # one internally, so use head + 1 to begin at the current head.
   export START_BLOCK="$((LATEST_BLOCK + 1))"
-  echo "Base indexer will begin at block $START_BLOCK."
+  INDEXER_START_BLOCK="$LATEST_BLOCK"
+  echo "Base indexer will begin at block $INDEXER_START_BLOCK."
 fi
 
 docker compose --env-file "$ENV_FILE" -f docker-compose.staging.yml up -d postgres
 docker compose --env-file "$ENV_FILE" -f docker-compose.staging.yml run --rm database-migrations
+
+if [[ -n "${INDEXER_START_BLOCK:-}" ]]; then
+  docker compose --env-file "$ENV_FILE" -f docker-compose.staging.yml stop indexer
+  docker compose --env-file "$ENV_FILE" -f docker-compose.staging.yml exec -T postgres \
+    psql -U othelio -d othelio -v ON_ERROR_STOP=1 <<SQL
+BEGIN;
+INSERT INTO indexer_state (chain_id, next_block) VALUES (8453, $INDEXER_START_BLOCK)
+  ON CONFLICT (chain_id) DO UPDATE SET next_block=EXCLUDED.next_block, updated_at=NOW();
+INSERT INTO indexer_worker_state (chain_id, worker_name, next_block) VALUES (8453, 'events', $INDEXER_START_BLOCK)
+  ON CONFLICT (chain_id, worker_name) DO UPDATE SET next_block=EXCLUDED.next_block,
+    last_success_block=NULL, last_success_hash=NULL, last_error=NULL, updated_at=NOW();
+COMMIT;
+SQL
+fi
 
 # Keep the host services independent: an indexer restart or crash should not
 # tear down the backend and frontend while developing against Base RPC.

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:base": "npm run dev:base --prefix ..",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

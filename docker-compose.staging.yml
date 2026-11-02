@@ -55,6 +55,7 @@ services:
       # overrides a rate-limited value from .env.base when the launcher falls
       # back to Base's public endpoint.
       RPC_URL: ${BASE_RPC_URL}
+      START_BLOCK: ${START_BLOCK}
     depends_on:
       postgres: { condition: service_healthy }
 

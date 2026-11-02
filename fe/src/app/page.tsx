@@ -37,12 +37,12 @@ export default function Home() {
       <section className={styles.hero} aria-labelledby="hero-title">
         <div className={styles.heroCopy}>
           <h1 id="hero-title">
-            Build the <span>basket</span>
+            Own, Transform & Trade
             <br />
-            {" "}you want to own.
           </h1>
           <p className={styles.heroSubtitle}>
-            Personalized tokenized equities in one transferable token.
+            Personalize tokenized equities with configurable flavors.
+            <br />
             Hold the mix you believe in, rebalance with one click, or operate via agents.
           </p>
           <Link href="/app" className={styles.primaryAction}>
