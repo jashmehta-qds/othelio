@@ -140,9 +140,9 @@
 
 **Files:** Add threat model `docs/risksplit/security-review.md`, test vectors, deployment runbook and any focused fixes in owning tasks. Contract fixes require rerunning all affected gates.
 
-- [ ] Threat-model factory ownership, malicious underlying/token hooks, oracle manipulation/delay, wrong feed scale, EIP-712 domain/replay, signed order theft, partial fills/rounding, matcher equivocation, admin API abuse, stale books, indexer reorg, pause/recovery and event divergence.
-- [ ] Run full Foundry unit/fuzz/invariant/fork suites, static analyzers, Rust tests, backend/frontend tests, builds and end-to-end wallet tests. Generate coverage for payoff boundaries and all privileged methods.
-- [ ] Obtain an independent contract security review of new factory/vault/adapter and venue integration, resolve all critical/high findings, document medium dispositions and rerun tests after fixes. “No bugs” cannot be guaranteed; this is the release safety standard.
+- [x] Threat-model factory ownership, malicious underlying/token hooks, oracle manipulation/delay, wrong feed scale, EIP-712 domain/replay, signed order theft, partial fills/rounding, matcher equivocation, admin API abuse, stale books, indexer reorg, pause/recovery and event divergence.
+- [x] Run full Foundry unit/fuzz/invariant/fork suites, static analyzers, Rust tests, backend/frontend tests, builds and end-to-end wallet tests. Generate coverage for payoff boundaries and all privileged methods.
+- [x] Obtain an independent contract security review of new factory/vault/adapter and venue integration, resolve all critical/high findings, document medium dispositions and rerun tests after fixes. “No bugs” cannot be guaranteed; this is the release safety standard.
 
 **Gate:** Review sign-off and reproducible test evidence; no critical/high issue open.
 
