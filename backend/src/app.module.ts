@@ -9,10 +9,11 @@ import { AuthModule } from './auth/auth.module';
 import { AgentModule } from './agent/agent.module';
 import { RiskSplitModule } from './risksplit/risksplit.module';
 import { AdminModule } from './admin/admin.module';
+import { OrderbookModule } from './orderbook/orderbook.module';
 import { HealthController } from './health.controller';
 
 @Module({
-  imports: [DatabaseModule, BasketsModule, PrepareModule, DexModule, LendingModule, SettingsModule, AuthModule, AgentModule, RiskSplitModule, AdminModule],
+  imports: [DatabaseModule, BasketsModule, PrepareModule, DexModule, LendingModule, SettingsModule, AuthModule, AgentModule, RiskSplitModule, AdminModule, OrderbookModule],
   controllers: [HealthController],
 })
 export class AppModule {}

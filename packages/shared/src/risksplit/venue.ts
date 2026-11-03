@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 export const ZERO_EX_EXCHANGE_PROXY_BASE = '0xDef1C0ded9bec7F1a1670819833240f027b25EfF' as const;
 export const BASE_CHAIN_ID = 8453 as const;
+export const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const;
 
 export const ZERO_EX_EIP712_DOMAIN = {
   name: 'ZeroEx',

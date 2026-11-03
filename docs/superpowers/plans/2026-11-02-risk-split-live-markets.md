@@ -115,10 +115,10 @@
 
 **Interfaces:** `GET /v1/risksplit/series/:address/books/:claim` returns versioned bids/asks/depth/trades and freshness; `POST /v1/orders` accepts signed order; `GET /v1/orders?owner=` lists owner orders; `POST /v1/orders/:hash/cancel-intent` hides an order locally; typed fill/cancel transaction builders return wallet-signable calls. Onchain venue status, not DB alone, determines fillable amount. No generic arbitrary target or calldata route.
 
-- [ ] Write failing tests for invalid EIP-712 domain/chain/venue, signature, unsupported pair, token decimals, price/size overflow, nonce replay, expired order, insufficient balance/allowance, same-wallet self-match and maker cancelling/moving funds mid-match.
-- [ ] Persist signed orders and deterministic price/time priority. Publish snapshots plus ordered deltas; restart reconstructs the same book. Distinguish locally hidden orders from onchain cancelled orders.
-- [ ] Implement taker-driven crossing proven in Task 1, partial fill accounting, exact price/fee/gas display and tx status transitions. Index onchain fills/cancels; reconcile failed, replaced and reorged transactions. Remove unfillable quotes from executable depth promptly.
-- [ ] Test two books for one series, two simultaneous makers, partial fill, cancel, reconnect sequence gap, matcher restart and reorg. Run backend tests plus Base fork venue integration.
+- [x] Write failing tests for invalid EIP-712 domain/chain/venue, signature, unsupported pair, token decimals, price/size overflow, nonce replay, expired order, insufficient balance/allowance, same-wallet self-match and maker cancelling/moving funds mid-match.
+- [x] Persist signed orders and deterministic price/time priority. Publish snapshots plus ordered deltas; restart reconstructs the same book. Distinguish locally hidden orders from onchain cancelled orders.
+- [x] Implement taker-driven crossing proven in Task 1, partial fill accounting, exact price/fee/gas display and tx status transitions. Index onchain fills/cancels; reconcile failed, replaced and reorged transactions. Remove unfillable quotes from executable depth promptly.
+- [x] Test two books for one series, two simultaneous makers, partial fill, cancel, reconnect sequence gap, matcher restart and reorg. Run backend tests plus Base fork venue integration.
 
 **Gate:** Two wallets can post, see, fill and cancel real orders; book and receipts reconcile after restart and reorg. All funds remain in user wallets or the existing audited settlement primitive until executed.
 
