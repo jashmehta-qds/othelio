@@ -2,6 +2,8 @@
 // Re-exports for @othelio/shared within fe-admin workspace
 
 export * from '../../../packages/shared/src/risksplit/contracts';
+export * from '../../../packages/shared/src/risksplit/venue';
+export * from '../../../packages/shared/src/risksplit/deployment';
 export * from '../../../packages/shared/src/admin/types';
 export * from '../../../packages/shared/src/networks';
 export * from '../../../packages/shared/src/primitives';

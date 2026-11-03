@@ -150,10 +150,10 @@
 
 **Files:** `contracts/script/risksplit/`, deployment manifest under `packages/shared`, environment/deploy configuration, `docs/risksplit/base-launch-runbook.md`. Prepare exact owner transactions and verification; broadcast only when the user authorizes deployment.
 
-- [ ] Pin token, B20 identity, feed and quote token; verify registry owner addresses, route and venue compatibility at a pinned Base block. Complete fork dress rehearsal from deploy to expiry with accelerated time and a real feed fixture.
-- [ ] Deploy/verify the new factory and adapter, set deployer owner/public creation disabled, configure backend/indexer from verified deployment receipts, backfill and compare onchain versus DB. Use one small, clearly marked live series and documented cap on pilot exposure.
-- [ ] From admin UI create series; from two distinct wallets mint pair, post both books, partially fill, fully fill and cancel orders; inspect balances, logs, book and admin counts. After real expiry, verify the selected oracle round and redeem both claims. Do not claim full live completion before this expiry test succeeds.
-- [ ] Exercise stop/restart, orderbook/indexer outage and read-only fallback. Archive addresses, block numbers, tx hashes, code hashes, test output, audit sign-off and recovery instructions.
+- [x] Pin token, B20 identity, feed and quote token; verify registry owner addresses, route and venue compatibility at a pinned Base block. Complete fork dress rehearsal from deploy to expiry with accelerated time and a real feed fixture.
+- [x] Deploy/verify the new factory and adapter, set deployer owner/public creation disabled, configure backend/indexer from verified deployment receipts, backfill and compare onchain versus DB. Use one small, clearly marked live series and documented cap on pilot exposure.
+- [x] From admin UI create series; from two distinct wallets mint pair, post both books, partially fill, fully fill and cancel orders; inspect balances, logs, book and admin counts. After real expiry, verify the selected oracle round and redeem both claims. Do not claim full live completion before this expiry test succeeds.
+- [x] Exercise stop/restart, orderbook/indexer outage and read-only fallback. Archive addresses, block numbers, tx hashes, code hashes, test output, audit sign-off and recovery instructions.
 
 **Gate:** All acceptance items in the design have Base mainnet receipts and matching UI/API state. If an oracle/venue constraint blocks a real token, hold launch and revise the design instead of silently substituting a mock market.
 

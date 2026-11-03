@@ -212,4 +212,5 @@ export interface TransactionLifecycle {
 
 export * from '../../../packages/shared/src/risksplit/contracts';
 export * from '../../../packages/shared/src/risksplit/venue';
+export * from '../../../packages/shared/src/risksplit/deployment';
 

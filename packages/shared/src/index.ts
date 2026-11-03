@@ -144,5 +144,6 @@ export const formatTokenAmount = fromRawAmount;
 export * from "./portfolio.js";
 export * from "./risksplit/venue.js";
 export * from "./risksplit/contracts.js";
+export * from "./risksplit/deployment.js";
 export * from "./admin/types.js";
 
