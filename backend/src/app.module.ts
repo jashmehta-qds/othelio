@@ -8,10 +8,11 @@ import { SettingsModule } from './settings/settings.module';
 import { AuthModule } from './auth/auth.module';
 import { AgentModule } from './agent/agent.module';
 import { RiskSplitModule } from './risksplit/risksplit.module';
+import { AdminModule } from './admin/admin.module';
 import { HealthController } from './health.controller';
 
 @Module({
-  imports: [DatabaseModule, BasketsModule, PrepareModule, DexModule, LendingModule, SettingsModule, AuthModule, AgentModule, RiskSplitModule],
+  imports: [DatabaseModule, BasketsModule, PrepareModule, DexModule, LendingModule, SettingsModule, AuthModule, AgentModule, RiskSplitModule, AdminModule],
   controllers: [HealthController],
 })
 export class AppModule {}

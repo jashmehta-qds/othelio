@@ -100,7 +100,7 @@ export const DEFAULT_TOKEN_DECIMALS = 18;
 export function toRawAmount(amount: string | number, decimals: number = 18): bigint {
   const str = String(amount ?? 0).trim();
   if (!str || str === '0' || isNaN(Number(str))) {
-    return 0n;
+    return BigInt(0);
   }
 
   const [integerPart, fractionalPart = ''] = str.split('.');
@@ -121,7 +121,7 @@ export function fromRawAmount(
   displayDecimals?: number,
 ): string {
   const rawBigInt = BigInt(rawAmount ?? 0);
-  const isNegative = rawBigInt < 0n;
+  const isNegative = rawBigInt < BigInt(0);
   const absVal = isNegative ? -rawBigInt : rawBigInt;
 
   const str = absVal.toString().padStart(decimals + 1, '0');
@@ -143,4 +143,6 @@ export const formatTokenAmount = fromRawAmount;
 
 export * from "./portfolio.js";
 export * from "./risksplit/venue.js";
+export * from "./risksplit/contracts.js";
+export * from "./admin/types.js";
 

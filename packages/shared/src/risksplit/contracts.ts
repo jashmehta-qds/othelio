@@ -1,0 +1,360 @@
+// packages/shared/src/risksplit/contracts.ts
+// Hardened Risk Split Contract ABIs & Constants for Base
+
+export const seriesFactoryAbi = [
+  { type: "constructor", inputs: [], stateMutability: "nonpayable" },
+  { type: "function", name: "owner", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "pendingOwner", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "publicCreationEnabled", inputs: [], outputs: [{ name: "", type: "bool" }], stateMutability: "view" },
+  { type: "function", name: "allSeriesLength", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "allSeries", inputs: [{ name: "", type: "uint256" }], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "isSeries", inputs: [{ name: "", type: "address" }], outputs: [{ name: "", type: "bool" }], stateMutability: "view" },
+  { type: "function", name: "seriesByTermKey", inputs: [{ name: "", type: "bytes32" }], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "approvedExpiry", inputs: [{ name: "", type: "address" }, { name: "", type: "uint256" }], outputs: [{ name: "", type: "bool" }], stateMutability: "view" },
+  { type: "function", name: "setApprovedExpiry", inputs: [{ name: "underlying", type: "address" }, { name: "timestamp", type: "uint256" }, { name: "approved", type: "bool" }], outputs: [], stateMutability: "nonpayable" },
+  { type: "function", name: "setPublicCreationEnabled", inputs: [{ name: "enabled", type: "bool" }], outputs: [], stateMutability: "nonpayable" },
+  { type: "function", name: "transferOwnership", inputs: [{ name: "newOwner", type: "address" }], outputs: [], stateMutability: "nonpayable" },
+  { type: "function", name: "acceptOwnership", inputs: [], outputs: [], stateMutability: "nonpayable" },
+  {
+    type: "function",
+    name: "createSeries",
+    inputs: [
+      { name: "underlying", type: "address" },
+      { name: "floorPrice", type: "uint256" },
+      { name: "capPrice", type: "uint256" },
+      { name: "expiry", type: "uint256" },
+      { name: "settlementAdapter", type: "address" },
+    ],
+    outputs: [{ name: "seriesAddress", type: "address" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "event",
+    name: "SeriesCreated",
+    inputs: [
+      { name: "seriesAddress", type: "address", indexed: true },
+      { name: "underlying", type: "address", indexed: true },
+      { name: "floorPrice", type: "uint256", indexed: false },
+      { name: "capPrice", type: "uint256", indexed: false },
+      { name: "expiry", type: "uint256", indexed: false },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "SeriesCreatedWithReference",
+    inputs: [
+      { name: "seriesAddress", type: "address", indexed: true },
+      { name: "underlying", type: "address", indexed: true },
+      { name: "floorPrice", type: "uint256", indexed: false },
+      { name: "capPrice", type: "uint256", indexed: false },
+      { name: "expiry", type: "uint256", indexed: false },
+      { name: "referenceFeed", type: "address", indexed: false },
+      { name: "referenceRoundId", type: "uint80", indexed: false },
+      { name: "referencePrice", type: "uint256", indexed: false },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "ExpiryApprovalUpdated",
+    inputs: [
+      { name: "underlying", type: "address", indexed: true },
+      { name: "timestamp", type: "uint256", indexed: true },
+      { name: "approved", type: "bool", indexed: false },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "OwnershipTransferStarted",
+    inputs: [
+      { name: "previousOwner", type: "address", indexed: true },
+      { name: "newOwner", type: "address", indexed: true },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "OwnershipTransferred",
+    inputs: [
+      { name: "previousOwner", type: "address", indexed: true },
+      { name: "newOwner", type: "address", indexed: true },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "PublicCreationToggled",
+    inputs: [{ name: "enabled", type: "bool", indexed: false }],
+    anonymous: false,
+  },
+] as const;
+
+export const riskSplitSeriesAbi = [
+  { type: "function", name: "factory", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "underlying", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "settlementAdapter", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "floorPrice", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "capPrice", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "expiry", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "referenceFeed", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "referenceRoundId", inputs: [], outputs: [{ name: "", type: "uint80" }], stateMutability: "view" },
+  { type: "function", name: "referencePrice", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "referenceBlock", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "formulaVersion", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "protectedToken", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "upsideToken", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "isSettled", inputs: [], outputs: [{ name: "", type: "bool" }], stateMutability: "view" },
+  { type: "function", name: "settledPrice", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "settledRoundId", inputs: [], outputs: [{ name: "", type: "uint80" }], stateMutability: "view" },
+  { type: "function", name: "settledTimestamp", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "protectedFraction", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "upsideFraction", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "mint", inputs: [{ name: "amount", type: "uint256" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "nonpayable" },
+  { type: "function", name: "combineAndRedeem", inputs: [{ name: "amount", type: "uint256" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "nonpayable" },
+  { type: "function", name: "redeemProtected", inputs: [{ name: "amount", type: "uint256" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "nonpayable" },
+  { type: "function", name: "redeemUpside", inputs: [{ name: "amount", type: "uint256" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "nonpayable" },
+  { type: "function", name: "settleSeriesWithFixing", inputs: [{ name: "roundId", type: "uint80" }], outputs: [], stateMutability: "nonpayable" },
+  {
+    type: "event",
+    name: "Minted",
+    inputs: [
+      { name: "caller", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "PairRedeemed",
+    inputs: [
+      { name: "caller", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "ProtectedRedeemed",
+    inputs: [
+      { name: "caller", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "underlyingOut", type: "uint256", indexed: false },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "UpsideRedeemed",
+    inputs: [
+      { name: "caller", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "underlyingOut", type: "uint256", indexed: false },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "SettledWithFixing",
+    inputs: [
+      { name: "settlementPrice", type: "uint256", indexed: false },
+      { name: "roundId", type: "uint80", indexed: false },
+      { name: "observedTimestamp", type: "uint256", indexed: false },
+      { name: "protectedFraction", type: "uint256", indexed: false },
+      { name: "upsideFraction", type: "uint256", indexed: false },
+    ],
+    anonymous: false,
+  },
+] as const;
+
+export const settlementAdapterAbi = [
+  { type: "function", name: "priceFeed", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "maxStaleness", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "decimals", inputs: [], outputs: [{ name: "", type: "uint8" }], stateMutability: "view" },
+  {
+    type: "function",
+    name: "getSettlementPrice",
+    inputs: [],
+    outputs: [
+      { name: "price", type: "uint256" },
+      { name: "updatedAt", type: "uint256" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "verifyFixingRound",
+    inputs: [
+      { name: "expiry", type: "uint256" },
+      { name: "roundId", type: "uint80" },
+    ],
+    outputs: [
+      {
+        name: "fixing",
+        type: "tuple",
+        components: [
+          { name: "roundId", type: "uint80" },
+          { name: "price", type: "uint256" },
+          { name: "updatedAt", type: "uint256" },
+          { name: "feed", type: "address" },
+          { name: "decimals", type: "uint8" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getFixingRound",
+    inputs: [{ name: "expiry", type: "uint256" }],
+    outputs: [
+      {
+        name: "fixing",
+        type: "tuple",
+        components: [
+          { name: "roundId", type: "uint80" },
+          { name: "price", type: "uint256" },
+          { name: "updatedAt", type: "uint256" },
+          { name: "feed", type: "address" },
+          { name: "decimals", type: "uint8" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "settleSeries",
+    inputs: [{ name: "series", type: "address" }, { name: "roundId", type: "uint80" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
+export const claimTokenAbi = [
+  { type: "function", name: "name", inputs: [], outputs: [{ name: "", type: "string" }], stateMutability: "view" },
+  { type: "function", name: "symbol", inputs: [], outputs: [{ name: "", type: "string" }], stateMutability: "view" },
+  { type: "function", name: "decimals", inputs: [], outputs: [{ name: "", type: "uint8" }], stateMutability: "view" },
+  { type: "function", name: "series", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "balanceOf", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "allowance", inputs: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "approve", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ name: "", type: "bool" }], stateMutability: "nonpayable" },
+  { type: "function", name: "transfer", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ name: "", type: "bool" }], stateMutability: "nonpayable" },
+] as const;
+
+export interface TokenFeedConfig {
+  symbol: string;
+  name: string;
+  tokenAddress: `0x${string}`;
+  feedAddress: `0x${string}`;
+  tokenDecimals: number;
+  feedDecimals: number;
+}
+
+export const TOKEN_FEED_REGISTRY: Record<string, TokenFeedConfig> = {
+  '0xb200000000000000000000C2e324d24d7eEcd1fb': {
+    symbol: 'AAPLc',
+    name: 'Apple Inc. (Tokenized)',
+    tokenAddress: '0xb200000000000000000000C2e324d24d7eEcd1fb',
+    feedAddress: '0x787f13dEa48Db0897CbCDD985de77809D837F988',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xb200000000000000000000d9192b6B456483C2E8': {
+    symbol: 'AMZNc',
+    name: 'Amazon.com Inc. (Tokenized)',
+    tokenAddress: '0xb200000000000000000000d9192b6B456483C2E8',
+    feedAddress: '0x06A8E4b3aBB3B7543d8396FB2B763d22820cB295',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xb200000000000000000000c85a31389D71F3ecfb': {
+    symbol: 'COINc',
+    name: 'Coinbase Global Inc. (Tokenized)',
+    tokenAddress: '0xb200000000000000000000c85a31389D71F3ecfb',
+    feedAddress: '0x408e44f504A7371a345F03a73dDC96A4b48e8aa7',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xB20000000000000000000019f6E7C675b73C2e4D': {
+    symbol: 'CRCLc',
+    name: 'Circle Internet Financial (Tokenized)',
+    tokenAddress: '0xB20000000000000000000019f6E7C675b73C2e4D',
+    feedAddress: '0x0231cF2635D1E17bB5c2462cc7504Ba1fBd61f33',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xb2000000000000000000002D0BA3164cc74f58B7': {
+    symbol: 'GOOGLc',
+    name: 'Alphabet Inc. (Tokenized)',
+    tokenAddress: '0xb2000000000000000000002D0BA3164cc74f58B7',
+    feedAddress: '0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xB2000000000000000000004AFF16039bA04bdFBc': {
+    symbol: 'INTCc',
+    name: 'Intel Corp. (Tokenized)',
+    tokenAddress: '0xB2000000000000000000004AFF16039bA04bdFBc',
+    feedAddress: '0xAB657C39bac0D5886250D70849e2E3E008F2EECB',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xb2000000000000000000008bC8786B856E61707C': {
+    symbol: 'METAc',
+    name: 'Meta Platforms Inc. (Tokenized)',
+    tokenAddress: '0xb2000000000000000000008bC8786B856E61707C',
+    feedAddress: '0x6526aE6797A76123638b863AeE4dD27Ba4E4b27D',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xB200000000000000000000Ab99cFa739E253872B': {
+    symbol: 'MSFTc',
+    name: 'Microsoft Corp. (Tokenized)',
+    tokenAddress: '0xB200000000000000000000Ab99cFa739E253872B',
+    feedAddress: '0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xb2000000000000000000004884b426556b92883d': {
+    symbol: 'MSTRc',
+    name: 'MicroStrategy Inc. (Tokenized)',
+    tokenAddress: '0xb2000000000000000000004884b426556b92883d',
+    feedAddress: '0xB3cE282CD188b35DA0E38D8Bc7d58e33173D202a',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xb20000000000000000000078ee7ce2fE4908108C': {
+    symbol: 'NVDAc',
+    name: 'NVIDIA Corp. (Tokenized)',
+    tokenAddress: '0xb20000000000000000000078ee7ce2fE4908108C',
+    feedAddress: '0x04689a41629776563E6822F76f2e57D148d28513',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xb200000000000000000000397293Cb8cda9a10c5': {
+    symbol: 'SNDKc',
+    name: 'SanDisk LLC (Tokenized)',
+    tokenAddress: '0xb200000000000000000000397293Cb8cda9a10c5',
+    feedAddress: '0x388b0dC46C0Fb05A74BeE0994fa5b02c6Fcca2eA',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xb2000000000000000000007b9fcbd005511aCBd5': {
+    symbol: 'SPCXc',
+    name: 'SpaceX Tokenized Shares',
+    tokenAddress: '0xb2000000000000000000007b9fcbd005511aCBd5',
+    feedAddress: '0x6A634B235903C4ad6376892180d6fF8612e3Fa68',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+  '0xb2000000000000000000001e800a7f5189430cD0': {
+    symbol: 'TSLAc',
+    name: 'Tesla Inc. (Tokenized)',
+    tokenAddress: '0xb2000000000000000000001e800a7f5189430cD0',
+    feedAddress: '0xFaf869185383a24F8cb00e27BdA6b63B9905DCb4',
+    tokenDecimals: 8,
+    feedDecimals: 8,
+  },
+};
