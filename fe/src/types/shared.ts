@@ -209,3 +209,7 @@ export interface TransactionLifecycle {
   canonicalSnapshot: SnapshotReference | null;
   reason: string | null;
 }
+
+export * from '../../../packages/shared/src/risksplit/contracts';
+export * from '../../../packages/shared/src/risksplit/venue';
+

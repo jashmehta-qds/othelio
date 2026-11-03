@@ -128,9 +128,9 @@
 
 **Interfaces:** The existing `/app/risk-split` list shows best executable bid/ask for both claims and book freshness. `/app/risk-split/[seriesAddress]` shows both depth ladders, recent confirmed trades, connected wallet balances, signed limit-order ticket, open-order cancel, mint pair, combine, expiry and settlement/redemption flows.
 
-- [ ] Write tests for empty/stale/disconnected book, network or wrong-chain wallet, 6/8/18-decimal amount parsing, partial fill, cancel pending/confirmed, expiry, insufficient allowance and transaction revert.
-- [ ] Implement subscribe/snapshot recovery, executable-price display, market selection, buy/sell order construction, signature UX, fill wallet confirmation and receipt state. No fabricated quote or false arbitrage: net arb needs executable stock and both claim routes at a stated size after fees/gas.
-- [ ] Keep payoff and claim management below the trading workspace; show actual fixing source and time. Run frontend tests, lint, typecheck, production build and browser flows at desktop/mobile widths.
+- [x] Write tests for empty/stale/disconnected book, network or wrong-chain wallet, 6/8/18-decimal amount parsing, partial fill, cancel pending/confirmed, expiry, insufficient allowance and transaction revert.
+- [x] Implement subscribe/snapshot recovery, executable-price display, market selection, buy/sell order construction, signature UX, fill wallet confirmation and receipt state. No fabricated quote or false arbitrage: net arb needs executable stock and both claim routes at a stated size after fees/gas.
+- [x] Keep payoff and claim management below the trading workspace; show actual fixing source and time. Run frontend tests, lint, typecheck, production build and browser flows at desktop/mobile widths.
 
 **Gate:** A user who has never used the admin console can find the market and complete mint, order, fill, cancel and redemption actions without manual contract calls.
 

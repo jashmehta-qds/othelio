@@ -7,6 +7,10 @@ import { PayoffVisualizer } from "./PayoffVisualizer";
 import { RiskSplitActionPanel } from "./RiskSplitActionPanel";
 import { useRiskSplit } from "./useRiskSplit";
 import { useRiskSplitMarkets } from "./useRiskSplitMarkets";
+import { useRiskSplitBook } from "./useRiskSplitBook";
+import { OrderBook } from "./OrderBook";
+import { OrderTicket } from "./OrderTicket";
+import { MyOrders } from "./MyOrders";
 import { profileForSeries, RISK_PROFILES, usdFromE8 } from "./riskSplitMarket";
 import styles from "./RiskSplitMarkets.module.css";
 
@@ -18,7 +22,12 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
   const { activeSeries, balances, isLoadingList, isErrorList, refetchList } = useRiskSplit(seriesAddress);
   const { assets } = useRiskSplitMarkets();
   const [claim, setClaim] = useState<"protected" | "upside">("protected");
+  const [ticketPrice, setTicketPrice] = useState<string>("");
+  const [ticketSide, setTicketSide] = useState<"BUY" | "SELL">("BUY");
+  const [selectedOrderHash, setSelectedOrderHash] = useState<string | undefined>();
   const [nowSeconds] = useState(() => Math.floor(Date.now() / 1000));
+
+  const bookData = useRiskSplitBook(seriesAddress, claim);
 
   if (isLoadingList) return <main className={`app-page-frame ${styles.page}`}><Link href="/app/risk-split" className={styles.backLink}>← All markets</Link><div className={`ui-panel ${styles.state}`}>Loading series…</div></main>;
   if (isErrorList) return <main className={`app-page-frame ${styles.page}`}><Link href="/app/risk-split" className={styles.backLink}>← All markets</Link><div className={`ui-panel ${styles.state}`}><h3>Series data is unavailable</h3><p>We could not verify this market. Try again before taking any action.</p><button type="button" onClick={() => void refetchList()}>Try again</button></div></main>;
@@ -32,6 +41,11 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
   const floor = Number(activeSeries.floorPrice) / 1e8;
   const cap = Number(activeSeries.capPrice) / 1e8;
 
+  const currentClaimToken =
+    claim === "protected"
+      ? activeSeries.protectedTokenAddress || "0x0000000000000000000000000000000000000000"
+      : activeSeries.upsideTokenAddress || "0x0000000000000000000000000000000000000000";
+
   return <main className={`app-page-frame ${styles.page}`}>
     <Link href="/app/risk-split" className={styles.backLink}>← All markets</Link>
     <header className={styles.detailHead}>
@@ -41,23 +55,44 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
     <div className={styles.balances}><div><span>In wallet</span><strong>{balances.underlying} {symbol}</strong></div><div><span>Protected</span><strong>{balances.protected}</strong></div><div><span>Upside</span><strong>{balances.upside}</strong></div></div>
     <div className={styles.workGrid}>
       <section className={`ui-panel ${styles.bookPanel}`} aria-labelledby="order-book-heading">
-        <div className={styles.panelHeading}><h2 id="order-book-heading">Order book</h2><span>USDC quoted · no live venue</span></div>
+        <div className={styles.panelHeading}><h2 id="order-book-heading">Order book</h2><span>0x v4 limit order book · Base</span></div>
         <div className={styles.bookTabs} role="tablist" aria-label="Claim book">
           <button type="button" role="tab" aria-selected={claim === "protected"} onClick={() => setClaim("protected")}>Protected / USDC</button>
           <button type="button" role="tab" aria-selected={claim === "upside"} onClick={() => setClaim("upside")}>Upside / USDC</button>
         </div>
-        <div className={styles.bookGrid}><div className={styles.bookSide}><h3>Bids</h3><div><span>Price</span><span>Size</span></div></div><div className={styles.bookSide}><h3>Asks</h3><div><span>Price</span><span>Size</span></div></div></div>
-        <div className={styles.bookEmpty}><strong>Order book not connected</strong><p>There are no verified bids, asks or recent trades for this series yet.</p></div>
+        <OrderBook
+          claimType={claim}
+          bids={bookData.bids}
+          asks={bookData.asks}
+          recentTrades={bookData.recentTrades}
+          spreadUsd={bookData.spreadUsd}
+          isLoading={bookData.isLoading}
+          sequence={bookData.sequence}
+          onSelectPrice={(p, s, hash) => {
+            setTicketPrice(p);
+            setTicketSide(s);
+            setSelectedOrderHash(hash);
+          }}
+        />
       </section>
       <aside className={`ui-panel ${styles.ticketPanel}`} aria-label="Limit order ticket">
-        <div className={styles.panelHeading}><h2>Limit order</h2><span>{claim === "protected" ? "Protected" : "Upside"}</span></div>
-        <div className={styles.orderSides}><button type="button" disabled>Buy</button><button type="button" disabled>Sell</button></div>
-        <label className={styles.orderField}>Limit price · USDC<input value="" readOnly disabled placeholder="—" /></label>
-        <label className={styles.orderField}>Amount · claims<input value="" readOnly disabled placeholder="—" /></label>
-        <button type="button" className={styles.disabledAction} disabled>Trading unavailable</button>
-        <p>Order entry opens when an executable venue is connected and this series has a verified book.</p>
-        <a href="#payoff" className={styles.openLink}>Understand this payoff ↗</a>
+        <OrderTicket
+          seriesAddress={seriesAddress}
+          claimType={claim}
+          claimTokenAddress={currentClaimToken}
+          symbol={symbol}
+          seriesExpiryTimestamp={activeSeries.expiryTimestamp}
+          initialPrice={ticketPrice}
+          initialSide={ticketSide}
+          initialOrderHash={selectedOrderHash}
+          onOrderCreated={() => {
+            bookData.refetch();
+          }}
+        />
       </aside>
+    </div>
+    <div className="mt-4">
+      <MyOrders seriesAddress={seriesAddress} />
     </div>
     <div className={styles.belowGrid}><section><h2>Mint pair & manage claims</h2><RiskSplitActionPanel seriesAddress={seriesAddress} underlyingSymbol={symbol} /></section><section><h2>Market terms</h2><div className={`ui-panel ${styles.bookPanel}`}><div className={styles.bookSide}><div><span>One {symbol} deposited</span><strong>1 Protected + 1 Upside</strong></div><div><span>Protected floor</span><strong>{usdFromE8(activeSeries.floorPrice)}</strong></div><div><span>Protected cap</span><strong>{usdFromE8(activeSeries.capPrice)}</strong></div><div><span>Expiry fixing</span><strong>{formatExpiry(activeSeries.expiryTimestamp)}</strong></div><div><span>Reference state</span><strong>{asset?.status ?? "Unavailable"}</strong></div></div></div></section></div>
     <section id="payoff" className={styles.payoffSection}><h2>Payoff & terms</h2><p>Explore the stock-token allocation at expiry. The simulation is not a live quote for either claim.</p><PayoffVisualizer key={activeSeries.seriesAddress} floorPrice={floor} capPrice={cap} /></section>

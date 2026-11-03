@@ -376,8 +376,8 @@ export class OrderbookService {
         );
 
         // Group into depth levels
-        const bidLevels = new Map<string, { priceUsdE6: bigint; amountClaim: bigint; count: number }>();
-        const askLevels = new Map<string, { priceUsdE6: bigint; amountClaim: bigint; count: number }>();
+        const bidLevels = new Map<string, { priceUsdE6: bigint; amountClaim: bigint; count: number; orderHash: string }>();
+        const askLevels = new Map<string, { priceUsdE6: bigint; amountClaim: bigint; count: number; orderHash: string }>();
 
         for (const row of ordersRes.rows || []) {
           const side = row.side;
@@ -398,7 +398,12 @@ export class OrderbookService {
             existing.amountClaim += claimAmt;
             existing.count += 1;
           } else {
-            targetMap.set(priceKey, { priceUsdE6: priceE6, amountClaim: claimAmt, count: 1 });
+            targetMap.set(priceKey, {
+              priceUsdE6: priceE6,
+              amountClaim: claimAmt,
+              count: 1,
+              orderHash: row.order_hash,
+            });
           }
         }
 
@@ -412,6 +417,7 @@ export class OrderbookService {
             amountClaim: (Number(lvl.amountClaim) / 1e8).toFixed(4),
             totalClaim: (Number(runningBidTotal) / 1e8).toFixed(4),
             orderCount: lvl.count,
+            orderHash: lvl.orderHash,
           });
         }
 
@@ -425,6 +431,7 @@ export class OrderbookService {
             amountClaim: (Number(lvl.amountClaim) / 1e8).toFixed(4),
             totalClaim: (Number(runningAskTotal) / 1e8).toFixed(4),
             orderCount: lvl.count,
+            orderHash: lvl.orderHash,
           });
         }
 

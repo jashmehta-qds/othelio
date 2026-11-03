@@ -5,7 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import type { AssetCatalogItem } from "../../../../packages/shared/src/portfolio";
 import { fetchApi } from "@/lib/api";
 import type { RiskSplitSeriesData } from "./useRiskSplit";
-import { isOpenSeries, profileForSeries } from "./riskSplitMarket";
+import { isOpenSeries, profileForSeries, type RiskProfile } from "./riskSplitMarket";
+
+export interface RiskSplitMarket {
+  series: RiskSplitSeriesData;
+  asset: AssetCatalogItem | null;
+  profile: RiskProfile;
+}
 
 const RISK_SPLIT_CHAIN_ID = 8453;
 

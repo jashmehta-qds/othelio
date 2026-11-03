@@ -6,6 +6,7 @@ export interface OrderBookLevel {
   amountClaim: string;
   totalClaim: string;
   orderCount: number;
+  orderHash?: string;
 }
 
 export interface OrderBookTrade {

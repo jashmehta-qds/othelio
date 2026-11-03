@@ -292,7 +292,20 @@ export const RISK_SPLIT_SERIES_ABI = [
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'nonpayable',
   },
+  {
+    type: 'function',
+    name: 'settleSeriesWithFixing',
+    inputs: [{ name: 'roundId', type: 'uint80' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
 ] as const;
+
+export {
+  ZERO_EX_EXCHANGE_PROXY_BASE,
+  ZERO_EX_LIMIT_ORDER_ABI,
+  seriesFactoryAbi,
+} from '@othelio/shared';
 
 export const SETTLEMENT_ADAPTER_ABI = [
   {
