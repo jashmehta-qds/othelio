@@ -1,0 +1,710 @@
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  color: var(--ink);
+}
+
+.heading {
+  border-bottom: 1px solid var(--line);
+  padding: 0 0 24px;
+}
+
+.heading h1 {
+  font-size: 34px;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  font-weight: 600;
+  margin: 0 0 9px;
+}
+
+.heading p {
+  max-width: 66ch;
+  color: var(--muted-ink);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.filters {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 20px 0;
+  flex-wrap: wrap;
+}
+
+.search {
+  max-width: 350px;
+  width: 100%;
+}
+
+.search input {
+  width: 100%;
+  min-height: 40px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 14px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.assetChips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.assetChip {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted-ink);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.assetChip:hover {
+  color: var(--ink);
+  border-color: var(--muted-ink);
+}
+
+.assetChipActive {
+  background: var(--panel-2);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+/* Explore Grid */
+.tilesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  margin-top: 10px;
+}
+
+.tileCard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.tileCard:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.tileHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tileSymbol {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.tileName {
+  font-size: 12px;
+  color: var(--muted-ink);
+  margin-top: 2px;
+}
+
+.tilePrice {
+  text-align: right;
+}
+
+.tileSpotPrice {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tileExpiry {
+  font-size: 11px;
+  color: var(--muted-ink);
+  margin-top: 3px;
+}
+
+.targetsBreakdown {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 12px;
+  background: var(--panel-2);
+  border-radius: 9px;
+  text-align: center;
+}
+
+.targetMiniItem span:first-child {
+  font-size: 9px;
+  text-transform: uppercase;
+  color: var(--muted-ink);
+  display: block;
+}
+
+.targetMiniItem span:last-child {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.tileFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.tileAction {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Detail Page Layout */
+.backLink {
+  display: inline-block;
+  color: var(--muted-ink);
+  font-size: 13px;
+  text-decoration: none;
+  margin-bottom: 20px;
+  transition: color 0.15s ease;
+}
+
+.backLink:hover {
+  color: var(--ink);
+}
+
+.detailHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.detailIdentity h1 {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 0 0 6px;
+}
+
+.detailIdentity p {
+  margin: 0;
+  color: var(--muted-ink);
+  font-size: 13px;
+}
+
+.detailPriceBlock {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.detailPrice {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.detailMeta {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.expiryBadge {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* 4 Targets Chip Selector */
+.targetsContainer {
+  margin: 24px 0 20px;
+}
+
+.targetsTitle {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--muted-ink);
+  margin-bottom: 10px;
+}
+
+.targetsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.targetChip {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.targetChip:hover {
+  border-color: var(--muted-ink);
+}
+
+.targetChipActive {
+  background: var(--panel-2);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.targetChipLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.targetChipStrike {
+  font-size: 18px;
+  font-weight: 750;
+  margin: 4px 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.targetChipDesc {
+  font-size: 11px;
+  color: var(--muted-ink);
+}
+
+/* Two-column Work Grid */
+.workGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(360px, 0.95fr);
+  gap: 28px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+/* Chart Panel */
+.chartPanel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.chartHeader h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.chartSvg {
+  width: 100%;
+  height: 180px;
+  overflow: visible;
+}
+
+/* Order Book Depth */
+.bookPanel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+  margin-bottom: 24px;
+}
+
+.bookTabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.bookTab {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted-ink);
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bookTabActive {
+  border-color: var(--accent);
+  color: var(--ink);
+  background: var(--panel);
+}
+
+.bookGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.bookColumnTitle {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--muted-ink);
+  font-weight: 600;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+}
+
+.bookRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--line);
+}
+
+.bookRow:last-child {
+  border-bottom: 0;
+}
+
+.bidPrice {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.askPrice {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.bookEmpty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 30px 0;
+  color: var(--muted-ink);
+  font-size: 13px;
+}
+
+/* Ticket Panel */
+.ticketPanel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.ticketTypeTabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  background: var(--panel-2);
+  padding: 4px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.ticketTypeTab {
+  border: 0;
+  background: transparent;
+  color: var(--muted-ink);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ticketTypeTabActive {
+  background: var(--accent);
+  color: #111;
+}
+
+.ticketClaimTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.ticketClaimTab {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted-ink);
+  padding: 9px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
+.ticketClaimTabActive {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.inputGroup {
+  margin-bottom: 16px;
+}
+
+.inputGroup label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted-ink);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.inputWrapper {
+  display: flex;
+  align-items: center;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.inputWrapper input {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  padding: 12px 0;
+  font-size: 16px;
+  font-weight: 700;
+  outline: none;
+}
+
+.inputUnit {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-ink);
+  white-space: nowrap;
+}
+
+.sweepSummary {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  margin: 18px 0;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted-ink);
+}
+
+.summaryRow strong {
+  color: var(--ink);
+}
+
+.actionButton {
+  width: 100%;
+  border: 0;
+  background: var(--accent);
+  color: #111;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 13px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.actionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Vault Actions (Mint / Combine / Redeem) */
+.vaultPanel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+  margin-top: 24px;
+}
+
+.vaultTabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+/* My Orders & Positions */
+.ordersPanel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+  margin-top: 24px;
+}
+
+.ordersHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+.ordersHeader h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink);
+}
+
+.refreshButton {
+  background: transparent;
+  border: 0;
+  color: var(--muted-ink);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+
+.refreshButton:hover {
+  color: var(--ink);
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  margin-bottom: 20px;
+}
+
+.ordersTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ordersTable th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--muted-ink);
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+
+.ordersTable td {
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.ordersTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.cancelBtn {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: #f87171;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cancelBtn:hover {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: #f87171;
+}
+
+.cancelBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sideBuyText {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.sideSellText {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.emptyStateText {
+  text-align: center;
+  color: var(--muted-ink);
+  padding: 24px 0;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .workGrid {
+    grid-template-columns: 1fr;
+  }
+  .targetsGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .targetsGrid {
+    grid-template-columns: 1fr;
+  }
+  .bookGrid {
+    grid-template-columns: 1fr;
+  }
+}

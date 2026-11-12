@@ -213,4 +213,9 @@ export interface TransactionLifecycle {
 export * from '../../../packages/shared/src/risksplit/contracts';
 export * from '../../../packages/shared/src/risksplit/venue';
 export * from '../../../packages/shared/src/risksplit/deployment';
+export * from '../../../packages/shared/src/upside/contracts';
+export * from '../../../packages/shared/src/upside/venue';
+export * from '../../../packages/shared/src/upside/deployment';
+export * from '../../../packages/shared/src/upside/types';
+export * from '../../../packages/shared/src/admin/types';
 
