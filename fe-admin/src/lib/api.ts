@@ -8,6 +8,10 @@ import {
   AdminMarketPreviewResponse,
   AdminOperationsResponse,
   AdminTransactionPreview,
+  AdminUpsideRoundItem,
+  AdminUpsideMarketItem,
+  AdminUpsideRoundPreviewRequest,
+  AdminUpsideRoundPreviewResponse,
 } from '@othelio/shared';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
@@ -121,6 +125,33 @@ class AdminApiClient {
   async getOperations(chainId?: number): Promise<AdminOperationsResponse> {
     const q = chainId ? `?chainId=${chainId}` : '';
     return this.fetchJson<AdminOperationsResponse>(`/v1/admin/operations${q}`);
+  }
+
+  async getUpsideRounds(chainId?: number): Promise<{ data: AdminUpsideRoundItem[] }> {
+    const q = chainId ? `?chainId=${chainId}` : '';
+    return this.fetchJson<{ data: AdminUpsideRoundItem[] }>(`/v1/admin/upside/rounds${q}`);
+  }
+
+  async previewUpsideRound(params: AdminUpsideRoundPreviewRequest): Promise<AdminUpsideRoundPreviewResponse> {
+    return this.fetchJson<AdminUpsideRoundPreviewResponse>('/v1/admin/upside/rounds/preview', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+  async getUpsideMarkets(chainId?: number, roundId?: number): Promise<{ data: AdminUpsideMarketItem[] }> {
+    const params = new URLSearchParams();
+    if (chainId) params.append('chainId', chainId.toString());
+    if (roundId !== undefined) params.append('roundId', roundId.toString());
+    const q = params.toString() ? `?${params.toString()}` : '';
+    return this.fetchJson<{ data: AdminUpsideMarketItem[] }>(`/v1/admin/upside/markets${q}`);
+  }
+
+  async togglePublicCreation(params: { chainId?: number; roundId: number; enabled: boolean }): Promise<AdminTransactionPreview> {
+    return this.fetchJson<AdminTransactionPreview>('/v1/admin/upside/rounds/toggle-public', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
   }
 }
 

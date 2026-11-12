@@ -6,22 +6,25 @@ import { OverviewView } from '../components/OverviewView';
 import { AssetsView } from '../components/AssetsView';
 import { MarketsView } from '../components/MarketsView';
 import { OperationsView } from '../components/OperationsView';
+import { UpsideRoundsView } from '../components/UpsideRoundsView';
 import {
   AdminOverviewResponse,
   AdminAssetItem,
   AdminMarketItem,
   AdminOperationsResponse,
+  AdminUpsideRoundItem,
 } from '@othelio/shared';
 import { adminApi } from '../lib/api';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 export default function AdminPage() {
-  const [currentTab, setCurrentTab] = useState<'overview' | 'assets' | 'markets' | 'operations'>('overview');
+  const [currentTab, setCurrentTab] = useState<'overview' | 'assets' | 'rounds' | 'markets' | 'operations'>('overview');
 
   const { isOwner, isAuthenticated, chainId } = useAdminAuth();
 
   const [overview, setOverview] = useState<AdminOverviewResponse | null>(null);
   const [assets, setAssets] = useState<AdminAssetItem[]>([]);
+  const [rounds, setRounds] = useState<AdminUpsideRoundItem[]>([]);
   const [markets, setMarkets] = useState<AdminMarketItem[]>([]);
   const [operations, setOperations] = useState<AdminOperationsResponse | null>(null);
 
@@ -44,6 +47,15 @@ export default function AdminPage() {
       } else if (currentTab === 'assets') {
         const data = await adminApi.getAssets(chainId);
         setAssets(data.data);
+      } else if (currentTab === 'rounds') {
+        const [roundsData, assetsData] = await Promise.all([
+          adminApi.getUpsideRounds(chainId),
+          assets.length === 0 ? adminApi.getAssets(chainId) : Promise.resolve({ data: assets }),
+        ]);
+        setRounds(roundsData.data);
+        if (assets.length === 0 && assetsData.data) {
+          setAssets(assetsData.data);
+        }
       } else if (currentTab === 'markets') {
         const data = await adminApi.getMarkets(chainId);
         setMarkets(data.data);
@@ -95,6 +107,17 @@ export default function AdminPage() {
 
         {isAuthenticated && currentTab === 'assets' && (
           <AssetsView assets={assets} isLoading={isLoading} onRefresh={fetchData} isOwner={isOwner} />
+        )}
+
+        {isAuthenticated && currentTab === 'rounds' && (
+          <UpsideRoundsView
+            rounds={rounds}
+            assets={assets}
+            isLoading={isLoading}
+            onRefresh={fetchData}
+            isOwner={isOwner}
+            chainId={chainId}
+          />
         )}
 
         {isAuthenticated && currentTab === 'markets' && (

@@ -12,6 +12,8 @@ import { AdminMarketsService } from './markets/admin-markets.service';
 import { AdminMarketsController } from './markets/admin-markets.controller';
 import { AdminOperationsService } from './operations/admin-operations.service';
 import { AdminOperationsController } from './operations/admin-operations.controller';
+import { AdminUpsideService } from './upside/admin-upside.service';
+import { AdminUpsideController } from './upside/admin-upside.controller';
 
 @Module({
   imports: [DatabaseModule, RiskSplitModule],
@@ -21,6 +23,7 @@ import { AdminOperationsController } from './operations/admin-operations.control
     AdminAssetsController,
     AdminMarketsController,
     AdminOperationsController,
+    AdminUpsideController,
   ],
   providers: [
     AdminAuthService,
@@ -29,6 +32,7 @@ import { AdminOperationsController } from './operations/admin-operations.control
     AdminAssetsService,
     AdminMarketsService,
     AdminOperationsService,
+    AdminUpsideService,
   ],
   exports: [AdminAuthService, AdminGuard],
 })

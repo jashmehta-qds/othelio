@@ -218,8 +218,17 @@ export interface AdminOperationQueueItem {
   auditStatus: string;
 }
 
+export interface AdminRiskSplitIndexerState {
+  status: 'ACTIVE' | 'PAUSED';
+  isPaused: boolean;
+  lastIndexedBlock: number;
+  observedHeadBlock: number;
+  blockLag: number;
+}
+
 export interface AdminOperationsResponse {
   asOfBlock: number;
+  riskSplitIndexer?: AdminRiskSplitIndexerState;
   expiryQueue: AdminOperationQueueItem[];
   settlementAuditTrail: Array<{
     seriesAddress: string;
@@ -236,4 +245,89 @@ export interface AdminOperationsResponse {
     seriesAddress?: string;
     timestamp: string;
   }>;
+}
+
+export interface AdminUpsideStrikePreview {
+  targetLabel: 'Starting price' | 'Reach' | 'Strong move' | 'Long shot' | 'Custom';
+  strikePrice: string;
+  strikePriceFormatted: string;
+}
+
+export interface AdminUpsideRoundPreviewRequest {
+  chainId?: number;
+  underlying: string;
+  expiryTimestamp: number;
+  expectedMove?: string;
+  roundStart?: number;
+  strikeTick?: string;
+  minStrike?: string;
+  maxStrike?: string;
+  publicCreationEnabled?: boolean;
+}
+
+export interface AdminUpsideRoundPreviewResponse {
+  underlying: {
+    address: string;
+    symbol: string;
+    decimals: number;
+    feedAddress: string;
+  };
+  referencePrice: string;
+  referencePriceFormatted: string;
+  referenceRoundId: string;
+  referenceTime: number;
+  expectedMove: string;
+  expectedMoveFormatted: string;
+  roundStart: number;
+  expiryTimestamp: number;
+  expiryIso: string;
+  calendarCheck: {
+    valid: boolean;
+    sessionCloseDeltaMinutes: number;
+    note?: string;
+  };
+  strikes: AdminUpsideStrikePreview[];
+  minStrike: string;
+  maxStrike: string;
+  strikeTick: string;
+  publicCreationEnabled: boolean;
+  factoryAddress: string;
+  transactions: AdminTransactionPreview[];
+}
+
+export interface AdminUpsideMarketItem {
+  seriesAddress: string;
+  roundId: number;
+  strikePrice: string;
+  strikePriceFormatted: string;
+  targetLabel?: string;
+  expiryTimestamp: number;
+  expiryIso: string;
+  isSettled: boolean;
+  settledPriceFormatted: string | null;
+  upsideTokenAddress: string;
+  residualTokenAddress: string;
+  creatorAddress: string;
+  createdAt: string;
+}
+
+export interface AdminUpsideRoundItem {
+  roundId: number;
+  chainId: number;
+  factoryAddress: string;
+  underlying: {
+    address: string;
+    symbol: string;
+    decimals: number;
+  };
+  referencePriceFormatted: string;
+  expectedMoveFormatted: string;
+  expiryTimestamp: number;
+  expiryIso: string;
+  isExpired: boolean;
+  isSettled: boolean;
+  marketsCount: number;
+  publicCreationEnabled: boolean;
+  markets: AdminUpsideMarketItem[];
+  createdAt: string;
 }

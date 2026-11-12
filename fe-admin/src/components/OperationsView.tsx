@@ -12,11 +12,12 @@ interface OperationsViewProps {
 }
 
 export function OperationsView({ operations, isLoading, onRefresh, isOwner }: OperationsViewProps) {
-  const { expiryQueue, settlementAuditTrail, incidentAlerts, asOfBlock } = operations || {
+  const { expiryQueue, settlementAuditTrail, incidentAlerts, asOfBlock, riskSplitIndexer } = operations || {
     expiryQueue: [],
     settlementAuditTrail: [],
     incidentAlerts: [],
     asOfBlock: 0,
+    riskSplitIndexer: undefined,
   };
 
   const { writeContractAsync, isPending } = useWriteContract();
@@ -88,6 +89,70 @@ export function OperationsView({ operations, isLoading, onRefresh, isOwner }: Op
           ))}
         </div>
       )}
+
+      {/* Indexers Health & Independent Cursor Status */}
+      <div className="bg-[#161715] border border-[#292a27] rounded-lg p-6 space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold tracking-wider uppercase font-mono text-white">
+            Protocol Indexer Subsystems
+          </h2>
+          <p className="text-xs text-zinc-400 font-mono mt-1">
+            Independent block synchronization cursors and pause state monitors.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+          {/* Main & Upside Indexer */}
+          <div className="p-4 rounded-lg bg-[#10110f] border border-[#292a27] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-white">Main / Upside Indexer</span>
+              <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-950/40 text-emerald-400 border border-emerald-800">
+                ACTIVE
+              </span>
+            </div>
+            <div className="text-zinc-400 flex justify-between">
+              <span>Current Block:</span>
+              <span className="text-white font-bold">#{asOfBlock || '—'}</span>
+            </div>
+            <p className="text-[10px] text-zinc-500 pt-1 border-t border-[#292a27]/50">
+              Continuously indexes Baskets, asset price observations, and Upside rounds.
+            </p>
+          </div>
+
+          {/* Risk Split Indexer */}
+          <div className="p-4 rounded-lg bg-[#10110f] border border-[#292a27] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-white">Risk Split Indexer</span>
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] border ${
+                  riskSplitIndexer?.status === 'PAUSED'
+                    ? 'bg-amber-950/40 text-amber-400 border-amber-800'
+                    : 'bg-emerald-950/40 text-emerald-400 border-emerald-800'
+                }`}
+              >
+                {riskSplitIndexer?.status || 'ACTIVE'}
+              </span>
+            </div>
+            <div className="text-zinc-400 flex justify-between">
+              <span>Resume Cursor:</span>
+              <span className="text-white font-bold">
+                {riskSplitIndexer ? `#${riskSplitIndexer.lastIndexedBlock}` : '—'}
+              </span>
+            </div>
+            <div className="text-zinc-400 flex justify-between">
+              <span>Block Lag:</span>
+              <span className={riskSplitIndexer && riskSplitIndexer.blockLag > 0 ? 'text-amber-400' : 'text-zinc-300'}>
+                {riskSplitIndexer ? `${riskSplitIndexer.blockLag} blocks` : '—'}
+              </span>
+            </div>
+            <p className="text-[10px] text-zinc-500 pt-1 border-t border-[#292a27]/50">
+              {riskSplitIndexer?.isPaused
+                ? 'PAUSED via RISK_SPLIT_INDEXING_ENABLED=false. Cursor safely preserved without affecting other protocols.'
+                : 'Active independent cursor (worker: risksplit).'}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Expiry & Settlement Queue */}
       <div className="bg-[#161715] border border-[#292a27] rounded-lg p-6 space-y-4">

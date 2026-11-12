@@ -37,9 +37,53 @@ export class AdminOperationsService {
       }
     }
 
+    const isRiskSplitPaused =
+      process.env.RISK_SPLIT_INDEXING_ENABLED === 'false' ||
+      process.env.RISK_SPLIT_INDEXING_ENABLED === '0';
+
+    let riskSplitLastBlock = 0;
+    let riskSplitHeadBlock = 0;
+    let riskSplitLag = 0;
+
+    if (this.db) {
+      try {
+        const rsStateRes = await this.db.query(
+          `SELECT next_block, observed_head_block
+           FROM indexer_worker_state
+           WHERE chain_id = $1 AND worker_name = 'risksplit'
+           LIMIT 1`,
+          [chainId],
+        );
+        if (rsStateRes?.rows?.length > 0) {
+          const row = rsStateRes.rows[0];
+          riskSplitLastBlock = row.next_block == null ? 0 : Math.max(0, Number(row.next_block) - 1);
+          riskSplitHeadBlock = row.observed_head_block == null ? riskSplitLastBlock : Number(row.observed_head_block);
+          riskSplitLag = Math.max(0, riskSplitHeadBlock - riskSplitLastBlock);
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to query risksplit worker state: ${err}`);
+      }
+    }
+
+    const riskSplitIndexer = {
+      status: isRiskSplitPaused ? ('PAUSED' as const) : ('ACTIVE' as const),
+      isPaused: isRiskSplitPaused,
+      lastIndexedBlock: riskSplitLastBlock,
+      observedHeadBlock: riskSplitHeadBlock,
+      blockLag: riskSplitLag,
+    };
+
     const expiryQueue: AdminOperationQueueItem[] = [];
     const settlementAuditTrail: AdminOperationsResponse['settlementAuditTrail'] = [];
     const incidentAlerts: AdminOperationsResponse['incidentAlerts'] = [];
+
+    if (isRiskSplitPaused) {
+      incidentAlerts.push({
+        severity: 'INFO',
+        message: `Risk Split indexing is currently PAUSED (RISK_SPLIT_INDEXING_ENABLED=false). Resume cursor preserved at #${riskSplitLastBlock}.`,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     // Add indexer alert if lagging
     if (!isIndexerFresh) {
@@ -154,6 +198,7 @@ export class AdminOperationsService {
 
     return {
       asOfBlock,
+      riskSplitIndexer,
       expiryQueue,
       settlementAuditTrail,
       incidentAlerts,

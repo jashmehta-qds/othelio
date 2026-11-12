@@ -5,8 +5,8 @@ import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface AdminHeaderProps {
-  currentTab: 'overview' | 'assets' | 'markets' | 'operations';
-  onSelectTab: (tab: 'overview' | 'assets' | 'markets' | 'operations') => void;
+  currentTab: 'overview' | 'assets' | 'rounds' | 'markets' | 'operations';
+  onSelectTab: (tab: 'overview' | 'assets' | 'rounds' | 'markets' | 'operations') => void;
   indexerLag?: number;
   lastIndexedBlock?: number;
 }
@@ -56,7 +56,7 @@ export function AdminHeader({
           </div>
 
           <nav className="flex space-x-1">
-            {(['overview', 'assets', 'markets', 'operations'] as const).map((tab) => (
+            {(['overview', 'assets', 'rounds', 'markets', 'operations'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => onSelectTab(tab)}
@@ -66,7 +66,7 @@ export function AdminHeader({
                     : 'text-zinc-400 hover:text-white hover:bg-[#161715]'
                 }`}
               >
-                {tab}
+                {tab === 'rounds' ? 'Upside Rounds' : tab}
               </button>
             ))}
           </nav>

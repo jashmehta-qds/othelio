@@ -502,6 +502,25 @@ export const upsideFixingAdapterAbi = [
   },
   {
     type: "function",
+    name: "getFixingRound",
+    inputs: [{ name: "expiry", type: "uint256" }],
+    outputs: [
+      {
+        name: "fixing",
+        type: "tuple",
+        components: [
+          { name: "roundId", type: "uint80" },
+          { name: "price", type: "uint256" },
+          { name: "updatedAt", type: "uint256" },
+          { name: "feed", type: "address" },
+          { name: "decimals", type: "uint8" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "settleSeries",
     inputs: [
       { name: "series", type: "address" },
