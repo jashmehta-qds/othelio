@@ -29,6 +29,11 @@ export default function AdminPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
+    if (!isAuthenticated) {
+      setFetchError(null);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setFetchError(null);
 
@@ -51,7 +56,7 @@ export default function AdminPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentTab, chainId]);
+  }, [currentTab, chainId, isAuthenticated]);
 
   useEffect(() => {
     fetchData();
@@ -67,6 +72,11 @@ export default function AdminPage() {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
+        {!isAuthenticated && (
+          <div className="mb-6 rounded-lg border border-[#292a27] bg-[#161715] p-5 text-sm text-zinc-300">
+            Connect the configured factory owner wallet and sign in to load operator data. The factory must be deployed and configured in the backend first.
+          </div>
+        )}
         {fetchError && (
           <div className="mb-6 p-4 rounded-lg bg-red-950/40 border border-red-900 text-xs font-mono text-red-300 flex items-center justify-between">
             <span>Error: {fetchError}</span>
@@ -79,19 +89,19 @@ export default function AdminPage() {
           </div>
         )}
 
-        {currentTab === 'overview' && (
+        {isAuthenticated && currentTab === 'overview' && (
           <OverviewView overview={overview} isLoading={isLoading} onRefresh={fetchData} />
         )}
 
-        {currentTab === 'assets' && (
+        {isAuthenticated && currentTab === 'assets' && (
           <AssetsView assets={assets} isLoading={isLoading} onRefresh={fetchData} isOwner={isOwner} />
         )}
 
-        {currentTab === 'markets' && (
+        {isAuthenticated && currentTab === 'markets' && (
           <MarketsView markets={markets} isLoading={isLoading} onRefresh={fetchData} isOwner={isOwner} />
         )}
 
-        {currentTab === 'operations' && (
+        {isAuthenticated && currentTab === 'operations' && (
           <OperationsView
             operations={operations}
             isLoading={isLoading}
@@ -102,7 +112,8 @@ export default function AdminPage() {
       </main>
 
       <footer className="border-t border-[#292a27] py-6 px-6 text-center text-xs font-mono text-zinc-600">
-        Othelio Risk Split Protocol · Base Mainnet · Deterministic Payoff & Verifiable Fixing Console
+        Othelio Risk Split Protocol · {chainId === 31337 ? 'Base Fork' : 'Base Mainnet'} ·
+        Deterministic Payoff & Verifiable Fixing Console
       </footer>
     </div>
   );

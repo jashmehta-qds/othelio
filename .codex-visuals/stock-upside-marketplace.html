@@ -1,0 +1,285 @@
+<div id="upside-marketplace" class="um-app">
+  <style>
+    #upside-marketplace{--ink:#f3f6ef;--muted:#a1aaa0;--line:#303a32;--bg:#0d120f;--panel:#18221b;--green:#b8f17d;--soft:#243528;color:var(--ink);background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,sans-serif;border-radius:18px;overflow:hidden;max-width:1024px;margin:auto}
+    #upside-marketplace *{box-sizing:border-box}
+    #upside-marketplace button,#upside-marketplace input,#upside-marketplace select{font:inherit}
+    #upside-marketplace button{cursor:pointer}
+    #upside-marketplace .top{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:1px solid var(--line);gap:18px}
+    #upside-marketplace .brand{font-size:22px;font-weight:800;letter-spacing:-.07em;white-space:nowrap}
+    #upside-marketplace .brand i{font-style:normal;color:var(--green)}
+    #upside-marketplace .nav{display:flex;gap:22px;align-items:center}
+    #upside-marketplace .nav button{border:0;background:none;color:var(--muted);font-size:13px;padding:5px 0}
+    #upside-marketplace .nav button.active{color:var(--ink);font-weight:700}
+    #upside-marketplace .wallet{background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:9px 13px;font-size:12px;color:var(--ink);white-space:nowrap}
+    #upside-marketplace .layout{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:28px;padding:29px}
+    #upside-marketplace h1{font-size:38px;line-height:1.08;letter-spacing:-.06em;margin:4px 0 8px}
+    #upside-marketplace h2{font-size:21px;letter-spacing:-.045em;margin:0}
+    #upside-marketplace .sub{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 24px}
+    #upside-marketplace .eyebrow{color:var(--green);font-size:11px;text-transform:uppercase;letter-spacing:.16em;font-weight:700}
+    #upside-marketplace .section-title{display:flex;justify-content:space-between;align-items:center;margin:23px 0 12px;gap:8px}
+    #upside-marketplace .section-title b{font-size:15px}
+    #upside-marketplace .section-title span{color:var(--muted);font-size:12px}
+    #upside-marketplace .search{display:flex;align-items:center;gap:9px;border:1px solid var(--line);background:#121913;border-radius:11px;padding:0 13px;margin-bottom:15px}
+    #upside-marketplace .search span{font-size:17px;color:var(--muted)}
+    #upside-marketplace .search input{width:100%;background:none;border:0;color:var(--ink);padding:13px 0;outline:none;font-size:14px}
+    #upside-marketplace .search input::placeholder{color:#808d81}
+    #upside-marketplace .stocks{display:flex;gap:8px;flex-wrap:wrap}
+    #upside-marketplace .stock{background:#18221b;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 13px;font-size:13px;font-weight:700}
+    #upside-marketplace .stock.active{border-color:var(--green);background:#243528}
+    #upside-marketplace .price-chart{margin-top:17px;border:1px solid var(--line);border-radius:13px;background:#131c15;padding:15px 16px 11px}
+    #upside-marketplace .price-chart-top{display:flex;justify-content:space-between;align-items:start;gap:14px}
+    #upside-marketplace .price-chart .chart-name{color:var(--muted);font-size:12px;margin-bottom:5px}
+    #upside-marketplace .price-chart .chart-price{font-size:25px;font-weight:750;letter-spacing:-.05em}
+    #upside-marketplace .price-chart .chart-change{color:var(--green);font-size:12px;margin-left:9px}
+    #upside-marketplace .chart-ranges{display:flex;gap:3px}
+    #upside-marketplace .chart-ranges button{border:0;background:none;color:var(--muted);font-size:11px;padding:6px 7px;border-radius:6px}
+    #upside-marketplace .chart-ranges button.active{color:var(--ink);background:var(--soft)}
+    #upside-marketplace .price-chart svg{display:block;width:100%;height:120px;margin-top:7px;overflow:visible}
+    #upside-marketplace .chart-axis{display:flex;justify-content:space-between;color:#819082;font-size:10px;margin-top:0}
+    #upside-marketplace .chart-note{color:#849383;font-size:10px;margin-top:7px}
+    #upside-marketplace .market{display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 15px;margin-bottom:8px;text-align:left;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:12px;gap:8px}
+    #upside-marketplace .market.active{border-color:var(--green);background:#213026}
+    #upside-marketplace .market strong{font-size:14px;display:block}
+    #upside-marketplace .market small{display:block;color:var(--muted);font-size:11px;margin-top:4px}
+    #upside-marketplace .quote{text-align:right;white-space:nowrap}
+    #upside-marketplace .quote b{font-size:17px;letter-spacing:-.04em}
+    #upside-marketplace .quote small{color:var(--muted)}
+    #upside-marketplace .detail{border-top:1px solid var(--line);margin-top:24px;padding-top:20px}
+    #upside-marketplace .detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px}
+    #upside-marketplace .detail-head .micro{color:var(--muted);font-size:12px;margin-top:4px}
+    #upside-marketplace .expiry-label{color:#d6e2d2;background:var(--soft);border-radius:999px;padding:7px 10px;font-size:11px;white-space:nowrap}
+    #upside-marketplace .book-link{color:var(--green);font-size:12px;white-space:nowrap;background:none;border:0}
+    #upside-marketplace .market-controls{display:grid;grid-template-columns:1fr 152px;gap:8px;margin-bottom:12px}
+    #upside-marketplace .market-controls label{display:block;color:var(--muted);font-size:11px;margin-bottom:7px}
+    #upside-marketplace .market-controls input,#upside-marketplace .market-controls select{width:100%;border:1px solid #405044;border-radius:9px;background:#121a14;color:var(--ink);padding:10px 11px;font-size:15px;min-height:42px}
+    #upside-marketplace .market-controls input:focus{outline:1px solid var(--green)}
+    #upside-marketplace .target-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:19px 0 10px}
+    #upside-marketplace .target-top b{font-size:14px}
+    #upside-marketplace .target-top button{border:0;background:none;color:var(--green);font-size:12px;padding:4px}
+    #upside-marketplace .target-tools{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+    #upside-marketplace .filter-label{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}
+    #upside-marketplace .filter-field{display:flex;align-items:center;gap:5px;background:#111a14;border:1px solid #405044;border-radius:8px;padding:0 9px;height:32px}
+    #upside-marketplace .filter-field b{color:var(--green);font-size:14px}
+    #upside-marketplace .filter-field input{width:68px;background:transparent;border:0;outline:0;color:var(--ink);font-size:13px;padding:4px 0}
+    #upside-marketplace .filter-field input::placeholder{color:#839084}
+    #upside-marketplace .target-list{border-top:1px solid var(--line)}
+    #upside-marketplace .target-labels,#upside-marketplace .target-option{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.8fr);gap:9px;align-items:center}
+    #upside-marketplace .target-labels{padding:8px 11px;color:var(--muted);font-size:11px}
+    #upside-marketplace .sort-text{border:0;background:transparent;color:var(--muted);font-size:13px;padding:0 2px;margin-left:4px;line-height:1}
+    #upside-marketplace .sort-text.active{color:var(--green)}
+    #upside-marketplace .target-option{width:100%;text-align:left;background:transparent;color:var(--ink);border:0;border-bottom:1px solid var(--line);padding:12px 11px;font-size:13px}
+    #upside-marketplace .target-option:hover{background:#1b281d}
+    #upside-marketplace .target-option.active{background:#253928;border-left:3px solid var(--green);padding-left:8px}
+    #upside-marketplace .target-option span:first-child{font-weight:700}
+    #upside-marketplace .target-option span:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
+    #upside-marketplace .target-empty{font-size:12px;color:var(--muted);padding:13px 11px;border-bottom:1px solid var(--line)}
+    #upside-marketplace .little{font-size:11px;color:var(--muted);line-height:1.45}
+    #upside-marketplace .book{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:20px}
+    #upside-marketplace .bookcol{min-width:0}
+    #upside-marketplace .bookhead{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+    #upside-marketplace .bookhead b{color:var(--ink);font-size:13px}
+    #upside-marketplace .bookrow{display:flex;justify-content:space-between;gap:5px;padding:8px 0;border-bottom:1px solid #222d25;font-size:12px}
+    #upside-marketplace .bookrow b{font-weight:650}
+    #upside-marketplace .ask b{color:#cdfba2}
+    #upside-marketplace .bid b{color:#c2d0bd}
+    #upside-marketplace .bookempty{grid-column:1/-1;color:var(--muted);font-size:13px;line-height:1.5;padding:16px 0}
+    #upside-marketplace .how{margin-top:25px;border-top:1px solid var(--line);padding-top:17px;color:var(--muted);font-size:12px;line-height:1.6}
+    #upside-marketplace .how b{color:var(--ink)}
+    #upside-marketplace .ticket{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;align-self:start}
+    #upside-marketplace .switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:10px;background:#101812;margin-bottom:19px}
+    #upside-marketplace .switch button{border:0;border-radius:8px;background:transparent;color:var(--muted);padding:9px;font-size:13px;font-weight:700}
+    #upside-marketplace .switch button.active{color:#13200c;background:var(--green)}
+    #upside-marketplace .ticket h2{font-size:23px;line-height:1.18;margin:0 0 4px}
+    #upside-marketplace .ticket .date{color:var(--muted);font-size:12px;margin:0 0 21px}
+    #upside-marketplace .label{display:flex;justify-content:space-between;gap:9px;color:var(--muted);font-size:12px;margin:0 0 8px}
+    #upside-marketplace .label b{color:var(--ink);font-weight:550}
+    #upside-marketplace .qtyrow{display:flex;align-items:center;gap:9px;background:#111a14;border:1px solid #405044;border-radius:10px;padding:0 12px;margin-bottom:17px}
+    #upside-marketplace .qtyrow input{width:100%;min-width:0;background:none;border:0;outline:none;color:var(--ink);font-size:20px;font-weight:700;padding:11px 0}
+    #upside-marketplace .qtyrow span{white-space:nowrap;color:var(--muted);font-size:12px}
+    #upside-marketplace .summary{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0;display:grid;gap:10px;margin-bottom:16px}
+    #upside-marketplace .summary div{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted)}
+    #upside-marketplace .summary b{color:var(--ink);font-weight:650;text-align:right}
+    #upside-marketplace .fills{padding:12px 0 17px;color:var(--muted);font-size:11px;line-height:1.7}
+    #upside-marketplace .fills b{color:var(--ink);font-weight:650}
+    #upside-marketplace .scenario{background:#111a14;border-radius:11px;padding:13px;margin-bottom:16px}
+    #upside-marketplace .scenario strong{font-size:12px}
+    #upside-marketplace input[type=range]{width:100%;accent-color:var(--green);margin:12px 0 10px}
+    #upside-marketplace .scenario .result{display:flex;justify-content:space-between;align-items:end;gap:8px}
+    #upside-marketplace .scenario .result small{color:var(--muted);font-size:11px;display:block}
+    #upside-marketplace .scenario .result b{font-size:20px;letter-spacing:-.04em}
+    #upside-marketplace .scenario .result b.positive{color:var(--green)}
+    #upside-marketplace .cta{width:100%;background:var(--green);color:#13200c;border:0;border-radius:10px;padding:14px;font-weight:800;font-size:14px}
+    #upside-marketplace .foot{color:var(--muted);font-size:11px;text-align:center;margin-top:11px;line-height:1.45}
+    #upside-marketplace .sellhint{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:17px}
+    #upside-marketplace .sellhint a{color:var(--green)}
+    #upside-marketplace .mode[hidden]{display:none}
+    #upside-marketplace .note{font-size:11px;color:#7e8e7d;margin-top:17px}
+    #upside-marketplace .view[hidden]{display:none}
+    #upside-marketplace .browse-head{display:flex;justify-content:space-between;align-items:start;gap:20px;margin-bottom:24px}
+    #upside-marketplace .browse-head p{color:var(--muted);font-size:14px;line-height:1.5;margin:7px 0 0}
+    #upside-marketplace .search-toggle{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 16px;font-size:13px;white-space:nowrap}
+    #upside-marketplace .browse-search{margin:0 0 20px}
+    #upside-marketplace .browse-search[hidden]{display:none}
+    #upside-marketplace .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+    #upside-marketplace .market-tile{min-height:210px;background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:18px;display:flex;flex-direction:column;justify-content:space-between;text-align:left;color:var(--ink);width:100%}
+    #upside-marketplace .market-tile:hover{border-color:var(--green);background:#213026}
+    #upside-marketplace .market-tile[hidden]{display:none}
+    #upside-marketplace .tile-top{display:flex;justify-content:space-between;align-items:start;gap:9px}
+    #upside-marketplace .tile-symbol{width:37px;height:37px;border-radius:10px;background:#2d3733;display:grid;place-items:center;font-size:12px;font-weight:800}
+    #upside-marketplace .tile-arrow{color:var(--green);font-size:20px;line-height:1}
+    #upside-marketplace .tile-title{font-size:20px;letter-spacing:-.045em;font-weight:700;margin-top:15px}
+    #upside-marketplace .tile-expiry{color:var(--muted);font-size:12px;margin-top:5px}
+    #upside-marketplace .tile-rates{display:grid;grid-template-columns:1fr 1fr;gap:9px;border-top:1px solid var(--line);padding-top:14px;margin-top:15px}
+    #upside-marketplace .tile-rates span{display:block;color:var(--muted);font-size:11px}
+    #upside-marketplace .tile-rates b{display:block;font-size:18px;letter-spacing:-.04em;margin-top:4px}
+    #upside-marketplace .tile-rates small{display:block;color:#8f9d90;font-size:10px;margin-top:4px}
+    #upside-marketplace .landing-foot{font-size:11px;color:var(--muted);margin-top:17px;line-height:1.5}
+    #upside-marketplace .market-back{display:inline-block;background:none;border:0;color:var(--green);font-size:12px;padding:0;margin-bottom:14px}
+    #upside-marketplace .market-view .feed>.eyebrow,#upside-marketplace .market-view .feed>h1,#upside-marketplace .market-view .feed>.sub,#upside-marketplace .market-view .feed>.search,#upside-marketplace .market-view .feed>.stocks,#upside-marketplace .market-view .feed>.section-title,#upside-marketplace .market-view .feed>.market{display:none}
+    #upside-marketplace .market-view .price-chart{margin-top:0}
+    #upside-marketplace .market-view .detail{border-top:0;margin-top:0;padding-top:0}
+    #upside-marketplace .trade-side{align-self:start;display:grid;gap:14px;min-width:0}
+    #upside-marketplace .trade-side .ticket{width:100%}
+    #upside-marketplace .how button{border:0;background:none;color:var(--green);font-size:12px;padding:0;text-align:left}
+    #upside-marketplace .page{padding:30px;min-height:720px}
+    #upside-marketplace .pagehead{max-width:650px;margin-bottom:29px}
+    #upside-marketplace .pagehead p{color:var(--muted);font-size:14px;line-height:1.55;margin:8px 0 0}
+    #upside-marketplace .pagegrid{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:28px}
+    #upside-marketplace .shelf-title{font-size:14px;font-weight:700;margin:0 0 11px}
+    #upside-marketplace .holding{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:17px;margin-bottom:9px;color:var(--ink)}
+    #upside-marketplace .holding.active{border-color:var(--green);background:#213026}
+    #upside-marketplace .holding strong{font-size:15px}
+    #upside-marketplace .holding small{display:block;color:var(--muted);font-size:12px;margin-top:5px}
+    #upside-marketplace .holding b{font-size:13px;white-space:nowrap}
+    #upside-marketplace .plain-panel{border-top:1px solid var(--line);padding-top:19px;margin-top:24px}
+    #upside-marketplace .plain-panel h2{margin-bottom:8px}
+    #upside-marketplace .plain-panel p{font-size:13px;color:var(--muted);line-height:1.6;margin:0}
+    #upside-marketplace .step{display:flex;gap:13px;margin:15px 0;color:var(--muted);font-size:13px;line-height:1.5}
+    #upside-marketplace .step b{display:grid;place-items:center;flex:none;background:var(--soft);color:var(--green);border-radius:50%;width:23px;height:23px;font-size:12px}
+    #upside-marketplace .stackfield{display:block;margin:15px 0 8px;color:var(--muted);font-size:12px}
+    #upside-marketplace .ticket-input{width:100%;background:#111a14;border:1px solid #405044;border-radius:10px;padding:11px 12px;color:var(--ink);font-size:16px;min-height:44px}
+    #upside-marketplace .plain-summary{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);margin-top:19px;padding:14px 0;color:var(--muted);font-size:12px}
+    #upside-marketplace .plain-summary b{color:var(--ink)}
+    #upside-marketplace .explain{background:#111a14;border-radius:11px;padding:13px;margin-top:18px;color:#c5d0c2;font-size:12px;line-height:1.55}
+    #upside-marketplace .position-group{margin-bottom:23px}
+    #upside-marketplace .position{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:17px;margin-top:9px}
+    #upside-marketplace .position-head{display:flex;justify-content:space-between;gap:9px;align-items:start}
+    #upside-marketplace .position-head strong{font-size:15px}
+    #upside-marketplace .position-head small{display:block;color:var(--muted);font-size:12px;margin-top:5px}
+    #upside-marketplace .pill{font-size:11px;color:var(--green);background:var(--soft);padding:5px 8px;border-radius:999px;white-space:nowrap}
+    #upside-marketplace .position-facts{display:flex;gap:22px;margin:16px 0;color:var(--muted);font-size:11px;flex-wrap:wrap}
+    #upside-marketplace .position-facts b{display:block;color:var(--ink);font-size:14px;margin-top:4px}
+    #upside-marketplace .position-actions{display:flex;gap:14px;border-top:1px solid var(--line);padding-top:12px}
+    #upside-marketplace .position-actions button{border:0;background:none;color:var(--green);padding:0;font-size:12px}
+    @media(max-width:760px){#upside-marketplace .top{padding:14px 18px;flex-wrap:wrap}#upside-marketplace .nav{order:3;width:100%;justify-content:space-between;gap:8px}#upside-marketplace .nav button{font-size:12px}#upside-marketplace .layout,#upside-marketplace .pagegrid{grid-template-columns:1fr;gap:20px}#upside-marketplace .layout{padding:18px}#upside-marketplace .page{padding:20px 18px}#upside-marketplace h1{font-size:31px}#upside-marketplace .market-view .feed{order:0}#upside-marketplace .market-view .trade-side{order:1}#upside-marketplace .book{gap:10px}#upside-marketplace .tiles{grid-template-columns:1fr}#upside-marketplace .browse-head{align-items:end}#upside-marketplace .market-tile{min-height:185px}}
+  </style>
+  <div class="top"><div class="brand">othel<i>io</i></div><div class="nav" aria-label="Main navigation"><button type="button" class="active" data-view-nav="discover">Discover</button><button type="button" data-view-nav="positions">My positions</button><button type="button" data-view-nav="stockholders">For stockholders</button></div><button class="wallet" type="button">Example wallet · 0x9a…42</button></div>
+  <section class="page view" data-view="discover" aria-label="Explore upside markets">
+    <div class="browse-head"><div><div class="eyebrow">Stock upside</div><h1>Own the upside.</h1><p>Pick a market. See the chart, the book, and your exact trade before you buy or sell.</p></div><button type="button" class="search-toggle" id="search-toggle">⌕ Search</button></div>
+    <label class="search browse-search" id="browse-search" hidden><span>⌕</span><input type="search" id="market-search" placeholder="Search stock or target price" aria-label="Search stock or target price"></label>
+    <div class="section-title"><b>Markets</b><span>Best available prices · per share of upside</span></div>
+    <div class="tiles">
+      <button type="button" class="market-tile" data-tile-stock="NVIDIA" data-tile-strike="205" aria-label="NVIDIA above $205, November 27, buy from $2.70, sell at $2.45"><span><span class="tile-top"><span class="tile-symbol">NV</span><span class="tile-arrow">↗</span></span><span class="tile-title">NVIDIA above $205</span><span class="tile-expiry">Nov 27, 2026</span></span><span class="tile-rates"><span><span>Buy from</span><b>$2.70</b><small>0.50 available at this price</small></span><span><span>Sell at</span><b>$2.45</b><small>1.20 wanted at this price</small></span></span></button>
+      <button type="button" class="market-tile" data-tile-stock="Microsoft" data-tile-strike="600" aria-label="Microsoft above $600, November 27, buy from $8.00, sell at $7.30"><span><span class="tile-top"><span class="tile-symbol">MS</span><span class="tile-arrow">↗</span></span><span class="tile-title">Microsoft above $600</span><span class="tile-expiry">Nov 27, 2026</span></span><span class="tile-rates"><span><span>Buy from</span><b>$8.00</b><small>2.00 available at this price</small></span><span><span>Sell at</span><b>$7.30</b><small>1.50 wanted at this price</small></span></span></button>
+      <button type="button" class="market-tile" data-tile-stock="Apple" data-tile-strike="300" aria-label="Apple above $300, November 27, buy from $2.80, sell at $2.50"><span><span class="tile-top"><span class="tile-symbol">AP</span><span class="tile-arrow">↗</span></span><span class="tile-title">Apple above $300</span><span class="tile-expiry">Nov 27, 2026</span></span><span class="tile-rates"><span><span>Buy from</span><b>$2.80</b><small>1.10 available at this price</small></span><span><span>Sell at</span><b>$2.50</b><small>1.20 wanted at this price</small></span></span></button>
+      <button type="button" class="market-tile" data-tile-stock="Coinbase" data-tile-strike="325" aria-label="Coinbase above $325, December 4, buy from $11.00, sell at $9.80"><span><span class="tile-top"><span class="tile-symbol">CO</span><span class="tile-arrow">↗</span></span><span class="tile-title">Coinbase above $325</span><span class="tile-expiry">Dec 4, 2026</span></span><span class="tile-rates"><span><span>Buy from</span><b>$11.00</b><small>1.20 available at this price</small></span><span><span>Sell at</span><b>$9.80</b><small>0.70 wanted at this price</small></span></span></button>
+    </div><p class="bookempty" id="no-search-results" hidden>No markets match that search.</p><p class="landing-foot">Illustrative markets and prices. Buy and sell rates are the best current orders; larger trades may fill at several prices.</p>
+  </section>
+  <div class="layout view market-view" data-view="market" hidden>
+    <section class="feed" aria-label="Explore markets">
+      <button type="button" class="market-back" data-go="discover">← All markets</button>
+      <div class="eyebrow">Stock upside</div><h1>Own the upside.</h1><p class="sub">Pick a stock, a price, and a date. See the offer before you buy.</p>
+      <label class="search"><span>⌕</span><input type="search" placeholder="Find a stock" aria-label="Find a stock"></label>
+      <div class="stocks" aria-label="Stocks"><button type="button" class="stock active" data-stock="NVIDIA">NVIDIA</button><button type="button" class="stock" data-stock="Microsoft">Microsoft</button><button type="button" class="stock" data-stock="Apple">Apple</button><button type="button" class="stock" data-stock="Coinbase">Coinbase</button></div>
+      <div class="section-title"><b>Trading now</b><span>Executable offers</span></div>
+      <button class="market active" type="button" data-stock="NVIDIA" data-strike="200"><span><strong>NVIDIA above $200</strong><small>Nov 27 · 12.4 shares offered</small></span><span class="quote"><b>$4.10</b><small> / share</small></span></button>
+      <button class="market" type="button" data-stock="Microsoft" data-strike="600"><span><strong>Microsoft above $600</strong><small>Nov 27 · 8.1 shares offered</small></span><span class="quote"><b>$8.00</b><small> / share</small></span></button>
+      <button class="market" type="button" data-stock="Coinbase" data-strike="325"><span><strong>Coinbase above $325</strong><small>Dec 4 · 3.2 shares offered</small></span><span class="quote"><b>$11.00</b><small> / share</small></span></button>
+      <div class="detail" aria-label="Selected market and order book"><div class="detail-head"><div><h2 id="selected-name">NVIDIA above $205</h2><div class="micro">The target is where your gains begin</div></div><span class="expiry-label" id="expiry-label">Expires Nov 27</span></div>
+        <input id="custom-date" type="hidden" value="Nov 27, 2026"><input id="custom-strike" type="hidden" value="205">
+        <div class="target-top"><b>Choose a target price</b><div class="target-tools"><label class="filter-label" for="filter-price">Filter <span class="filter-field"><b>&gt;</b><input id="filter-price" type="number" min="0" step="0.01" placeholder="Price" aria-label="Show targets above this price"></span></label><button type="button" id="all-targets">See all targets</button></div></div>
+        <div class="target-list" id="target-list" aria-label="Available targets for this stock"><div class="target-labels"><span>Gains above <button type="button" class="sort-text active" id="sort-asc" aria-label="Sort target prices low to high" aria-pressed="true">↑</button><button type="button" class="sort-text" id="sort-desc" aria-label="Sort target prices high to low" aria-pressed="false">↓</button></span><span style="text-align:right">Buy from</span><span style="text-align:right">Sell at</span></div><button type="button" class="target-option" data-pick-target="190"><span>Above $190</span><span>$9.00</span><span>$8.40</span></button><button type="button" class="target-option" data-pick-target="200"><span>Above $200</span><span>$4.10</span><span>$3.90</span></button><button type="button" class="target-option active" data-pick-target="205" aria-pressed="true"><span>Above $205</span><span>$2.70</span><span>$2.45</span></button><button type="button" class="target-option" data-pick-target="210"><span>Above $210</span><span>$1.60</span><span>$1.35</span></button></div>
+        <div class="little" id="market-hint">Choose a target to see its order book and buy or sell price.</div>
+        <div class="book" id="order-book"><div class="bookcol"><div class="bookhead"><b>Offers to buy from</b><span>Price · Size</span></div><div class="bookrow ask"><b>$4.10</b><span>0.50 shares</span></div><div class="bookrow ask"><b>$4.20</b><span>0.70 shares</span></div><div class="bookrow ask"><b>$4.50</b><span>1.80 shares</span></div></div><div class="bookcol"><div class="bookhead"><b>Bids to sell to</b><span>Price · Size</span></div><div class="bookrow bid"><b>$3.90</b><span>1.20 shares</span></div><div class="bookrow bid"><b>$3.75</b><span>2.00 shares</span></div><div class="bookrow bid"><b>$3.60</b><span>0.80 shares</span></div></div></div>
+      </div><div class="how"><b>Holding the stock?</b> Choose the price above which you want to sell its gains. <button type="button" data-go="stockholders">Explore selling upside →</button></div><p class="note">Illustrative markets and prices.</p>
+    </section>
+    <aside class="trade-side" aria-label="Stock chart and trade panel">
+      <div class="price-chart" aria-label="Illustrative stock price chart"><div class="price-chart-top"><div><div class="chart-name" id="chart-name">NVIDIA · stock price</div><span class="chart-price" id="chart-price">$194.30</span><span class="chart-change" id="chart-change">+$2.18 (1.14%)</span></div><div class="chart-ranges" aria-label="Chart period"><button type="button" data-chart-range="1W">1W</button><button type="button" class="active" data-chart-range="1M">1M</button><button type="button" data-chart-range="1Y">1Y</button></div></div><svg id="stock-chart" viewBox="0 0 520 120" role="img" aria-label="Illustrative NVIDIA stock price over one month"><line x1="0" y1="100" x2="520" y2="100" stroke="#3b493d" stroke-width="1"/><line x1="0" y1="20" x2="520" y2="20" stroke="#2c392f" stroke-width="1"/><path id="chart-line" fill="none" stroke="#b8f17d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d=""/><circle id="chart-dot" r="4" fill="#b8f17d" cx="520" cy="40"/><text id="chart-high" x="3" y="15" fill="#8c9d8f" font-size="10">$200</text><text id="chart-low" x="3" y="115" fill="#8c9d8f" font-size="10">$180</text></svg><div class="chart-axis"><span id="chart-start">Oct 11</span><span id="chart-end">Nov 11</span></div></div>
+      <div class="ticket">
+      <div class="switch" role="tablist" aria-label="Trade action"><button type="button" class="active" role="tab" aria-selected="true" data-mode="buy">Buy</button><button type="button" role="tab" aria-selected="false" data-mode="sell">Sell / list</button></div>
+      <div class="mode" id="buy-mode"><h2>Buy NVIDIA gains</h2><p class="date">Above $205 · Nov 27</p><div class="label"><span>How much upside?</span><b>Fractional amounts welcome</b></div><div class="qtyrow"><input id="buy-qty" type="number" min="0.01" step="0.01" value="1.2" aria-label="Shares of upside to buy"><span>shares of exposure</span></div><div class="summary"><div><span>You pay</span><b id="buy-cost">$4.99</b></div><div><span>Most you can lose</span><b id="buy-risk">$4.99</b></div><div><span>Break even at expiry</span><b id="buy-even">$204.16</b></div></div><div class="fills" id="buy-fills">Your order combines <b>0.50 at $4.10</b> and <b>0.70 at $4.20</b>. Average price: <b>$4.16 / share</b>.</div><div class="scenario"><strong>If NVIDIA ends at <span id="settle-label">$220</span>…</strong><input id="settle-slider" type="range" min="150" max="260" value="220" aria-label="Hypothetical stock price at expiry"><div class="result"><span><small>Your payout</small><b id="buy-payout">$24.00</b></span><span style="text-align:right"><small>Your profit / loss</small><b class="positive" id="buy-profit">+$19.01</b></span></div></div><button type="button" class="cta" id="buy-cta">Review buy · $4.99</button><div class="foot" id="buy-foot">Payout is in stock tokens. USD values use the expiry stock price.</div></div>
+      <div class="mode" id="sell-mode" hidden><h2>List NVIDIA upside</h2><p class="date">Above $205 · Nov 27</p><div class="sellhint">Set the price buyers pay you for each share of exposure. <button type="button" class="book-link" data-go="stockholders">Holding the stock? Create upside first ↗</button></div><div class="label"><span>Amount to list</span><b>Shares of upside</b></div><div class="qtyrow"><input id="sell-qty" type="number" min="0.001" step="0.001" value="0.5" aria-label="Shares of upside to list"><span>shares</span></div><div class="label"><span>Your asking price</span><b>Per share of exposure</b></div><div class="qtyrow"><span>$</span><input id="ask-price" type="number" min="0.01" step="0.01" value="4.15" aria-label="Asking price per share of exposure"></div><div class="summary"><div><span>If fully sold, you receive</span><b id="sell-proceeds">$2.08</b></div><div><span>Highest current bid</span><b id="top-bid">$3.90 / share</b></div></div><div class="fills">Your ask appears in the order book. Buyers may fill part of it; you can cancel the rest.</div><button type="button" class="cta" id="sell-cta">Review listing</button><div class="foot">Your listing is separate from the target price above which this upside pays.</div></div>
+      </div>
+    </aside>
+  </div>
+  <section class="page view" data-view="stockholders" hidden aria-label="Sell upside from shares you hold"><div class="pagehead"><div class="eyebrow">For stockholders</div><h1>Sell the upside. Keep the rest.</h1><p>Choose a price and date. List the gains above that price, while keeping the stock’s remaining exposure.</p></div><div class="pagegrid"><div><p class="shelf-title">Your eligible stocks</p><button type="button" class="holding active" data-held-stock="NVIDIA"><span><strong>NVIDIA</strong><small>2.40 shares available</small></span><b>Select →</b></button><button type="button" class="holding" data-held-stock="Microsoft"><span><strong>Microsoft</strong><small>0.15 shares available</small></span><b>Select →</b></button><div class="plain-panel"><h2>How selling works</h2><div class="step"><b>1</b><span>Choose how many shares of upside to list, and where those gains begin.</span></div><div class="step"><b>2</b><span>Name your asking price. Your listing appears beside other offers for that exact stock, target, and date.</span></div><div class="step"><b>3</b><span>If a buyer takes your offer, you receive the sale proceeds. You keep the stock’s remaining exposure.</span></div></div></div><aside class="ticket"><h2 id="create-title">Sell NVIDIA upside</h2><p class="date">From stock you hold</p><label class="stackfield" for="create-qty">Shares of upside to list</label><input class="ticket-input" id="create-qty" type="number" min="0.001" max="2.4" step="0.001" value="0.5"><label class="stackfield" for="create-strike">Buyer receives gains above</label><input class="ticket-input" id="create-strike" type="number" min="0" step="0.01" value="200"><div class="stackfield">Current round ends</div><div class="ticket-input" id="create-date">Nov 27, 2026</div><label class="stackfield" for="create-ask">Your asking price per share of exposure</label><input class="ticket-input" id="create-ask" type="number" min="0.01" step="0.01" value="4.15"><div class="plain-summary"><span>If fully sold, you receive</span><b id="create-proceeds">$2.08</b></div><div class="explain" id="create-explain">At expiry, you keep NVIDIA’s value up to $200 per share. The buyer receives its gains above $200. You still bear losses if the stock falls.</div><button type="button" class="cta" id="create-cta" style="margin-top:18px">Review listing</button><div class="foot">An asking price is your offer, not guaranteed sale proceeds.</div></aside></div><p class="note">Illustrative holdings and prices.</p></section>
+  <section class="page view" data-view="positions" hidden aria-label="My positions and listings">
+    <div class="pagehead"><div class="eyebrow">Example wallet</div><h1>My positions.</h1><p>Follow every upside you own, each offer you’ve listed, and the stock exposure you kept.</p></div>
+    <div class="pagegrid">
+      <div>
+        <div class="position-group"><p class="shelf-title">Upside you own · 3</p>
+          <div class="position"><div class="position-head"><div><strong>NVIDIA above $200</strong><small>Nov 27 · 1.20 shares of exposure</small></div><span class="pill">Owned</span></div><div class="position-facts"><span>Paid<b>$4.99</b></span><span>Average price<b>$4.16 / share</b></span><span>Best bid now<b>$3.90 / share</b></span></div><div class="position-actions"><button type="button" data-open-market="NVIDIA" data-open-mode="buy">View market →</button><button type="button" data-open-market="NVIDIA" data-open-mode="sell">Sell →</button></div></div>
+          <div class="position"><div class="position-head"><div><strong>NVIDIA above $210</strong><small>Nov 27 · 0.75 shares of exposure</small></div><span class="pill">Owned</span></div><div class="position-facts"><span>Paid<b>$1.20</b></span><span>Average price<b>$1.60 / share</b></span><span>Best bid now<b>$1.35 / share</b></span></div><div class="position-actions"><button type="button" data-open-market="NVIDIA" data-open-strike="210" data-open-mode="buy">View market →</button><button type="button" data-open-market="NVIDIA" data-open-strike="210" data-open-mode="sell">Sell →</button></div></div>
+          <div class="position"><div class="position-head"><div><strong>Microsoft above $600</strong><small>Nov 27 · 0.20 shares of exposure</small></div><span class="pill">Owned</span></div><div class="position-facts"><span>Paid<b>$1.60</b></span><span>Average price<b>$8.00 / share</b></span><span>Best bid now<b>$7.30 / share</b></span></div><div class="position-actions"><button type="button" data-open-market="Microsoft" data-open-mode="buy">View market →</button><button type="button" data-open-market="Microsoft" data-open-mode="sell">Sell →</button></div></div>
+        </div>
+        <div class="position-group"><p class="shelf-title">Open listings · 2</p>
+          <div class="position"><div class="position-head"><div><strong>NVIDIA above $200</strong><small>Nov 27 · 0.50 shares offered</small></div><span class="pill">Open</span></div><div class="position-facts"><span>Your ask<b>$4.15 / share</b></span><span>If fully sold<b>$2.08</b></span></div><div class="position-actions"><button type="button" data-open-market="NVIDIA" data-open-mode="sell">View book →</button><button type="button" id="cancel-demo">Cancel listing</button></div></div>
+          <div class="position"><div class="position-head"><div><strong>Coinbase above $325</strong><small>Dec 4 · 0.10 shares offered</small></div><span class="pill">Open</span></div><div class="position-facts"><span>Your ask<b>$11.50 / share</b></span><span>If fully sold<b>$1.15</b></span></div><div class="position-actions"><button type="button" data-open-market="Coinbase" data-open-mode="sell">View book →</button></div></div>
+        </div>
+      </div>
+      <div><p class="shelf-title">Stock exposure you kept · 2</p>
+        <div class="position"><div class="position-head"><div><strong>Capped NVIDIA</strong><small>0.50 shares · up to $200 / share</small></div><span class="pill">Owned</span></div><div class="explain">You keep NVIDIA’s value up to $200 per share. You still bear losses if the stock falls.</div><div class="position-actions" style="margin-top:15px"><button type="button" data-go="stockholders">Sell more upside →</button></div></div>
+        <div class="position"><div class="position-head"><div><strong>Capped Microsoft</strong><small>0.05 shares · up to $600 / share</small></div><span class="pill">Owned</span></div><div class="explain">You keep Microsoft’s value up to $600 per share. You still bear losses if the stock falls.</div><div class="position-actions" style="margin-top:15px"><button type="button" data-go="stockholders">Sell more upside →</button></div></div>
+        <div class="plain-panel"><h2>What happens next?</h2><p>Orders can fill in parts. Open listings stay here until filled or cancelled. At expiry, each claim shows its final payout.</p></div>
+      </div>
+    </div><p class="note">Illustrative positions and holdings.</p>
+  </section>
+  <script>
+    (()=>{const root=document.getElementById('upside-marketplace');const data={NVIDIA:{strike:200,date:'Nov 27, 2026',ask:[[4.10,.5],[4.20,.7],[4.50,1.8]],bid:[[3.90,1.2],[3.75,2],[3.60,.8]],range:[150,260],end:220},Microsoft:{strike:600,date:'Nov 27, 2026',ask:[[8,2],[8.5,6.1]],bid:[[7.3,1.5],[7.1,2]],range:[530,700],end:625},Apple:{strike:300,date:'Nov 27, 2026',ask:[[2.8,1.1],[3.1,.9]],bid:[[2.5,1.2]],range:[260,350],end:320},Coinbase:{strike:325,date:'Dec 4, 2026',ask:[[11,1.2],[12,2]],bid:[[9.8,.7],[9.2,1]],range:[270,400],end:350}};const other={NVIDIA:{'Nov 27, 2026':{180:[16.2,15.6],190:[9,8.4],205:[2.7,2.45],210:[1.6,1.35],220:[.55,.4]},'Dec 4, 2026':{200:[5.8,5.3],205:[4.2,3.85],210:[2.9,2.6]}},Microsoft:{'Nov 27, 2026':{580:[18,17.2],620:[3.5,3.1]},'Dec 4, 2026':{600:[10.5,9.9]}},Apple:{'Nov 27, 2026':{290:[6.4,5.8],310:[1.25,1]},'Dec 4, 2026':{300:[4.1,3.7]}},Coinbase:{'Dec 4, 2026':{300:[22,20.5],350:[5.1,4.6]},'Nov 27, 2026':{325:[8.5,8]}}};let stock='NVIDIA';const $=s=>root.querySelector(s),fmt=n=>'$'+Number(n).toFixed(2),short=n=>'$'+Number(n).toFixed(0);function active(){const d=data[stock],strike=Number($('#custom-strike').value),date=$('#custom-date').value;if(strike===d.strike&&date===d.date)return d;const q=other[stock]?.[date]?.[strike];return q?{...d,ask:[[q[0],.5],[q[0]+.1,.7],[q[0]+.4,1.8]],bid:[[q[1],1.2],[Math.max(0,q[1]-.2),2]]}:{...d,ask:[],bid:[]}}function render(){const d=active(),strike=Number($('#custom-strike').value),qty=Math.max(0,Number($('#buy-qty').value)||0),settle=Number($('#settle-slider').value);$('#selected-name').textContent=`${stock} above ${short(strike)}`;$('#expiry-label').textContent=`Expires ${$('#custom-date').value.split(',')[0]}`;$('#buy-mode h2').textContent=`Buy ${stock} gains`;$('#sell-mode h2').textContent=`List ${stock} upside`;$('#buy-mode .date').textContent=`Above ${short(strike)} · ${$('#custom-date').value.split(',')[0]}`;$('#sell-mode .date').textContent=$('#buy-mode .date').textContent;$('#settle-label').textContent=short(settle);let remaining=qty,cost=0,parts=[];for(const [price,size] of d.ask){if(remaining<=0)break;const taken=Math.min(remaining,size);cost+=taken*price;parts.push(`${taken.toFixed(2)} at ${fmt(price)}`);remaining-=taken}const full=remaining<.00001&&qty>0;$('#buy-cost').textContent=full?fmt(cost):'Not quoted';$('#buy-risk').textContent=full?fmt(cost):'—';$('#buy-even').textContent=full?fmt(strike+cost/qty):'—';$('#buy-fills').innerHTML=full?`Your order combines <b>${parts.join('</b> and <b>')}</b>. Average price: <b>${fmt(cost/qty)} / share</b>.`:d.ask.length?`Only ${d.ask.reduce((n,x)=>n+x[1],0).toFixed(2)} shares offered at this target. Reduce your amount or place a bid.`:'No offers at this target yet. Set a price and place a bid.';const payout=Math.max(settle-strike,0)*qty;$('#buy-payout').textContent=fmt(payout);const profit=payout-cost;$('#buy-profit').textContent=full?(profit>=0?'+':'−')+fmt(Math.abs(profit)):'—';$('#buy-profit').classList.toggle('positive',full&&profit>=0);$('#buy-cta').textContent=full?`Review buy · ${fmt(cost)}`:'Place a bid';$('#buy-foot').textContent=full?'Payout is in stock tokens. USD values use the expiry stock price.':'A bid waits for a seller to accept your price.';$('#sell-proceeds').textContent=fmt((Number($('#sell-qty').value)||0)*(Number($('#ask-price').value)||0));$('#top-bid').textContent=d.bid.length?`${fmt(d.bid[0][0])} / share`:'No bids';$('#market-hint').textContent=d.ask.length?'The book and trade price are for this target and expiry.':'No orders at this target yet. Place a bid or list an offer.';$('#order-book').innerHTML=d.ask.length||d.bid.length?`<div class="bookcol"><div class="bookhead"><b>Offers to buy from</b><span>Price · Size</span></div>${d.ask.map(([p,n])=>`<div class="bookrow ask"><b>${fmt(p)}</b><span>${n.toFixed(2)} shares</span></div>`).join('')||'<div class="bookempty">No offers</div>'}</div><div class="bookcol"><div class="bookhead"><b>Bids to sell to</b><span>Price · Size</span></div>${d.bid.map(([p,n])=>`<div class="bookrow bid"><b>${fmt(p)}</b><span>${n.toFixed(2)} shares</span></div>`).join('')||'<div class="bookempty">No bids</div>'}</div>`:'<div class="bookempty">No orders for this target yet. Place the first bid or listing.</div>'}root.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{root.querySelectorAll('[data-mode]').forEach(x=>{const on=x===b;x.classList.toggle('active',on);x.setAttribute('aria-selected',String(on))});$('#buy-mode').hidden=b.dataset.mode!=='buy';$('#sell-mode').hidden=b.dataset.mode!=='sell'}));root.querySelectorAll('.stock').forEach(b=>b.addEventListener('click',()=>{stock=b.dataset.stock;root.querySelectorAll('.stock').forEach(x=>x.classList.toggle('active',x===b));root.querySelectorAll('.market').forEach(x=>x.classList.toggle('active',x.dataset.stock===stock));$('#custom-strike').value=data[stock].strike;$('#custom-date').value=data[stock].date;const r=data[stock].range;$('#settle-slider').min=r[0];$('#settle-slider').max=r[1];$('#settle-slider').value=data[stock].end;render()}));root.querySelectorAll('.market').forEach(b=>b.addEventListener('click',()=>{stock=b.dataset.stock;root.querySelectorAll('.market').forEach(x=>x.classList.toggle('active',x===b));root.querySelectorAll('.stock').forEach(x=>x.classList.toggle('active',x.dataset.stock===stock));$('#custom-strike').value=b.dataset.strike;const d=data[stock];$('#custom-date').value=d.date;$('#settle-slider').min=d.range[0];$('#settle-slider').max=d.range[1];$('#settle-slider').value=d.end;render()}));['#custom-strike','#custom-date','#buy-qty','#sell-qty','#ask-price','#settle-slider'].forEach(s=>$(s).addEventListener('input',render));$('.search input').addEventListener('input',e=>{const q=e.target.value.toLowerCase();root.querySelectorAll('.stock').forEach(b=>b.hidden=!b.dataset.stock.toLowerCase().includes(q))});render()})()
+  </script>
+  <script>
+    (()=>{const root=document.getElementById('upside-marketplace');let held='NVIDIA';const $=s=>root.querySelector(s),money=n=>'$'+Number(n).toFixed(2);function show(view){root.querySelectorAll('[data-view]').forEach(x=>x.hidden=x.dataset.view!==view);root.querySelectorAll('[data-view-nav]').forEach(x=>x.classList.toggle('active',x.dataset.viewNav===view))}root.querySelectorAll('[data-view-nav]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.viewNav)));root.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.go)));root.querySelectorAll('[data-open-market]').forEach(b=>b.addEventListener('click',()=>{show('discover');root.querySelector(`.stock[data-stock="${b.dataset.openMarket}"]`).click();root.querySelector(`[data-mode="${b.dataset.openMode}"]`).click()}));function renderHeld(){const qty=Number($('#create-qty').value)||0,strike=Number($('#create-strike').value)||0,ask=Number($('#create-ask').value)||0;$('#create-title').textContent=`Sell ${held} upside`;$('#create-date').textContent='Nov 27, 2026';$('#create-proceeds').textContent=money(qty*ask);$('#create-explain').textContent=`At expiry, you keep ${held}’s value up to $${strike.toLocaleString()} per share. The buyer receives its gains above $${strike.toLocaleString()}. You still bear losses if the stock falls.`}root.querySelectorAll('[data-held-stock]').forEach(b=>b.addEventListener('click',()=>{held=b.dataset.heldStock;root.querySelectorAll('[data-held-stock]').forEach(x=>x.classList.toggle('active',x===b));$('#create-qty').max=held==='NVIDIA'?'2.4':'.15';$('#create-qty').value=held==='NVIDIA'?'.5':'.05';$('#create-strike').value=held==='NVIDIA'?'200':'600';renderHeld()}));['#create-qty','#create-strike','#create-ask'].forEach(s=>$(s).addEventListener('input',renderHeld));$('#create-cta').addEventListener('click',()=>{$('#create-cta').textContent=`Review ${Number($('#create-qty').value||0).toFixed(2)} shares at ${money($('#create-ask').value)} each`});$('#cancel-demo').addEventListener('click',()=>{$('#cancel-demo').textContent='Listing cancelled';$('#cancel-demo').disabled=true;$('#cancel-demo').closest('.position').querySelector('.pill').textContent='Cancelled'});renderHeld()})()
+  </script>
+  <script>
+    (()=>{const root=document.getElementById('upside-marketplace');const $=s=>root.querySelector(s);const spots={NVIDIA:194.30,Microsoft:586.20,Apple:286.45,Coinbase:310.00};const moves={'1W':[-1.1,-.8,-1.5,-.4,.2,-.5,.3,0],'1M':[-4.1,-3.3,-2.5,-3.7,-1.8,-2.4,-1.1,-1.9,-.5,.8,-.9,0],'1Y':[-17,-15,-19,-12,-10,-13,-8,-5,-7,-2,-4,0]};const dates={'1W':['Nov 4','Nov 11'],'1M':['Oct 11','Nov 11'],'1Y':['Nov 2025','Nov 2026']};let period='1M';function chart(){const selected=$('.stock.active');const name=selected?selected.dataset.stock:'NVIDIA';const spot=spots[name],points=moves[period].map(x=>spot*(1+x/100)),low=Math.min(...points),high=Math.max(...points),pad=(high-low)*.18||1;const y=v=>100-(v-(low-pad))/(high-low+pad*2)*80;const path=points.map((v,i)=>`${i?'L':'M'} ${(i*520/(points.length-1)).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');$('#chart-line').setAttribute('d',path);$('#chart-dot').setAttribute('cy',String(y(spot)));$('#stock-chart').setAttribute('aria-label',`Illustrative ${name} stock price over ${period}`);$('#chart-name').textContent=`${name} · stock price`;$('#chart-price').textContent='$'+spot.toFixed(2);const change=spot-points[0],pct=change/points[0]*100;$('#chart-change').textContent=`${change>=0?'+':'−'}$${Math.abs(change).toFixed(2)} (${Math.abs(pct).toFixed(2)}%)`;$('#chart-change').style.color=change>=0?'var(--green)':'#efac9a';$('#chart-high').textContent='$'+Math.ceil(high).toLocaleString();$('#chart-low').textContent='$'+Math.floor(low).toLocaleString();$('#chart-start').textContent=dates[period][0];$('#chart-end').textContent=dates[period][1]}root.querySelectorAll('[data-chart-range]').forEach(b=>b.addEventListener('click',()=>{period=b.dataset.chartRange;root.querySelectorAll('[data-chart-range]').forEach(x=>x.classList.toggle('active',x===b));chart()}));root.querySelectorAll('.stock,.market').forEach(b=>b.addEventListener('click',chart));root.querySelectorAll('[data-open-market]').forEach(b=>b.addEventListener('click',()=>{if(!b.dataset.openStrike)return;$('#custom-strike').value=b.dataset.openStrike;$('#custom-strike').dispatchEvent(new Event('input'))}));chart()})()
+  </script>
+  <script>
+    (()=>{const root=document.getElementById('upside-marketplace');const landing=root.querySelector('[data-view="discover"]'),detail=root.querySelector('[data-view="market"]'),search=root.querySelector('#market-search');function open(stock,strike){const matching=root.querySelector(`.market[data-stock="${stock}"][data-strike="${strike}"]`);(matching||root.querySelector(`.stock[data-stock="${stock}"]`)).click();root.querySelector('#custom-strike').value=strike;root.querySelector('#custom-strike').dispatchEvent(new Event('input'));root.querySelectorAll('[data-view]').forEach(v=>v.hidden=v!==detail);root.querySelectorAll('[data-view-nav]').forEach(v=>v.classList.toggle('active',v.dataset.viewNav==='discover'))}root.querySelectorAll('[data-tile-stock]').forEach(b=>b.addEventListener('click',()=>open(b.dataset.tileStock,b.dataset.tileStrike)));root.querySelectorAll('[data-open-market]').forEach(b=>b.addEventListener('click',()=>{landing.hidden=true;detail.hidden=false}));root.querySelector('#search-toggle').addEventListener('click',()=>{const box=root.querySelector('#browse-search');box.hidden=!box.hidden;if(!box.hidden)search.focus()});search.addEventListener('input',()=>{const q=search.value.trim().toLowerCase();let shown=0;root.querySelectorAll('[data-tile-stock]').forEach(b=>{const match=`${b.dataset.tileStock} ${b.dataset.tileStrike} ${b.querySelector('.tile-expiry').textContent}`.toLowerCase().includes(q);b.hidden=!match;if(match)shown++});root.querySelector('#no-search-results').hidden=shown>0});})();
+  </script>
+  <script>
+    (()=>{
+      const root=document.getElementById('upside-marketplace');
+      const $=selector=>root.querySelector(selector);
+      const catalog={
+        NVIDIA:{'Nov 27, 2026':[[180,16.2,15.6],[190,9,8.4],[200,4.1,3.9],[205,2.7,2.45],[210,1.6,1.35],[220,.55,.4]]},
+        Microsoft:{'Nov 27, 2026':[[580,18,17.2],[600,8,7.3],[620,3.5,3.1]]},
+        Apple:{'Nov 27, 2026':[[290,6.4,5.8],[300,2.8,2.5],[310,1.25,1]]},
+        Coinbase:{'Dec 4, 2026':[[300,22,20.5],[325,11,9.8],[350,5.1,4.6]]}
+      };
+      let all=false,sort='asc';
+      const target=n=>'$'+Number(n).toLocaleString('en-US',{maximumFractionDigits:2});
+      const premium=n=>'$'+Number(n).toFixed(2);
+      function render(){
+        const stock=$('.stock.active')?.dataset.stock||'NVIDIA';
+        const selected=Number($('#custom-strike').value);
+        const source=catalog[stock]?.[$('#custom-date').value]||[];
+        const raw=$('#filter-price').value.trim();
+        const threshold=Number(raw);
+        const filtering=raw!==''&&Number.isFinite(threshold);
+        let rows=filtering||all?source.filter(row=>!filtering||row[0]>threshold):source.slice().sort((a,b)=>Math.abs(a[0]-selected)-Math.abs(b[0]-selected)).slice(0,4);
+        if(!all&&!filtering&&!source.some(row=>row[0]===selected))rows=[[selected,null,null],...rows];
+        rows.sort((a,b)=>sort==='asc'?a[0]-b[0]:b[0]-a[0]);
+        $('#target-list').innerHTML='<div class="target-labels"><span>Gains above <button type="button" class="sort-text" id="sort-asc" aria-label="Sort target prices low to high">↑</button><button type="button" class="sort-text" id="sort-desc" aria-label="Sort target prices high to low">↓</button></span><span style="text-align:right">Buy from</span><span style="text-align:right">Sell at</span></div>'+(rows.length?rows.map(([strike,ask,bid])=>`<button type="button" class="target-option${strike===selected?' active':''}" data-pick-target="${strike}" aria-pressed="${strike===selected}"><span>Above ${target(strike)}</span><span>${ask==null?'No offers':premium(ask)}</span><span>${bid==null?'No bids':premium(bid)}</span></button>`).join(''):'<div class="target-empty">No quoted targets match this filter.</div>');
+        $('#all-targets').textContent=all?'Show nearby':'See all targets';
+        for(const [name,id] of [['asc','#sort-asc'],['desc','#sort-desc']]){const button=$(id),active=name===sort;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))}
+        $('#sort-asc').addEventListener('click',()=>{sort='asc';all=true;render()});
+        $('#sort-desc').addEventListener('click',()=>{sort='desc';all=true;render()});
+        $('#target-list').querySelectorAll('[data-pick-target]').forEach(button=>button.addEventListener('click',()=>{$('#custom-strike').value=button.dataset.pickTarget;$('#custom-strike').dispatchEvent(new Event('input'));render()}));
+      }
+      $('#filter-price').addEventListener('input',render);
+      $('#all-targets').addEventListener('click',()=>{all=!all;$('#filter-price').value='';render()});
+      root.querySelectorAll('.stock,.market,[data-tile-stock],[data-open-market]').forEach(button=>button.addEventListener('click',()=>{all=false;sort='asc';$('#filter-price').value='';render()}));
+      render();
+    })();
+  </script>
+</div>

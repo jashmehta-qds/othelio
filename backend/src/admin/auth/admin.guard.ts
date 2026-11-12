@@ -20,6 +20,13 @@ export class AdminGuard implements CanActivate {
 
     const payload = this.authService.verifySessionToken(token);
 
+    const requestedChainId = req.query?.chainId ?? req.body?.chainId;
+    if (requestedChainId !== undefined && Number(requestedChainId) !== payload.chainId) {
+      throw new UnauthorizedException(
+        `Admin session is bound to chain ${payload.chainId}; requested chain ${requestedChainId}. Sign in again on the requested network.`,
+      );
+    }
+
     // Recheck onchain owner authority to guard against revoked ownership
     await this.authService.checkOnchainOwner(payload.sub, payload.chainId);
 

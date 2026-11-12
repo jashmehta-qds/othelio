@@ -4,56 +4,36 @@ pragma solidity ^0.8.24;
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {SeriesFactory} from "../../src/risksplit/SeriesFactory.sol";
-import {SettlementAdapter} from "../../src/risksplit/SettlementAdapter.sol";
-import {AggregatorV3Interface} from "../../src/risksplit/interfaces/ISettlementAdapter.sol";
+import {ISettlementAdapter} from "../../src/risksplit/interfaces/ISettlementAdapter.sol";
 import {TokenizedAssetConstants} from "../../src/constants/TokenizedAssetConstants.sol";
 
 contract CreateMsftcSeries is Script {
     function run() external returns (address seriesAddress) {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerPrivateKey);
-        address factoryAddr = vm.envAddress("SERIES_FACTORY");
-        address adapterAddr = vm.envAddress("SETTLEMENT_ADAPTER");
-
-        address msftc = TokenizedAssetConstants.MSFTc;
-        address feedMsft = TokenizedAssetConstants.FEED_MSFT;
+        address factoryAddr = vm.envAddress("RISK_SPLIT_FACTORY_ADDRESS");
+        address adapterAddr = vm.envAddress("RISK_SPLIT_SETTLEMENT_ADAPTER_ADDRESS");
+        address deployer = vm.envAddress("RISK_SPLIT_DEPLOYER_ADDRESS");
+        uint256 floorPrice = vm.envUint("RISK_SPLIT_FLOOR_PRICE_E8");
+        uint256 capPrice = vm.envUint("RISK_SPLIT_CAP_PRICE_E8");
+        uint256 expiry = vm.envUint("RISK_SPLIT_EXPIRY_TIMESTAMP");
+        address underlying = TokenizedAssetConstants.MSFTc;
+        address expectedFeed = TokenizedAssetConstants.FEED_MSFT;
 
         SeriesFactory factory = SeriesFactory(factoryAddr);
         require(factory.owner() == deployer, "Signer is not factory owner");
+        require(address(ISettlementAdapter(adapterAddr).priceFeed()) == expectedFeed, "Adapter feed mismatch");
+        require(floorPrice > 0 && floorPrice < capPrice, "Invalid floor/cap");
+        require(expiry > block.timestamp, "Expiry must be in the future");
 
-        // Fetch live reference round from Chainlink
-        (, int256 refPrice,, uint256 refTimestamp,) =
-            AggregatorV3Interface(feedMsft).latestRoundData();
-
-        require(refPrice > 0, "Non-positive reference price");
-
-        // Target Friday 4:00 PM ET (20:00 UTC) at least 7 days out
-        uint256 nextFridayUtc = ((refTimestamp + 7 days + 4 days) / 7 days) * 7 days + 20 hours;
-
-        // Floor: 85% of spot; Cap: 125% of spot
-        uint256 floorPrice = (uint256(refPrice) * 85) / 100;
-        uint256 capPrice = (uint256(refPrice) * 125) / 100;
-
-        vm.startBroadcast(deployerPrivateKey);
-
-        // 1. Approve exact expiry on factory
-        factory.setApprovedExpiry(msftc, nextFridayUtc, true);
-        console2.log("Approved expiry timestamp:", nextFridayUtc);
-
-        // 2. Create the series
-        seriesAddress = factory.createSeries(
-            msftc,
-            floorPrice,
-            capPrice,
-            nextFridayUtc,
-            adapterAddr
-        );
-
-        console2.log("MSFTc Risk Split Series created at:", seriesAddress);
-        console2.log("Floor Price ($E8):", floorPrice);
-        console2.log("Cap Price ($E8):", capPrice);
-        console2.log("Reference Price ($E8):", uint256(refPrice));
-
+        vm.startBroadcast();
+        factory.setApprovedExpiry(underlying, expiry, true);
+        seriesAddress = factory.createSeries(underlying, floorPrice, capPrice, expiry, adapterAddr);
         vm.stopBroadcast();
+
+        console2.log("Series deployed at:", seriesAddress);
+        console2.log("MSFTc:", underlying);
+        console2.log("Floor price (feed decimals):", floorPrice);
+        console2.log("Cap price (feed decimals):", capPrice);
+        console2.log("Expiry timestamp:", expiry);
+        console2.log("Settlement adapter:", adapterAddr);
     }
 }

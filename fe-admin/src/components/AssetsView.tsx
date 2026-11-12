@@ -3,7 +3,13 @@
 import React, { useState } from 'react';
 import { AdminAssetItem, AdminTransactionPreview } from '@othelio/shared';
 import { adminApi } from '../lib/api';
-import { useSendTransaction } from 'wagmi';
+import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
+import { getAddress, parseAbi } from 'viem';
+
+const assetRegistryAbi = parseAbi([
+  'function owner() view returns (address)',
+  'function configure(uint256 chainId,address token,address priceFeed,bool supported,uint8 tokenDecimals,uint8 feedDecimals,bool isCoinbaseB20)',
+]);
 
 interface AssetsViewProps {
   assets: AdminAssetItem[];
@@ -18,7 +24,9 @@ export function AssetsView({ assets, isLoading, onRefresh, isOwner }: AssetsView
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
-  const { sendTransactionAsync, isPending } = useSendTransaction();
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { writeContractAsync, isPending } = useWriteContract();
 
   const handlePreviewEnable = async (asset: AdminAssetItem) => {
     setSelectedAsset(asset);
@@ -38,12 +46,25 @@ export function AssetsView({ assets, isLoading, onRefresh, isOwner }: AssetsView
 
   const handleExecuteTx = async (tx: AdminTransactionPreview) => {
     try {
-      // Direct wallet execution
-      const hash = await sendTransactionAsync({
-        to: tx.target,
-        data: '0x', // Target method calldata or placeholder
+      if (!address || !publicClient) throw new Error('Connect the registry owner wallet first.');
+      if (tx.method !== 'configure') throw new Error('Unsupported asset configuration action.');
+      const registryOwner = await publicClient.readContract({
+        address: tx.target, abi: assetRegistryAbi, functionName: 'owner',
       });
-      alert(`Transaction submitted! Hash: ${hash}`);
+      if (getAddress(registryOwner) !== getAddress(address)) {
+        throw new Error(`Connected wallet is not registry owner ${registryOwner}.`);
+      }
+      const args = tx.args;
+      const request = await publicClient.simulateContract({
+        address: tx.target,
+        abi: assetRegistryAbi,
+        functionName: 'configure',
+        account: address,
+        args: [BigInt(args[0]), getAddress(args[1]), getAddress(args[2]), Boolean(args[3]), Number(args[4]), Number(args[5]), Boolean(args[6])],
+      });
+      const hash = await writeContractAsync(request.request);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error(`Registry transaction ${hash} reverted.`);
       setSelectedAsset(null);
       setPreviews(null);
       onRefresh();
@@ -131,7 +152,7 @@ export function AssetsView({ assets, isLoading, onRefresh, isOwner }: AssetsView
                             : 'bg-zinc-900 text-zinc-500 border-zinc-800'
                         }`}
                       >
-                        {asset.routeStatus.hasRoute ? 'AERODROME V3' : 'NONE'}
+                        {asset.routeStatus.hasRoute ? 'VERIFIED' : 'UNVERIFIED'}
                       </span>
                     </td>
                     <td className="py-3 px-4">

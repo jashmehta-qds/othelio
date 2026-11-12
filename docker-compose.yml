@@ -15,11 +15,11 @@ services:
       API_PORT: "3001"
       ENABLE_MOCK_DEX_SWAPS: "false"
       CORS_ORIGINS: ${CORS_ORIGINS:-}
-    command: ["sh", "-c", "node backend/scripts/migrate.cjs && exec node backend/dist/main.js"]
+    command: [ "sh", "-c", "node backend/scripts/migrate.cjs && exec node backend/dist/main.js" ]
     ports:
       - "3001:3001"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" ]
       interval: 15s
       timeout: 5s
       retries: 8
@@ -38,8 +38,8 @@ services:
       START_BLOCK: "52046045"
       INDEXER_CONFIRMATIONS: "1"
       BATCH_SIZE: "9"
-      INDEXER_CATCHUP_CONCURRENCY: "3"
-      INDEXER_CATCHUP_MIN_INTERVAL_MS: "1000"
+      INDEXER_CATCHUP_CONCURRENCY: "1"
+      INDEXER_CATCHUP_MIN_INTERVAL_MS: "6000"
       INDEXER_HEAD_POLL_INTERVAL_SECS: "5"
       INDEXER_PRICE_INTERVAL_BLOCKS: "10"
       FACTORY_ADDRESS: "0xAd21D1aACF2B3c84608e69eAa87B798d27A3915D"

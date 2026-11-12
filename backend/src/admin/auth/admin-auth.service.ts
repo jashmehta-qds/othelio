@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { addressSchema } from '@othelio/shared';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createPublicClient, getAddress, http, isAddress, parseAbi } from 'viem';
@@ -7,6 +7,7 @@ import { seriesFactoryAbi } from '@othelio/shared';
 
 interface AdminNonceEntry {
   nonce: string;
+  message: string;
   address: string;
   chainId: number;
   expiresAt: number;
@@ -43,12 +44,17 @@ export class AdminAuthService {
   }
 
   getFactoryAddress(chainId: number): `0x${string}` {
+    const configuredChain = process.env.CHAIN_ID ? Number(process.env.CHAIN_ID) : undefined;
+    if (configuredChain !== undefined && chainId !== configuredChain) {
+      throw new ServiceUnavailableException(
+        `Risk Split factory is not configured for chain ${chainId} (backend configured for chain ${configuredChain}). Set RISK_SPLIT_FACTORY_ADDRESS.`,
+      );
+    }
     const envAddr = process.env.RISK_SPLIT_FACTORY_ADDRESS?.trim();
-    if (envAddr && isAddress(envAddr)) {
+    if (envAddr && isAddress(envAddr) && !/^0x0{40}$/i.test(envAddr)) {
       return getAddress(envAddr);
     }
-    // Default fallback factory address
-    return '0x1111111111111111111111111111111111111111';
+    throw new ServiceUnavailableException(`Risk Split factory is not configured for chain ${chainId}. Set RISK_SPLIT_FACTORY_ADDRESS.`);
   }
 
   generateChallenge(rawAddress: string, chainIdInput = 8453): { nonce: string; message: string; expiresAt: string } {
@@ -59,13 +65,6 @@ export class AdminAuthService {
     const nonce = randomBytes(16).toString('hex');
     const expiresAtMs = Date.now() + 10 * 60 * 1000; // 10 minutes
     const issuedAt = new Date().toISOString();
-
-    this.nonces.set(nonce, {
-      nonce,
-      address,
-      chainId,
-      expiresAt: expiresAtMs,
-    });
 
     const message = [
       'Welcome to Othelio Admin Console!',
@@ -78,6 +77,14 @@ export class AdminAuthService {
       `Nonce: ${nonce}`,
       `Issued At: ${issuedAt}`,
     ].join('\n');
+
+    this.nonces.set(nonce, {
+      nonce,
+      message,
+      address,
+      chainId,
+      expiresAt: expiresAtMs,
+    });
 
     return {
       nonce,
@@ -115,6 +122,10 @@ export class AdminAuthService {
 
     if (entry.address.toLowerCase() !== address) {
       throw new BadRequestException('Challenge was issued for a different wallet address.');
+    }
+
+    if (message !== entry.message) {
+      throw new BadRequestException('Challenge message does not match the issued message.');
     }
 
     // 2. Validate chain ID
@@ -176,13 +187,13 @@ export class AdminAuthService {
     // Nonce consumed to prevent replay attacks
     this.nonces.delete(extractedNonce);
 
-    // 4. Verify onchain owner authority
+    // 4. Verify configured deployment and onchain owner authority
+    const factoryAddress = this.getFactoryAddress(messageChainId);
     const isOwner = await this.isOwner(address, messageChainId);
     if (!isOwner) {
       throw new UnauthorizedException('Wallet address is not an authorized operator or onchain owner.');
     }
 
-    const factoryAddress = this.getFactoryAddress(messageChainId);
     const session = this.createSessionToken(address, messageChainId);
 
     return {
@@ -196,28 +207,11 @@ export class AdminAuthService {
 
   async isOwner(address: string, chainId: number): Promise<boolean> {
     const targetAddr = address.toLowerCase();
-
-    // 1. Check configured admin wallets
-    const adminWalletsEnv = (process.env.ADMIN_WALLETS || process.env.ADMIN_OWNER_ADDRESS || '')
-      .toLowerCase()
-      .split(',')
-      .map((w) => w.trim())
-      .filter(Boolean);
-
-    if (adminWalletsEnv.includes(targetAddr)) {
-      return true;
-    }
-
-    // 2. Query onchain SeriesFactory.owner()
+    const factoryAddress = this.getFactoryAddress(chainId);
+    // The onchain owner is the sole authority; environment allowlists cannot grant it.
     try {
       const rpcUrl = rpcUrlForChain(chainId);
-      if (!rpcUrl) return false;
-
-      const factoryAddress = this.getFactoryAddress(chainId);
-      if (!factoryAddress || factoryAddress === '0x1111111111111111111111111111111111111111') {
-        // In local/test mode without a live deployed factory, configured env applies
-        return adminWalletsEnv.length === 0 ? false : adminWalletsEnv.includes(targetAddr);
-      }
+      if (!rpcUrl) throw new Error(`No RPC configured for chain ${chainId}`);
 
       const client = createPublicClient({ transport: http(rpcUrl) });
       const onchainOwner = await client.readContract({
@@ -228,8 +222,10 @@ export class AdminAuthService {
 
       return (onchainOwner as string).toLowerCase() === targetAddr;
     } catch (err) {
-      this.logger.warn(`Could not verify onchain owner for ${targetAddr}: ${err}`);
-      return adminWalletsEnv.includes(targetAddr);
+      this.logger.warn(`Could not verify onchain owner for ${targetAddr} on chain ${chainId} at ${factoryAddress}: ${err}`);
+      throw new ServiceUnavailableException(
+        `Cannot verify factory owner onchain on chain ${chainId} at ${factoryAddress}. Check the configured factory and RPC.`,
+      );
     }
   }
 

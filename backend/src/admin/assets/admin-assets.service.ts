@@ -1,15 +1,21 @@
-import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import {
   AdminAssetItem,
   AdminAssetsResponse,
   AdminTransactionPreview,
-  BASE_LAUNCH_B20_TOKENS,
   TOKEN_FEED_REGISTRY,
 } from '@othelio/shared';
-import { createPublicClient, getAddress, http, isAddress } from 'viem';
+import { createPublicClient, getAddress, http, isAddress, parseAbi } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
 import { RiskSplitService } from '../../risksplit/risksplit.service';
+import { BASE_USDC_ADDRESS, getAerodromeSlipstreamRoute } from '../../dex/aerodrome-slipstream-routes';
+
+const MODULE_ROUTE_ABI = parseAbi(['function aerodromeAdapter() view returns (address)']);
+const ADAPTER_ROUTE_ABI = parseAbi(['function routeRegistry() view returns (address)']);
+const ROUTE_REGISTRY_ABI = parseAbi([
+  'function requireApprovedPool(uint256 chainId,address tokenA,address tokenB,int24 tickSpacing) view returns (address factory,address pool)',
+]);
 
 const REGISTRY_VIEW_ABI = [
   {
@@ -54,11 +60,11 @@ export class AdminAssetsService {
   ) {}
 
   getRegistryAddress(chainId: number): `0x${string}` {
-    const envAddr = process.env.OTHELIO_ASSET_REGISTRY?.trim();
-    if (envAddr && isAddress(envAddr)) {
+    const envAddr = (process.env.ASSET_REGISTRY_ADDRESS || process.env.OTHELIO_ASSET_REGISTRY)?.trim();
+    if (envAddr && isAddress(envAddr) && !/^0x0{40}$/i.test(envAddr)) {
       return getAddress(envAddr);
     }
-    return '0x2222222222222222222222222222222222222222';
+    throw new BadRequestException(`Asset registry is not configured for chain ${chainId}. Set ASSET_REGISTRY_ADDRESS.`);
   }
 
   async getAssets(chainIdInput = 8453): Promise<AdminAssetsResponse> {
@@ -82,7 +88,7 @@ export class AdminAssetsService {
           SELECT DISTINCT ON (LOWER(asset_address))
             LOWER(asset_address) AS asset_address,
             price_usd_e8::text,
-            round_id::text,
+            feed_round_id::text,
             observed_at,
             (observed_at >= NOW() - INTERVAL '300 seconds') AS is_fresh
           FROM asset_price_observations
@@ -94,7 +100,7 @@ export class AdminAssetsService {
           dbObservations.set(row.asset_address, {
             priceUsdE8: row.price_usd_e8,
             updatedAt: row.observed_at ? new Date(row.observed_at).toISOString() : new Date().toISOString(),
-            roundId: row.round_id || null,
+            roundId: row.feed_round_id || null,
             isFresh: Boolean(row.is_fresh),
           });
         }
@@ -106,10 +112,22 @@ export class AdminAssetsService {
     const rpcUrl = rpcUrlForChain(chainId);
     const client = rpcUrl ? createPublicClient({ transport: http(rpcUrl) }) : null;
     const registryAddress = this.getRegistryAddress(chainId);
+    let routeRegistryAddress: `0x${string}` | null = null;
+    const moduleAddress = process.env.MODULE_ADDRESS?.trim();
+    if (client && moduleAddress && isAddress(moduleAddress)) {
+      try {
+        const adapter = await client.readContract({
+          address: getAddress(moduleAddress), abi: MODULE_ROUTE_ABI, functionName: 'aerodromeAdapter',
+        });
+        routeRegistryAddress = await client.readContract({
+          address: adapter, abi: ADAPTER_ROUTE_ABI, functionName: 'routeRegistry',
+        });
+      } catch (err) {
+        this.logger.warn(`Could not resolve the onchain Aerodrome route registry: ${err}`);
+      }
+    }
 
-    const assetItems: AdminAssetItem[] = [];
-
-    for (const [tokenAddr, config] of Object.entries(TOKEN_FEED_REGISTRY)) {
+    const assetItems: AdminAssetItem[] = await Promise.all(Object.entries(TOKEN_FEED_REGISTRY).map(async ([tokenAddr, config]) => {
       const normAddr = tokenAddr.toLowerCase();
       const dbObs = dbObservations.get(normAddr);
 
@@ -141,7 +159,7 @@ export class AdminAssetsService {
 
       // Check registry status
       let isSupportedInRegistry = false;
-      if (client && registryAddress !== '0x2222222222222222222222222222222222222222') {
+      if (client) {
         try {
           const res = await client.readContract({
             address: registryAddress,
@@ -153,22 +171,29 @@ export class AdminAssetsService {
         } catch {
           isSupportedInRegistry = false;
         }
-      } else {
-        // Fallback: check if in BASE_LAUNCH_B20_TOKENS
-        isSupportedInRegistry = (BASE_LAUNCH_B20_TOKENS as readonly string[])
-          .map((t) => t.toLowerCase())
-          .includes(normAddr);
       }
 
-      const hasRoute = (BASE_LAUNCH_B20_TOKENS as readonly string[])
-        .map((t) => t.toLowerCase())
-        .includes(normAddr);
+      const reviewedRoute = getAerodromeSlipstreamRoute(chainId, config.tokenAddress, BASE_USDC_ADDRESS);
+      let hasRoute = false;
+      if (client && routeRegistryAddress && reviewedRoute) {
+        try {
+          await client.readContract({
+            address: routeRegistryAddress,
+            abi: ROUTE_REGISTRY_ABI,
+            functionName: 'requireApprovedPool',
+            args: [BigInt(chainId), config.tokenAddress, BASE_USDC_ADDRESS, reviewedRoute.tickSpacing],
+          });
+          hasRoute = true;
+        } catch {
+          hasRoute = false;
+        }
+      }
 
       const isB20 = true;
-      const tradeable = isSupportedInRegistry && hasRoute && priceUsdE8 !== null;
+      const tradeable = isSupportedInRegistry && hasRoute && priceUsdE8 !== null && isFresh;
       const staged = !tradeable;
 
-      assetItems.push({
+      return {
         address: config.tokenAddress,
         symbol: config.symbol,
         name: config.name,
@@ -192,8 +217,8 @@ export class AdminAssetsService {
         },
         staged,
         tradeable,
-      });
-    }
+      } satisfies AdminAssetItem;
+    }));
 
     return {
       data: assetItems,
@@ -212,18 +237,17 @@ export class AdminAssetsService {
 
     const registryAddress = this.getRegistryAddress(chainId);
 
+    const rpcUrl = rpcUrlForChain(chainId);
+    if (!rpcUrl) throw new ServiceUnavailableException(`No RPC configured for chain ${chainId}.`);
+
     const previews: AdminTransactionPreview[] = [
       {
-        description: `Add ${config.symbol} to OthelioAssetRegistry`,
+        description: `Configure ${config.symbol} in OthelioAssetRegistry`,
         target: registryAddress,
         chainId,
-        method: 'addAsset',
-        args: [config.tokenAddress, config.feedAddress, config.tokenDecimals, config.feedDecimals, true],
+        method: 'configure',
+        args: [chainId, config.tokenAddress, config.feedAddress, true, config.tokenDecimals, config.feedDecimals, true],
         expectedState: 'Token registered in OthelioAssetRegistry with 8-decimal Chainlink feed',
-        simulationResult: {
-          success: true,
-          message: 'Registry call prepared for wallet signature by registry owner',
-        },
       },
     ];
 

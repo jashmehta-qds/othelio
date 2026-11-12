@@ -176,7 +176,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         worker_last_success_block(&pool, chain_id, "reconciliation")
             .await
             .unwrap_or(0);
-    let mut rpc_failure_count = 0_u32;
+    let mut head_failure_count = 0_u32;
+    let mut range_failure_count = 0_u32;
     let mut rpc_health: HashMap<String, RpcHealth> = HashMap::new();
 
     loop {
@@ -196,7 +197,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         match read_head(&provider).await {
             Ok(latest_block) => {
-                rpc_failure_count = 0;
+                head_failure_count = 0;
                 let latest_block = latest_block.as_u64();
                 record_observed_head(&pool, chain_id, latest_block).await?;
 
@@ -219,10 +220,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .saturating_add(window_blocks.saturating_sub(1))
                         .min(latest_block);
                     let scan_started = std::time::Instant::now();
-                    info!(
-                        concurrency = catchup_concurrency,
-                        "[Rust Indexer] Scanning blocks {} -> {}", current_block, to_block
-                    );
 
                     if !acquire_worker_lease(&pool, chain_id, "events").await? {
                         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -234,9 +231,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .can_request()
                     {
                         release_worker_lease(&pool, chain_id, "events").await?;
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        let cooldown = Duration::from_secs(configured_u64("INDEXER_RPC_CIRCUIT_COOLDOWN_SECS", 30));
+                        tokio::time::sleep(cooldown.min(Duration::from_secs(5))).await;
                         continue;
                     }
+
+                    info!(
+                        concurrency = catchup_concurrency,
+                        "[Rust Indexer] Scanning blocks {} -> {}", current_block, to_block
+                    );
                     let worker_timeout =
                         Duration::from_secs(configured_u64("INDEXER_RPC_TIMEOUT_SECS", 30));
                     let events_owner = lease_owner("events");
@@ -266,7 +269,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .await
                     {
                         Ok(Ok(last_processed_block)) => {
-                            rpc_failure_count = 0;
+                            range_failure_count = 0;
                             rpc_health
                                 .entry(circuit_key("events", using_secondary))
                                 .or_default()
@@ -276,20 +279,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             release_worker_lease(&pool, chain_id, "events").await?;
                             current_block = last_processed_block.saturating_add(1);
-                            if catchup_concurrency > 1 {
-                                let minimum_interval = Duration::from_millis(configured_u64(
-                                    "INDEXER_CATCHUP_MIN_INTERVAL_MS",
-                                    1_000,
-                                ));
-                                if let Some(remaining) =
-                                    minimum_interval.checked_sub(scan_started.elapsed())
-                                {
-                                    tokio::time::sleep(remaining).await;
-                                }
+                            let minimum_interval = Duration::from_millis(configured_u64(
+                                "INDEXER_CATCHUP_MIN_INTERVAL_MS",
+                                1_000,
+                            ));
+                            if let Some(remaining) =
+                                minimum_interval.checked_sub(scan_started.elapsed())
+                            {
+                                tokio::time::sleep(remaining).await;
                             }
                         }
                         Ok(Err(e)) => {
-                            rpc_failure_count = rpc_failure_count.saturating_add(1);
+                            range_failure_count = range_failure_count.saturating_add(1);
                             rpc_health
                                 .entry(circuit_key("events", using_secondary))
                                 .or_default()
@@ -307,7 +308,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 30,
                                             ));
                                         warn!(
-                                            failure_count = rpc_failure_count,
+                                            failure_count = range_failure_count,
                                             provider = provider_name(using_secondary),
                                             "event worker RPC failed; switching provider"
                                         );
@@ -318,9 +319,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .await?;
                             release_worker_lease(&pool, chain_id, "events").await?;
                             current_block = get_next_block(&pool, chain_id, default_start).await?;
-                            let backoff = rpc_retry_delay(rpc_failure_count);
+                            let backoff = rpc_retry_delay(range_failure_count);
                             warn!(
-                                failure_count = rpc_failure_count,
+                                failure_count = range_failure_count,
                                 retry_in_secs = backoff.as_secs(),
                                 error = ?e,
                                 "[RPC Error] Block range failed; keeping indexer alive and retrying"
@@ -328,7 +329,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             tokio::time::sleep(backoff).await;
                         }
                         Err(e) => {
-                            rpc_failure_count = rpc_failure_count.saturating_add(1);
+                            range_failure_count = range_failure_count.saturating_add(1);
                             rpc_health
                                 .entry(circuit_key("events", using_secondary))
                                 .or_default()
@@ -340,7 +341,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             record_worker_failure(&pool, chain_id, "events", &message).await?;
                             release_worker_lease(&pool, chain_id, "events").await?;
                             current_block = get_next_block(&pool, chain_id, default_start).await?;
-                            warn!(failure_count = rpc_failure_count, error = ?e, "event worker request timeout; preserving checkpoint");
+                            warn!(failure_count = range_failure_count, error = ?e, "event worker request timeout; preserving checkpoint");
                         }
                     }
                 } else {
@@ -446,13 +447,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             Err(e) => {
-                rpc_failure_count = rpc_failure_count.saturating_add(1);
-                warn!(provider = provider_name(using_secondary), error = %e, failure_count = rpc_failure_count, "event worker head read failed");
+                head_failure_count = head_failure_count.saturating_add(1);
+                warn!(provider = provider_name(using_secondary), error = %e, failure_count = head_failure_count, "event worker head read failed");
                 if !using_secondary {
                     if let Some(secondary) = secondary_rpc_url.as_ref() {
                         if let Ok(candidate) = Provider::<Http>::try_from(secondary.clone()) {
                             warn!(
-                                failure_count = rpc_failure_count,
+                                failure_count = head_failure_count,
                                 "primary RPC unhealthy; switching to secondary endpoint"
                             );
                             provider = Arc::new(candidate);
@@ -466,10 +467,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                let backoff = rpc_retry_delay(rpc_failure_count);
+                let backoff = rpc_retry_delay(head_failure_count);
                 warn!(
                     provider = provider_name(using_secondary),
-                    failure_count = rpc_failure_count,
+                    failure_count = head_failure_count,
                     retry_in_secs = backoff.as_secs(),
                     error = ?e,
                     "[RPC Error] RPC head read failed; keeping indexer alive and backing off"

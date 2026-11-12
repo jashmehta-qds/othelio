@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
@@ -15,14 +16,18 @@ import {
   ZERO_EX_EIP712_DOMAIN,
   ZERO_EX_EXCHANGE_PROXY_BASE,
   ZERO_EX_LIMIT_ORDER_ABI,
+  OrderStatus,
   LIMIT_ORDER_EIP712_TYPES,
   ZeroExLimitOrder,
   ZeroExSignature,
   buildCancelLimitOrderTx,
   buildFillLimitOrderTx,
+  toZeroExAbiOrder,
 } from '@othelio/shared';
 import {
   createPublicClient,
+  decodeEventLog,
+  formatUnits,
   getAddress,
   hashTypedData,
   http,
@@ -57,12 +62,46 @@ export class OrderbookService {
     @Optional() private readonly riskSplitService?: RiskSplitService,
   ) {}
 
-  computeOrderHash(order: ZeroExLimitOrder, chainId: number = BASE_CHAIN_ID): `0x${string}` {
-    const domain = {
-      ...ZERO_EX_EIP712_DOMAIN,
-      chainId,
-      verifyingContract: ZERO_EX_EXCHANGE_PROXY_BASE,
+  private createVenueClient(chainId: number) {
+    const rpcUrl = rpcUrlForChain(chainId);
+    if (!rpcUrl) throw new ServiceUnavailableException('Chain RPC unavailable for order verification');
+    return createPublicClient({ transport: http(rpcUrl) });
+  }
+
+  private async getClaimDecimals(chainId: number, claimToken: string): Promise<number> {
+    const raw = await this.createVenueClient(chainId).readContract({
+      address: getAddress(claimToken),
+      abi: ERC20_ABI,
+      functionName: 'decimals',
+    });
+    const decimals = Number(raw);
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) {
+      throw new BadRequestException('Unsupported claim token decimals');
+    }
+    return decimals;
+  }
+
+  private orderFromRow(row: any): ZeroExLimitOrder {
+    return {
+      makerToken: row.maker_token,
+      takerToken: row.taker_token,
+      makerAmount: row.maker_amount,
+      takerAmount: row.taker_amount,
+      takerTokenFeeAmount: '0',
+      maker: row.maker_address,
+      taker: row.taker_address,
+      sender: '0x0000000000000000000000000000000000000000',
+      feeRecipient: '0x0000000000000000000000000000000000000000',
+      pool: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      expiry: Number(row.expiry_timestamp),
+      salt: row.salt,
     };
+  }
+
+  computeOrderHash(order: ZeroExLimitOrder, _chainId: number = BASE_CHAIN_ID): `0x${string}` {
+    // The fork uses Base's already-deployed 0x proxy, whose cached EIP-712
+    // domain separator remains bound to Base chain ID 8453.
+    const domain = ZERO_EX_EIP712_DOMAIN;
 
     return hashTypedData({
       domain,
@@ -87,10 +126,23 @@ export class OrderbookService {
 
   async validateAndStoreOrder(req: CreateOrderRequest): Promise<StoredOrderModel> {
     const { order, signature, chainId, seriesAddress, claimType } = req;
+    const zeroAddress = '0x0000000000000000000000000000000000000000';
+    const zeroPool = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
     // 1. Chain validation
     if (chainId !== BASE_MAINNET_CHAIN_ID && chainId !== BASE_FORK_CHAIN_ID) {
       throw new BadRequestException(`Unsupported chain ID: ${chainId}`);
+    }
+    if (!isAddress(seriesAddress) || (claimType !== 'PROTECTED' && claimType !== 'UPSIDE')) {
+      throw new BadRequestException('Invalid series or claim type');
+    }
+    if (order.takerTokenFeeAmount !== '0' ||
+        order.taker.toLowerCase() !== zeroAddress ||
+        order.sender.toLowerCase() !== zeroAddress ||
+        order.feeRecipient.toLowerCase() !== zeroAddress ||
+        order.pool.toLowerCase() !== zeroPool ||
+        signature.signatureType !== 2) {
+      throw new BadRequestException('Public book requires unrestricted zero-fee 0x limit orders');
     }
 
     // 2. Expiry checks
@@ -156,15 +208,14 @@ export class OrderbookService {
       throw new BadRequestException('Maker and taker amounts must be strictly positive');
     }
 
-    // 6. Compute Price in USDC terms (USDC has 6 decimals, Claim has 8 decimals)
-    // Price in 6-decimal USDC per 1.0 (1e8) Claim token:
-    // BUY: makerAmount = USDC (6 dec), takerAmount = Claim (8 dec) => price = (makerAmount * 1e8) / takerAmount
-    // SELL: makerAmount = Claim (8 dec), takerAmount = USDC (6 dec) => price = (takerAmount * 1e8) / makerAmount
+    // Price in 6-decimal USDC per one whole claim token.
+    const claimDecimals = await this.getClaimDecimals(chainId, claimTokenAddr);
+    const claimUnit = 10n ** BigInt(claimDecimals);
     let priceUsdE6Big: bigint;
     if (side === 'BUY') {
-      priceUsdE6Big = (makerAmountBig * 100000000n) / takerAmountBig;
+      priceUsdE6Big = (makerAmountBig * claimUnit) / takerAmountBig;
     } else {
-      priceUsdE6Big = (takerAmountBig * 100000000n) / makerAmountBig;
+      priceUsdE6Big = (takerAmountBig * claimUnit) / makerAmountBig;
     }
 
     if (priceUsdE6Big <= 0n) {
@@ -172,11 +223,7 @@ export class OrderbookService {
     }
 
     // 7. Cryptographic EIP-712 Signature check
-    const domain = {
-      ...ZERO_EX_EIP712_DOMAIN,
-      chainId,
-      verifyingContract: ZERO_EX_EXCHANGE_PROXY_BASE,
-    };
+    const domain = ZERO_EX_EIP712_DOMAIN;
 
     let isSigValid = false;
     try {
@@ -256,6 +303,7 @@ export class OrderbookService {
       } catch (err: any) {
         if (err instanceof BadRequestException) throw err;
         this.logger.warn(`Could not verify onchain balance/allowance: ${err}`);
+        throw new ServiceUnavailableException('Could not verify maker balance and allowance');
       }
     }
 
@@ -335,19 +383,17 @@ export class OrderbookService {
     const chainId = Number(chainIdInput);
     const normSeries = seriesAddress.toLowerCase();
 
-    let asOfBlock = 0;
-    if (this.riskSplitService) {
-      try {
-        const freshness = await this.riskSplitService.getIndexerFreshness(chainId);
-        asOfBlock = freshness.lastIndexedBlock;
-      } catch {
-        asOfBlock = 0;
-      }
+    if (!this.riskSplitService || !this.db) {
+      throw new ServiceUnavailableException('Live market state unavailable');
     }
+    const freshness = await this.riskSplitService.getIndexerFreshness(chainId);
+    if (!freshness.isFresh) {
+      throw new ServiceUnavailableException('Risk Split indexer is stale');
+    }
+    const asOfBlock = freshness.lastIndexedBlock;
 
-    const series = this.riskSplitService
-      ? await this.riskSplitService.getSeries(chainId, normSeries)
-      : null;
+    const series = await this.riskSplitService.getSeries(chainId, normSeries);
+    if (!series) throw new NotFoundException(`Risk Split series ${normSeries} not found`);
 
     const claimToken =
       claimType === 'PROTECTED'
@@ -358,8 +404,9 @@ export class OrderbookService {
     const asks: OrderBookLevel[] = [];
     const recentTrades: OrderBookTrade[] = [];
 
-    if (this.db) {
+    if (!series.isSettled && series.expiryTimestamp > Math.floor(Date.now() / 1000)) {
       try {
+        const claimDecimals = await this.getClaimDecimals(chainId, claimToken);
         const nowSecs = Math.floor(Date.now() / 1000);
 
         // Fetch fillable orders
@@ -379,7 +426,34 @@ export class OrderbookService {
         const bidLevels = new Map<string, { priceUsdE6: bigint; amountClaim: bigint; count: number; orderHash: string }>();
         const askLevels = new Map<string, { priceUsdE6: bigint; amountClaim: bigint; count: number; orderHash: string }>();
 
+        const client = this.createVenueClient(chainId);
+        const reservedMakerFunds = new Map<string, bigint>();
         for (const row of ordersRes.rows || []) {
+          const order = this.orderFromRow(row);
+          const onchain = await client.readContract({
+            address: ZERO_EX_EXCHANGE_PROXY_BASE,
+            abi: ZERO_EX_LIMIT_ORDER_ABI,
+            functionName: 'getLimitOrderInfo',
+            args: [toZeroExAbiOrder(order)],
+          });
+          if (Number(onchain.status) !== OrderStatus.FILLABLE || onchain.orderHash.toLowerCase() !== row.order_hash.toLowerCase()) continue;
+          const remainingTaker = BigInt(row.taker_amount) - BigInt(onchain.takerTokenFilledAmount);
+          if (remainingTaker <= 0n) continue;
+          const remainingMaker = (BigInt(row.maker_amount) * remainingTaker + BigInt(row.taker_amount) - 1n) / BigInt(row.taker_amount);
+          const makerKey = `${row.maker_address.toLowerCase()}:${row.maker_token.toLowerCase()}`;
+          let available = reservedMakerFunds.get(makerKey);
+          if (available === undefined) {
+            const [balance, allowance] = await Promise.all([
+              client.readContract({ address: getAddress(row.maker_token), abi: ERC20_ABI, functionName: 'balanceOf', args: [getAddress(row.maker_address)] }),
+              client.readContract({ address: getAddress(row.maker_token), abi: ERC20_ABI, functionName: 'allowance', args: [getAddress(row.maker_address), ZERO_EX_EXCHANGE_PROXY_BASE] }),
+            ]);
+            available = balance < allowance ? balance : allowance;
+          }
+          if (available < remainingMaker) {
+            reservedMakerFunds.set(makerKey, available);
+            continue;
+          }
+          reservedMakerFunds.set(makerKey, available - remainingMaker);
           const side = row.side;
           const priceE6 = BigInt(row.price_usd_e6);
           const priceKey = priceE6.toString();
@@ -389,8 +463,8 @@ export class OrderbookService {
           // SELL: maker is Claim, taker is USDC -> claim amount is remaining_maker_amount
           const claimAmt =
             side === 'BUY'
-              ? BigInt(row.remaining_taker_amount)
-              : BigInt(row.remaining_maker_amount);
+              ? remainingTaker
+              : remainingMaker;
 
           const targetMap = side === 'BUY' ? bidLevels : askLevels;
           const existing = targetMap.get(priceKey);
@@ -414,8 +488,8 @@ export class OrderbookService {
           bids.push({
             priceUsd: `$${(Number(lvl.priceUsdE6) / 1e6).toFixed(4)}`,
             rawPriceE6: lvl.priceUsdE6.toString(),
-            amountClaim: (Number(lvl.amountClaim) / 1e8).toFixed(4),
-            totalClaim: (Number(runningBidTotal) / 1e8).toFixed(4),
+            amountClaim: Number(formatUnits(lvl.amountClaim, claimDecimals)).toFixed(4),
+            totalClaim: Number(formatUnits(runningBidTotal, claimDecimals)).toFixed(4),
             orderCount: lvl.count,
             orderHash: lvl.orderHash,
           });
@@ -428,8 +502,8 @@ export class OrderbookService {
           asks.push({
             priceUsd: `$${(Number(lvl.priceUsdE6) / 1e6).toFixed(4)}`,
             rawPriceE6: lvl.priceUsdE6.toString(),
-            amountClaim: (Number(lvl.amountClaim) / 1e8).toFixed(4),
-            totalClaim: (Number(runningAskTotal) / 1e8).toFixed(4),
+            amountClaim: Number(formatUnits(lvl.amountClaim, claimDecimals)).toFixed(4),
+            totalClaim: Number(formatUnits(runningAskTotal, claimDecimals)).toFixed(4),
             orderCount: lvl.count,
             orderHash: lvl.orderHash,
           });
@@ -452,7 +526,7 @@ export class OrderbookService {
             id: row.id.toString(),
             orderHash: row.order_hash,
             side: row.side,
-            amountClaim: (Number(claimAmt) / 1e8).toFixed(4),
+            amountClaim: Number(formatUnits(BigInt(claimAmt), claimDecimals)).toFixed(4),
             amountUsdc: `$${(Number(usdcAmt) / 1e6).toFixed(2)}`,
             priceUsd: `$${(Number(row.price_usd_e6) / 1e6).toFixed(4)}`,
             txHash: row.tx_hash || null,
@@ -461,6 +535,7 @@ export class OrderbookService {
         }
       } catch (err) {
         this.logger.warn(`Failed to construct orderbook: ${err}`);
+        throw new ServiceUnavailableException('Could not verify executable order book');
       }
     }
 
@@ -499,8 +574,20 @@ export class OrderbookService {
 
     const row = res.rows[0];
 
-    if (row.order_status !== 'FILLABLE') {
+    if (Number(row.chain_id) !== chainId) {
+      throw new BadRequestException('Order chain does not match requested chain');
+    }
+    if (row.order_status !== 'FILLABLE' || row.is_locally_hidden) {
       throw new BadRequestException(`Order is not fillable (current status: ${row.order_status})`);
+    }
+    if (Number(row.expiry_timestamp) <= Math.floor(Date.now() / 1000)) {
+      throw new BadRequestException('Order has expired');
+    }
+    const freshness = await this.riskSplitService?.getIndexerFreshness(chainId);
+    if (!freshness?.isFresh) throw new ServiceUnavailableException('Risk Split indexer is stale');
+    const series = await this.riskSplitService?.getSeries(chainId, row.series_address);
+    if (!series || series.isSettled || series.expiryTimestamp <= Math.floor(Date.now() / 1000)) {
+      throw new BadRequestException('Series is no longer open');
     }
 
     if (req.takerAddress && row.maker_address.toLowerCase() === req.takerAddress.toLowerCase()) {
@@ -518,20 +605,28 @@ export class OrderbookService {
       throw new BadRequestException(`Requested fill amount exceeds remaining fillable amount (${remTakerBig})`);
     }
 
-    const order: ZeroExLimitOrder = {
-      makerToken: row.maker_token,
-      takerToken: row.taker_token,
-      makerAmount: row.maker_amount,
-      takerAmount: row.taker_amount,
-      takerTokenFeeAmount: '0',
-      maker: row.maker_address,
-      taker: row.taker_address,
-      sender: '0x0000000000000000000000000000000000000000',
-      feeRecipient: '0x0000000000000000000000000000000000000000',
-      pool: '0x0000000000000000000000000000000000000000000000000000000000000000',
-      expiry: Number(row.expiry_timestamp),
-      salt: row.salt,
-    };
+    const order = this.orderFromRow(row);
+    try {
+      const client = this.createVenueClient(chainId);
+      const [info, balance, allowance] = await Promise.all([
+        client.readContract({ address: ZERO_EX_EXCHANGE_PROXY_BASE, abi: ZERO_EX_LIMIT_ORDER_ABI, functionName: 'getLimitOrderInfo', args: [toZeroExAbiOrder(order)] }),
+        client.readContract({ address: getAddress(order.makerToken), abi: ERC20_ABI, functionName: 'balanceOf', args: [getAddress(order.maker)] }),
+        client.readContract({ address: getAddress(order.makerToken), abi: ERC20_ABI, functionName: 'allowance', args: [getAddress(order.maker), ZERO_EX_EXCHANGE_PROXY_BASE] }),
+      ]);
+      if (Number(info.status) !== OrderStatus.FILLABLE || info.orderHash.toLowerCase() !== orderHash.toLowerCase()) {
+        throw new BadRequestException('Order is no longer fillable onchain');
+      }
+      const chainRemaining = BigInt(order.takerAmount) - BigInt(info.takerTokenFilledAmount);
+      if (fillAmountBig > chainRemaining) throw new BadRequestException('Fill amount exceeds onchain remaining amount');
+      const makerNeeded = (BigInt(order.makerAmount) * fillAmountBig + BigInt(order.takerAmount) - 1n) / BigInt(order.takerAmount);
+      if (balance < makerNeeded || allowance < makerNeeded) {
+        throw new BadRequestException('Maker balance or allowance is insufficient for fill');
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.warn(`Could not verify fillability onchain: ${err}`);
+      throw new ServiceUnavailableException('Could not verify order fillability');
+    }
 
     const signature: ZeroExSignature =
       typeof row.signature === 'string' ? JSON.parse(row.signature) : row.signature;
@@ -542,7 +637,7 @@ export class OrderbookService {
       description: `Fill Limit Order for ${row.claim_type} Claim on Base`,
       target: fillTx.to,
       method: fillTx.data.functionName,
-      args: fillTx.data.args,
+      args: [order, signature, fillAmountBig.toString()],
       chainId,
       orderHash,
       takerTokenFillAmount: fillAmountBig.toString(),
@@ -570,34 +665,15 @@ export class OrderbookService {
       throw new UnauthorizedException('Only the maker can cancel this order');
     }
 
-    // Mark as locally hidden
-    await this.db.query(
-      `UPDATE risk_split_orders
-       SET is_locally_hidden = true, order_status = 'LOCALLY_HIDDEN', updated_at = NOW()
-       WHERE order_hash = $1`,
-      [orderHash]
-    );
-
-    const order: ZeroExLimitOrder = {
-      makerToken: row.maker_token,
-      takerToken: row.taker_token,
-      makerAmount: row.maker_amount,
-      takerAmount: row.taker_amount,
-      takerTokenFeeAmount: '0',
-      maker: row.maker_address,
-      taker: row.taker_address,
-      sender: '0x0000000000000000000000000000000000000000',
-      feeRecipient: '0x0000000000000000000000000000000000000000',
-      pool: '0x0000000000000000000000000000000000000000000000000000000000000000',
-      expiry: Number(row.expiry_timestamp),
-      salt: row.salt,
-    };
+    // The request body only claims to be the maker. Do not change public book
+    // state until the venue confirms cancellation onchain.
+    const order = this.orderFromRow(row);
 
     const cancelTx = buildCancelLimitOrderTx(order);
 
     return {
       orderHash,
-      isLocallyHidden: true,
+      isLocallyHidden: false,
       cancelTx: {
         description: 'Cancel 0x limit order onchain',
         target: cancelTx.to,
@@ -665,6 +741,14 @@ export class OrderbookService {
     if (!res.rows || res.rows.length === 0) return;
     const row = res.rows[0];
 
+    if (txHash) {
+      const existingTrade = await this.db.query(
+        'SELECT 1 FROM risk_split_trades WHERE order_hash = $1 AND tx_hash = $2 LIMIT 1',
+        [orderHash, txHash],
+      );
+      if (existingTrade.rows?.length) return;
+    }
+
     const remTaker = BigInt(row.remaining_taker_amount) - fillTakerAmount;
     const remMaker = BigInt(row.remaining_maker_amount) - fillMakerAmount;
     const finalRemTaker = remTaker > 0n ? remTaker : 0n;
@@ -699,6 +783,46 @@ export class OrderbookService {
         blockNumber || null,
       ]
     );
+  }
+
+  async reconcileFillTransaction(orderHash: string, txHash: string) {
+    if (!this.db) throw new BadRequestException('Database unavailable');
+    if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) throw new BadRequestException('Invalid fill transaction hash');
+
+    const res = await this.db.query('SELECT * FROM risk_split_orders WHERE order_hash = $1', [orderHash]);
+    if (!res.rows?.length) throw new NotFoundException(`Order ${orderHash} not found`);
+    const row = res.rows[0];
+
+    const receipt = await this.createVenueClient(Number(row.chain_id)).getTransactionReceipt({
+      hash: txHash as `0x${string}`,
+    });
+    if (receipt.status !== 'success') throw new BadRequestException('Fill transaction reverted');
+
+    let fill: any = null;
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() !== ZERO_EX_EXCHANGE_PROXY_BASE.toLowerCase()) continue;
+      try {
+        const decoded = decodeEventLog({ abi: ZERO_EX_LIMIT_ORDER_ABI, eventName: 'LimitOrderFilled', data: log.data, topics: log.topics });
+        if ((decoded.args as any).orderHash.toLowerCase() === orderHash.toLowerCase()) {
+          fill = decoded.args;
+          break;
+        }
+      } catch {
+        // Ignore unrelated ExchangeProxy logs in the same receipt.
+      }
+    }
+    if (!fill) throw new BadRequestException('Transaction does not contain the requested 0x order fill');
+
+    await this.recordOnchainFill(
+      orderHash,
+      fill.taker,
+      BigInt(fill.takerTokenFilledAmount),
+      BigInt(fill.makerTokenFilledAmount),
+      txHash,
+      Number(receipt.blockNumber),
+    );
+
+    return { orderHash, txHash, status: 'RECONCILED' as const };
   }
 
   async recordOnchainCancel(orderHash: string) {

@@ -4,39 +4,11 @@ import { RiskSplitService } from '../../risksplit/risksplit.service';
 import {
   AdminOperationQueueItem,
   AdminOperationsResponse,
+  settlementAdapterAbi,
   TOKEN_FEED_REGISTRY,
 } from '@othelio/shared';
 import { createPublicClient, http } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
-
-const AGGREGATOR_ABI = [
-  {
-    type: 'function',
-    name: 'latestRoundData',
-    inputs: [],
-    outputs: [
-      { name: 'roundId', type: 'uint80' },
-      { name: 'answer', type: 'int256' },
-      { name: 'startedAt', type: 'uint256' },
-      { name: 'updatedAt', type: 'uint256' },
-      { name: 'answeredInRound', type: 'uint80' },
-    ],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'getRoundData',
-    inputs: [{ name: '_roundId', type: 'uint80' }],
-    outputs: [
-      { name: 'roundId', type: 'uint80' },
-      { name: 'answer', type: 'int256' },
-      { name: 'startedAt', type: 'uint256' },
-      { name: 'updatedAt', type: 'uint256' },
-      { name: 'answeredInRound', type: 'uint80' },
-    ],
-    stateMutability: 'view',
-  },
-] as const;
 
 @Injectable()
 export class AdminOperationsService {
@@ -112,33 +84,25 @@ export class AdminOperationsService {
             let candidateFixingRound: AdminOperationQueueItem['candidateFixingRound'] = null;
             let settlementReady = false;
 
-            if (isExpired && client && config?.feedAddress) {
+            if (isExpired && client && config?.feedAddress && row.settlement_adapter_address) {
               try {
-                const latestRound = await client.readContract({
-                  address: config.feedAddress,
-                  abi: AGGREGATOR_ABI,
-                  functionName: 'latestRoundData',
+                const fixing = await client.readContract({
+                  address: row.settlement_adapter_address,
+                  abi: settlementAdapterAbi,
+                  functionName: 'getFixingRound',
+                  args: [BigInt(expiryTs)],
                 });
-
-                if (latestRound) {
-                  const roundId = latestRound[0];
-                  const price = latestRound[1];
-                  const updatedAt = Number(latestRound[3]);
-
-                  // If latest observation is at/before expiry or close to it
-                  const isPreExpiry = updatedAt <= expiryTs;
-                  const isFresh = nowSecs - updatedAt <= 86400;
-
+                if (fixing && fixing.feed.toLowerCase() === config.feedAddress.toLowerCase()) {
+                  const updatedAt = Number(fixing.updatedAt);
                   candidateFixingRound = {
-                    roundId: roundId.toString(),
-                    price: price.toString(),
-                    formattedPrice: `$${(Number(price) / 1e8).toFixed(2)}`,
+                    roundId: fixing.roundId.toString(),
+                    price: fixing.price.toString(),
+                    formattedPrice: `$${(Number(fixing.price) / 1e8).toFixed(2)}`,
                     updatedAt: new Date(updatedAt * 1000).toISOString(),
-                    isPreExpiry,
-                    isFresh,
+                    isPreExpiry: true,
+                    isFresh: true,
                   };
-
-                  settlementReady = isPreExpiry && price > 0n;
+                  settlementReady = isIndexerFresh && fixing.price > 0n;
                 }
               } catch (err) {
                 this.logger.warn(`Failed to inspect fixing candidate round for ${row.series_address}: ${err}`);
@@ -157,18 +121,14 @@ export class AdminOperationsService {
 
             // Settlement preview transaction
             const settlementPreviewTx =
-              isExpired && candidateFixingRound
+              isExpired && settlementReady && candidateFixingRound
                 ? {
                     description: `Settle Series for ${symbol} with Oracle Round #${candidateFixingRound.roundId}`,
-                    target: row.series_address as `0x${string}`,
+                    target: row.settlement_adapter_address as `0x${string}`,
                     chainId,
-                    method: 'settleSeriesWithFixing',
-                    args: [BigInt(candidateFixingRound.roundId)],
+                    method: 'settleSeries',
+                    args: [row.series_address, candidateFixingRound.roundId],
                     expectedState: 'isSettled == true with immutable fixing price',
-                    simulationResult: {
-                      success: true,
-                      message: `Ready to fix settlement at ${candidateFixingRound.formattedPrice}`,
-                    },
                   }
                 : null;
 

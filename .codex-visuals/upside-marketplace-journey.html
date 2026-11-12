@@ -1,0 +1,135 @@
+<div id="upside-journey">
+<style>
+#upside-journey{--bg:#0c110e;--surface:#172019;--surface2:#202c23;--line:#344138;--text:#f3f7f0;--muted:#a6b1a5;--lime:#c1f58a;color:var(--text);background:var(--bg);border-radius:18px;overflow:hidden;font-family:Inter,ui-sans-serif,system-ui,sans-serif;max-width:1024px;margin:auto}
+#upside-journey *{box-sizing:border-box}#upside-journey button,#upside-journey input{font:inherit}#upside-journey button{cursor:pointer}
+#upside-journey [hidden]{display:none!important}
+#upside-journey .bar{display:flex;align-items:center;justify-content:space-between;padding:18px 26px;border-bottom:1px solid var(--line)}
+#upside-journey .logo{font-size:23px;font-weight:800;letter-spacing:-.07em}#upside-journey .logo em{color:var(--lime);font-style:normal}
+#upside-journey .nav{display:flex;gap:27px;font-size:13px;color:var(--muted)}#upside-journey .nav b{color:var(--text)}
+#upside-journey .connect{font-size:12px;border:1px solid var(--line);border-radius:99px;color:var(--text);background:var(--surface2);padding:9px 13px}
+#upside-journey .view{padding:30px}#upside-journey h1{font-size:37px;line-height:1.08;letter-spacing:-.055em;margin:3px 0 8px}#upside-journey p{margin:0;color:var(--muted);font-size:14px}
+#upside-journey .eyebrow{font-size:11px;color:var(--lime);font-weight:750;letter-spacing:.16em;text-transform:uppercase}
+#upside-journey .search{display:block;width:100%;max-width:520px;background:var(--surface);border:1px solid var(--line);border-radius:12px;color:var(--text);padding:13px 15px;margin:26px 0 20px}
+#upside-journey .market-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#upside-journey .market{display:block;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:19px;color:var(--text);min-height:152px}
+#upside-journey .market:hover{border-color:var(--lime)}#upside-journey .market .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#upside-journey .stock{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}#upside-journey .avatar{width:36px;height:36px;border-radius:10px;background:var(--surface2);display:grid;place-items:center;font-size:11px}
+#upside-journey .tag{color:var(--muted);font-size:11px}#upside-journey .market h2{font-size:21px;letter-spacing:-.035em;margin:23px 0 10px}
+#upside-journey .price{color:var(--lime);font-size:14px;font-weight:700}#upside-journey .arrow{color:var(--muted)}
+#upside-journey .discovery-foot{display:flex;justify-content:space-between;gap:18px;margin-top:24px;padding:17px 0;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+#upside-journey .discovery-foot b{color:var(--text)}#upside-journey .link{border:0;background:transparent;color:var(--lime);padding:0;font-weight:700}
+#upside-journey .back{border:0;background:transparent;color:var(--muted);padding:0;margin-bottom:23px;font-size:13px}
+#upside-journey .detail-head{display:flex;align-items:end;justify-content:space-between;gap:15px;margin-bottom:24px}#upside-journey .detail-head small{color:var(--muted);font-size:12px}
+#upside-journey .detail-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px}
+#upside-journey .panel{border:1px solid var(--line);background:var(--surface);border-radius:15px;padding:19px}
+#upside-journey .panel h3{font-size:14px;margin:0 0 13px}#upside-journey .panel .muted{color:var(--muted);font-size:12px}
+#upside-journey .strikes{display:flex;gap:8px;margin-bottom:18px}#upside-journey .strikes button{flex:1;background:var(--surface2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:10px 5px;font-size:12px}#upside-journey .strikes button.active{border-color:var(--lime);color:var(--lime)}
+#upside-journey .book-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}#upside-journey .book-head b{font-size:14px}#upside-journey .book-head span{font-size:11px;color:var(--muted)}
+#upside-journey .book{display:grid;grid-template-columns:1fr 1fr;gap:13px}#upside-journey .book-side{background:#101812;border-radius:10px;padding:11px}#upside-journey .book-side h4{font-size:12px;color:var(--muted);margin:0 0 9px}
+#upside-journey .book-row{display:flex;justify-content:space-between;padding:8px 2px;border-top:1px solid #27332a;font-size:12px}#upside-journey .book-row b{color:var(--text)}#upside-journey .book-row small{color:var(--muted)}#upside-journey .book-row.me b{color:var(--lime)}
+#upside-journey .book-note{font-size:12px;color:var(--muted);line-height:1.5;margin-top:12px}
+#upside-journey .tabs{display:flex;background:#101812;border-radius:10px;padding:4px;margin-bottom:17px}#upside-journey .tabs button{flex:1;border:0;border-radius:7px;background:transparent;color:var(--muted);padding:9px;font-size:13px}#upside-journey .tabs button.active{background:var(--surface2);color:var(--text);font-weight:700}
+#upside-journey label{display:block;font-size:12px;color:var(--muted);margin:15px 0 7px}#upside-journey .input{width:100%;background:#101812;border:1px solid var(--line);border-radius:9px;color:var(--text);padding:11px 12px}
+#upside-journey .choices{display:flex;gap:7px}#upside-journey .choices button{flex:1;background:#101812;border:1px solid var(--line);border-radius:9px;color:var(--text);padding:10px 5px}#upside-journey .choices button.active{border-color:var(--lime);color:var(--lime)}
+#upside-journey .math{border-top:1px solid var(--line);margin-top:17px;padding-top:13px;display:grid;gap:11px}#upside-journey .math div{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}#upside-journey .math b{color:var(--text);font-size:13px}
+#upside-journey .primary{width:100%;background:var(--lime);color:#14200d;border:0;border-radius:10px;padding:14px;margin-top:19px;font-weight:800}
+#upside-journey .hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:11px;text-align:center}
+#upside-journey .sell-only{display:none}#upside-journey.sell .buy-only{display:none}#upside-journey.sell .sell-only{display:block}
+#upside-journey .message{display:none;background:var(--surface2);border-radius:9px;padding:11px;font-size:12px;line-height:1.45;margin-top:12px}#upside-journey .message.show{display:block}
+@media(max-width:760px){#upside-journey .nav{display:none}#upside-journey .view{padding:18px}#upside-journey h1{font-size:29px}#upside-journey .market-grid,#upside-journey .detail-layout{grid-template-columns:1fr}#upside-journey .detail-head{align-items:start;flex-direction:column}#upside-journey .discovery-foot{flex-direction:column}}
+</style>
+<div class="bar"><div class="logo">othel<em>io</em></div><div class="nav"><b>Explore</b><span>My positions</span><span>Sell upside</span></div><button class="connect" type="button">Connect wallet</button></div>
+<section class="view browse">
+  <div class="eyebrow">The upside marketplace</div><h1>Pick a stock. Pick your upside.</h1><p>Buy the gains above a price, by a date. Your cost is the most you can lose.</p>
+  <input class="search" aria-label="Find a stock" placeholder="Search stocks…" type="search">
+  <div class="market-grid">
+    <button class="market" type="button" data-stock="NVIDIA" data-ticker="NVDA" data-strike="200" data-premium="4.1" data-date="Nov 27"><span class="row"><span class="stock"><span class="avatar">NV</span>NVIDIA</span><span class="tag">Nov 27</span></span><h2>Above $200</h2><span class="row"><span class="price">Buy from $4.10 / share</span><span class="arrow">↗</span></span></button>
+    <button class="market" type="button" data-stock="Microsoft" data-ticker="MSFT" data-strike="600" data-premium="8" data-date="Nov 27"><span class="row"><span class="stock"><span class="avatar">MS</span>Microsoft</span><span class="tag">Nov 27</span></span><h2>Above $600</h2><span class="row"><span class="price">Buy from $8 / share</span><span class="arrow">↗</span></span></button>
+    <button class="market" type="button" data-stock="Coinbase" data-ticker="COIN" data-strike="325" data-premium="11" data-date="Dec 4"><span class="row"><span class="stock"><span class="avatar">CO</span>Coinbase</span><span class="tag">Dec 4</span></span><h2>Above $325</h2><span class="row"><span class="price">Buy from $11 / share</span><span class="arrow">↗</span></span></button>
+    <button class="market" type="button" data-stock="Tesla" data-ticker="TSLA" data-strike="450" data-premium="7" data-date="Dec 4"><span class="row"><span class="stock"><span class="avatar">TS</span>Tesla</span><span class="tag">Dec 4</span></span><h2>Above $450</h2><span class="row"><span class="price">Buy from $7 / share</span><span class="arrow">↗</span></span></button>
+  </div>
+  <div class="discovery-foot"><span><b>One simple trade.</b> Every stock has its own prices, dates, and live offers.</span><button type="button" class="link open-sell">Have shares? Sell their upside →</button></div>
+</section>
+<section class="view detail" hidden>
+  <button type="button" class="back">← All stocks</button>
+  <div class="detail-head"><div><div class="eyebrow stock-ticker">NVDA · NOV 27</div><h1><span class="stock-name">NVIDIA</span> above <span class="strike">$200</span></h1><p>Buy the gains above this price at expiry.</p></div><small>Example market · quotes are illustrative</small></div>
+  <div class="detail-layout">
+    <div>
+      <div class="panel"><h3>Other prices for this stock</h3><div class="strikes"><button type="button" data-offset="-10">Above $190</button><button type="button" class="active" data-offset="0">Above $200</button><button type="button" data-offset="10">Above $210</button></div><div class="book-head"><b>Live offers</b><span>Every quote is a visible limit order</span></div><div class="book"><div class="book-side"><h4>Buyers bid</h4><div class="book-row"><b class="bid1">$3.90</b><small>12 shares</small></div><div class="book-row"><b class="bid2">$3.70</b><small>30 shares</small></div><div class="book-row"><b class="bid3">$3.40</b><small>7 shares</small></div></div><div class="book-side"><h4>Sellers ask</h4><div class="book-row"><b class="ask1">$4.10</b><small>0.5 shares</small></div><div class="book-row"><b class="ask2">$4.20</b><small>0.7 shares</small></div><div class="book-row"><b class="ask3">$4.60</b><small>3 shares</small></div><div class="book-row me"><b>$20.00</b><small>0.005 shares · your example</small></div></div></div><div class="book-note">Prices are per full share of upside. The cheapest available offer fills first; a $20 ask rests behind the lower offers.</div></div>
+    </div>
+    <div class="panel trade"><div class="tabs"><button type="button" class="active buy-tab">Buy upside</button><button type="button" class="sell-tab">Sell upside</button></div>
+      <div class="buy-only"><h3>How much upside?</h3><label for="buyer-size">Shares of upside</label><input id="buyer-size" class="input buyer-size" type="number" min="0.001" step="0.001" value="1.2"><div class="math"><div><span>Filled from</span><b class="buy-levels">2 offers</b></div><div><span>Average price / share</span><b class="buy-average">$4.16</b></div><div><span>You pay · maximum loss</span><b class="buy-cost">$4.99</b></div><div><span>Break even at expiry</span><b class="break-even">$204.16</b></div></div><button type="button" class="primary buy-button">Review buy for $4.99</button><div class="hint">Your one purchase can fill several sellers, starting with the cheapest offer.</div></div>
+      <div class="sell-only"><h3>Set your asking price</h3><label for="seller-size">Shares to commit</label><input id="seller-size" class="input seller-size" type="number" min="0.001" step="0.001" value="0.005"><label for="seller-price">Ask per share of upside</label><input id="seller-price" class="input seller-price" type="number" min="0.01" step="0.01" value="20"><div class="math"><div><span>If your order fills, you receive</span><b class="sell-total">$0.10</b></div><div><span>You keep</span><b>Capped stock claim</b></div></div><button type="button" class="primary sell-button">Review listing</button><div class="hint">Your $20 ask is above the current $5 offer. It may remain open until a buyer accepts it.</div></div>
+      <div class="message" role="status"></div>
+    </div>
+  </div>
+</section>
+<script>
+(() => {
+  const r = document.getElementById('upside-journey');
+  let base = 200, strike = 200, basePremium = 4.1, premium = 4.1;
+  let stock = 'NVIDIA', ticker = 'NVDA', date = 'Nov 27';
+  const usd = value => '$' + Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function offers() {
+    const levels = [
+      { price: premium, size: 0.5 },
+      { price: premium + 0.1, size: 0.7 },
+      { price: premium + 0.5, size: 3 }
+    ];
+    if (stock === 'NVIDIA' && strike === 200) levels.push({ price: 20, size: 0.005 });
+    return levels;
+  }
+  function quote(quantity) {
+    let left = quantity, cost = 0, used = 0;
+    for (const level of offers()) {
+      const taken = Math.min(left, level.size);
+      if (taken > 0) { cost += taken * level.price; left -= taken; used++; }
+      if (left < 0.00000001) break;
+    }
+    return { cost, used, available: left < 0.00000001 };
+  }
+  function render() {
+    const qty = Number(r.querySelector('.buyer-size').value || 0);
+    const fill = quote(qty);
+    r.querySelector('.stock-name').textContent = stock;
+    r.querySelector('.stock-ticker').textContent = ticker + ' · ' + date.toUpperCase();
+    r.querySelector('.strike').textContent = usd(strike);
+    r.querySelectorAll('.strikes button').forEach(button => {
+      const value = base + Number(button.dataset.offset);
+      button.textContent = 'Above ' + usd(value);
+      button.classList.toggle('active', value === strike);
+    });
+    r.querySelector('.buy-levels').textContent = fill.available && qty > 0 ? fill.used + (fill.used === 1 ? ' offer' : ' offers') : 'More than available';
+    r.querySelector('.buy-average').textContent = fill.available && qty > 0 ? usd(fill.cost / qty) : '—';
+    r.querySelector('.buy-cost').textContent = fill.available && qty > 0 ? usd(fill.cost) : '—';
+    r.querySelector('.break-even').textContent = fill.available && qty > 0 ? usd(strike + fill.cost / qty) : '—';
+    const buyButton = r.querySelector('.buy-button');
+    buyButton.disabled = !fill.available || qty <= 0;
+    buyButton.textContent = fill.available && qty > 0 ? 'Review buy for ' + usd(fill.cost) : 'Choose a smaller amount';
+    r.querySelector('.sell-total').textContent = usd(Number(r.querySelector('.seller-size').value || 0) * Number(r.querySelector('.seller-price').value || 0));
+    for (const [selector, value] of [['.ask1', premium], ['.ask2', premium + 0.1], ['.ask3', premium + 0.5], ['.bid1', Math.max(0.01, premium - 0.2)], ['.bid2', Math.max(0.01, premium - 0.4)], ['.bid3', Math.max(0.01, premium - 0.7)]]) r.querySelector(selector).textContent = usd(value);
+    r.querySelector('.book-row.me').style.display = stock === 'NVIDIA' && strike === 200 ? 'flex' : 'none';
+  }
+  function open(button) {
+    stock = button.dataset.stock; ticker = button.dataset.ticker;
+    base = Number(button.dataset.strike); strike = base;
+    basePremium = Number(button.dataset.premium); premium = basePremium; date = button.dataset.date;
+    r.querySelector('.browse').hidden = true; r.querySelector('.detail').hidden = false;
+    r.classList.remove('sell');
+    r.querySelector('.buy-tab').classList.add('active'); r.querySelector('.sell-tab').classList.remove('active');
+    render();
+  }
+  r.querySelectorAll('.market').forEach(button => button.addEventListener('click', () => open(button)));
+  r.querySelector('.back').addEventListener('click', () => { r.querySelector('.browse').hidden = false; r.querySelector('.detail').hidden = true; });
+  r.querySelector('.open-sell').addEventListener('click', () => { open(r.querySelector('.market')); r.classList.add('sell'); r.querySelector('.sell-tab').classList.add('active'); r.querySelector('.buy-tab').classList.remove('active'); });
+  r.querySelector('.search').addEventListener('input', event => { const q = event.target.value.toLowerCase(); r.querySelectorAll('.market').forEach(button => button.hidden = !button.dataset.stock.toLowerCase().includes(q) && !button.dataset.ticker.toLowerCase().includes(q)); });
+  r.querySelectorAll('.strikes button').forEach(button => button.addEventListener('click', () => { strike = base + Number(button.dataset.offset); premium = Math.max(1, basePremium - Number(button.dataset.offset) * 0.25); render(); }));
+  r.querySelector('.buy-tab').addEventListener('click', () => { r.classList.remove('sell'); r.querySelector('.buy-tab').classList.add('active'); r.querySelector('.sell-tab').classList.remove('active'); });
+  r.querySelector('.sell-tab').addEventListener('click', () => { r.classList.add('sell'); r.querySelector('.sell-tab').classList.add('active'); r.querySelector('.buy-tab').classList.remove('active'); });
+  r.querySelectorAll('.seller-size,.seller-price,.buyer-size').forEach(input => input.addEventListener('input', render));
+  r.querySelector('.buy-button').addEventListener('click', () => { const qty = Number(r.querySelector('.buyer-size').value); const fill = quote(qty); const message = r.querySelector('.message'); message.textContent = 'Preview: buy ' + qty + ' shares of upside from ' + fill.used + ' offers. Total ' + usd(fill.cost) + '; average ' + usd(fill.cost / qty) + ' per share.'; message.classList.add('show'); });
+  r.querySelector('.sell-button').addEventListener('click', () => { const message = r.querySelector('.message'); message.textContent = 'Preview: list ' + r.querySelector('.seller-size').value + ' shares of upside at ' + usd(r.querySelector('.seller-price').value) + ' per share. Receive ' + r.querySelector('.sell-total').textContent + ' if filled.'; message.classList.add('show'); });
+  render();
+})();
+</script>
+</div>

@@ -19,7 +19,7 @@ function formatExpiry(timestamp: number) {
 }
 
 export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string }) {
-  const { activeSeries, balances, isLoadingList, isErrorList, refetchList } = useRiskSplit(seriesAddress);
+  const { activeSeries, balances, underlyingDecimals, unitsCompatible, isLoadingList, isErrorList, refetchList } = useRiskSplit(seriesAddress);
   const { assets } = useRiskSplitMarkets();
   const [claim, setClaim] = useState<"protected" | "upside">("protected");
   const [ticketPrice, setTicketPrice] = useState<string>("");
@@ -67,6 +67,8 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
           recentTrades={bookData.recentTrades}
           spreadUsd={bookData.spreadUsd}
           isLoading={bookData.isLoading}
+          isError={bookData.isError}
+          onRetry={() => void bookData.refetch()}
           sequence={bookData.sequence}
           onSelectPrice={(p, s, hash) => {
             setTicketPrice(p);
@@ -80,6 +82,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
           seriesAddress={seriesAddress}
           claimType={claim}
           claimTokenAddress={currentClaimToken}
+          claimDecimals={unitsCompatible ? underlyingDecimals : null}
           symbol={symbol}
           seriesExpiryTimestamp={activeSeries.expiryTimestamp}
           initialPrice={ticketPrice}
@@ -92,7 +95,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
       </aside>
     </div>
     <div className="mt-4">
-      <MyOrders seriesAddress={seriesAddress} />
+      <MyOrders seriesAddress={seriesAddress} claimDecimals={unitsCompatible ? underlyingDecimals : null} />
     </div>
     <div className={styles.belowGrid}><section><h2>Mint pair & manage claims</h2><RiskSplitActionPanel seriesAddress={seriesAddress} underlyingSymbol={symbol} /></section><section><h2>Market terms</h2><div className={`ui-panel ${styles.bookPanel}`}><div className={styles.bookSide}><div><span>One {symbol} deposited</span><strong>1 Protected + 1 Upside</strong></div><div><span>Protected floor</span><strong>{usdFromE8(activeSeries.floorPrice)}</strong></div><div><span>Protected cap</span><strong>{usdFromE8(activeSeries.capPrice)}</strong></div><div><span>Expiry fixing</span><strong>{formatExpiry(activeSeries.expiryTimestamp)}</strong></div><div><span>Reference state</span><strong>{asset?.status ?? "Unavailable"}</strong></div></div></div></section></div>
     <section id="payoff" className={styles.payoffSection}><h2>Payoff & terms</h2><p>Explore the stock-token allocation at expiry. The simulation is not a live quote for either claim.</p><PayoffVisualizer key={activeSeries.seriesAddress} floorPrice={floor} capPrice={cap} /></section>

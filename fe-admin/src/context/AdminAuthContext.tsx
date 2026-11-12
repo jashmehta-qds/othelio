@@ -20,7 +20,7 @@ interface AdminAuthContextType {
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 
 export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, status } = useAccount();
   const currentChainId = useChainId();
   const { signMessageAsync } = useSignMessage();
 
@@ -30,8 +30,9 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const [operatorAddress, setOperatorAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [sessionChainId, setSessionChainId] = useState<number | null>(null);
 
-  // Sync token from localStorage on mount
+  // Sync token from localStorage on mount and validate session with backend
   useEffect(() => {
     const existing = adminApi.getToken();
     if (existing) {
@@ -42,38 +43,68 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           setIsOwner(me.isOwner);
           setOperatorAddress(me.address);
           setFactoryAddress(me.factoryAddress);
+          setSessionChainId(me.chainId);
         })
-        .catch(() => {
-          // Token expired or invalid
-          adminApi.setToken(null);
-          setToken(null);
-          setIsOwner(false);
+        .catch((err) => {
+          // Only invalidate token if unauthorized (401); ignore transient network / RPC errors
+          if (err?.status === 401) {
+            adminApi.setToken(null);
+            setToken(null);
+            setIsOwner(false);
+            setSessionChainId(null);
+          }
         });
     }
   }, []);
 
   // When wallet changes or disconnects, revalidate
   useEffect(() => {
-    if (!isConnected || !address) {
+    // If wagmi is still connecting or reconnecting on page load, preserve existing session
+    if (status === 'connecting' || status === 'reconnecting') {
+      return;
+    }
+
+    if (status === 'disconnected' || !isConnected || !address) {
       setToken(null);
       setIsOwner(false);
       setOperatorAddress(null);
+      setFactoryAddress(null);
+      setSessionChainId(null);
       adminApi.setToken(null);
       return;
     }
 
     if (operatorAddress && operatorAddress.toLowerCase() !== address.toLowerCase()) {
-      // Wallet switched
+      // Wallet switched accounts
       setToken(null);
       setIsOwner(false);
       setOperatorAddress(null);
+      setFactoryAddress(null);
+      setSessionChainId(null);
+      adminApi.setToken(null);
+      return;
+    }
+
+    if (sessionChainId !== null && currentChainId && sessionChainId !== currentChainId) {
+      // Wallet switched networks
+      setToken(null);
+      setIsOwner(false);
+      setOperatorAddress(null);
+      setFactoryAddress(null);
+      setSessionChainId(null);
       adminApi.setToken(null);
     }
-  }, [address, isConnected, operatorAddress]);
+  }, [address, isConnected, status, operatorAddress, currentChainId, sessionChainId]);
 
   const login = useCallback(async () => {
     if (!address) {
       setError('Please connect your wallet first.');
+      return;
+    }
+
+    const targetChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 31337);
+    if (currentChainId !== targetChainId) {
+      setError(`Wrong network: wallet is connected to chain ${currentChainId}. Please switch to ${targetChainId === 31337 ? 'Base Fork (31337)' : 'Base Mainnet (8453)'}.`);
       return;
     }
 
@@ -89,10 +120,12 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       setIsOwner(verifyRes.isOwner);
       setOperatorAddress(verifyRes.address);
       setFactoryAddress(verifyRes.factoryAddress);
+      setSessionChainId(currentChainId);
     } catch (err: any) {
       setError(err?.message || 'Authentication failed. Make sure you are the onchain owner.');
       setToken(null);
       setIsOwner(false);
+      setSessionChainId(null);
       adminApi.setToken(null);
     } finally {
       setIsLoggingIn(false);
@@ -103,6 +136,8 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setIsOwner(false);
     setOperatorAddress(null);
+    setFactoryAddress(null);
+    setSessionChainId(null);
     adminApi.setToken(null);
   }, []);
 

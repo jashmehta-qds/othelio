@@ -9,10 +9,11 @@ import {
   AdminMarketsResponse,
   AdminTransactionPreview,
   PayoffScenario,
+  settlementAdapterAbi,
   seriesFactoryAbi,
   TOKEN_FEED_REGISTRY,
 } from '@othelio/shared';
-import { createPublicClient, encodeAbiParameters, http, keccak256, parseAbiParameters } from 'viem';
+import { createPublicClient, encodeAbiParameters, getAddress, http, isAddress, keccak256, parseAbiParameters } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
 import { validateExpiryCalendar } from './calendar.util';
 
@@ -129,6 +130,23 @@ export class AdminMarketsService {
     const chainId = params.chainId ? Number(params.chainId) : 8453;
     const underlyingNorm = params.underlying.toLowerCase();
 
+    const factoryRaw = process.env.RISK_SPLIT_FACTORY_ADDRESS?.trim();
+    const adapterRaw = (process.env.RISK_SPLIT_SETTLEMENT_ADAPTER || process.env.RISK_SPLIT_SETTLEMENT_ADAPTER_ADDRESS)?.trim();
+    if (!factoryRaw || !isAddress(factoryRaw) || /^0x0{40}$/i.test(factoryRaw)) {
+      throw new BadRequestException('Risk Split factory is not deployed/configured. Set RISK_SPLIT_FACTORY_ADDRESS.');
+    }
+    if (!adapterRaw || !isAddress(adapterRaw) || /^0x0{40}$/i.test(adapterRaw)) {
+      throw new BadRequestException('Settlement adapter is not deployed/configured. Set RISK_SPLIT_SETTLEMENT_ADAPTER.');
+    }
+    const factoryAddress = getAddress(factoryRaw);
+    const settlementAdapter = getAddress(adapterRaw);
+    if (params.factoryAddress && params.factoryAddress.toLowerCase() !== factoryAddress.toLowerCase()) {
+      throw new BadRequestException('Requested factory does not match the configured deployment.');
+    }
+    if (params.settlementAdapter && params.settlementAdapter.toLowerCase() !== settlementAdapter.toLowerCase()) {
+      throw new BadRequestException('Requested adapter does not match the configured deployment.');
+    }
+
     // 1. Identify underlying asset and feed
     const config = Object.values(TOKEN_FEED_REGISTRY).find(
       (c) => c.tokenAddress.toLowerCase() === underlyingNorm
@@ -144,26 +162,44 @@ export class AdminMarketsService {
     }
 
     // 3. Fetch current live reference round from feed
-    let refPriceBig = 50000000000n; // Default $500.00 fallback if feed offline in unit tests
-    let refRoundIdStr = '18446744073709555000';
-    let refUpdatedAtIso = new Date().toISOString();
+    let refPriceBig: bigint;
+    let refRoundIdStr: string;
+    let refUpdatedAtIso: string;
 
     const rpcUrl = rpcUrlForChain(chainId);
-    if (rpcUrl) {
+    if (!rpcUrl) throw new BadRequestException(`No RPC configured for chain ${chainId}.`);
+    {
       try {
         const client = createPublicClient({ transport: http(rpcUrl) });
+        const [factoryCode, adapterCode, adapterFeed, headBlock] = await Promise.all([
+          client.getBytecode({ address: factoryAddress }),
+          client.getBytecode({ address: settlementAdapter }),
+          client.readContract({ address: settlementAdapter, abi: settlementAdapterAbi, functionName: 'priceFeed' }),
+          client.getBlock({ blockTag: 'latest' }),
+        ]);
+        if (!factoryCode || factoryCode === '0x' || !adapterCode || adapterCode === '0x') {
+          throw new Error('Factory or settlement adapter has no deployed bytecode');
+        }
+        if (adapterFeed.toLowerCase() !== config.feedAddress.toLowerCase()) {
+          throw new BadRequestException(`Settlement adapter feed ${adapterFeed} does not match ${config.symbol} feed ${config.feedAddress}.`);
+        }
         const roundData = await client.readContract({
           address: config.feedAddress,
           abi: AGGREGATOR_ABI,
           functionName: 'latestRoundData',
         });
-        if (roundData && roundData[1] > 0n) {
-          refRoundIdStr = roundData[0].toString();
-          refPriceBig = BigInt(roundData[1]);
-          refUpdatedAtIso = new Date(Number(roundData[3]) * 1000).toISOString();
+        if (!roundData || roundData[1] <= 0n || roundData[3] === 0n) throw new Error('Feed has no valid positive round');
+        const chainNow = Number(headBlock.timestamp);
+        if (Number(roundData[3]) > chainNow || chainNow - Number(roundData[3]) > 86400) {
+          throw new Error('Feed round is stale or in the future');
         }
+        refRoundIdStr = roundData[0].toString();
+        refPriceBig = BigInt(roundData[1]);
+        refUpdatedAtIso = new Date(Number(roundData[3]) * 1000).toISOString();
       } catch (err) {
+        if (err instanceof BadRequestException) throw err;
         this.logger.warn(`Failed to query feed ${config.feedAddress} onchain: ${err}`);
+        throw new BadRequestException(`Factory, adapter, or live reference feed unavailable for ${config.symbol}; market preview cannot be signed.`);
       }
     }
 
@@ -190,16 +226,6 @@ export class AdminMarketsService {
     if (floorPriceBig >= capPriceBig) {
       throw new BadRequestException('Floor price must be strictly less than cap price.');
     }
-
-    const factoryAddress =
-      (params.factoryAddress as `0x${string}`) ||
-      this.adminAuthService?.getFactoryAddress(chainId) ||
-      '0x1111111111111111111111111111111111111111';
-
-    const settlementAdapter =
-      (params.settlementAdapter as `0x${string}`) ||
-      (process.env.RISK_SPLIT_SETTLEMENT_ADAPTER?.trim() as `0x${string}`) ||
-      '0x3333333333333333333333333333333333333333';
 
     // 5. Duplicate terms check
     let duplicateTermsDetected = false;
@@ -235,7 +261,7 @@ export class AdminMarketsService {
 
     // 6. Check if expiry is already approved on factory
     let expiryAlreadyApproved = false;
-    if (rpcUrl && factoryAddress !== '0x1111111111111111111111111111111111111111') {
+    if (rpcUrl) {
       try {
         const client = createPublicClient({ transport: http(rpcUrl) });
         const isApproved = await client.readContract({

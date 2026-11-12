@@ -1,7 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { privateKeyToAccount } from 'viem/accounts';
 import { AdminAuthService } from './admin-auth.service';
+
+let factoryOwner = '';
+vi.mock('viem', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('viem')>();
+  return {
+    ...actual,
+    createPublicClient: () => ({ readContract: async () => factoryOwner }),
+  };
+});
 
 describe('AdminAuthService', () => {
   let service: AdminAuthService;
@@ -16,8 +25,16 @@ describe('AdminAuthService', () => {
   const otherAddress = otherAccount.address;
 
   beforeEach(() => {
-    process.env.ADMIN_WALLETS = ownerAddress.toLowerCase();
+    factoryOwner = ownerAddress;
+    process.env.RISK_SPLIT_FACTORY_ADDRESS = '0x1111111111111111111111111111111111111111';
+    delete process.env.ADMIN_WALLETS;
     service = new AdminAuthService();
+  });
+
+  it('does not accept an env allowlist as owner authority', async () => {
+    factoryOwner = otherAddress;
+    process.env.ADMIN_WALLETS = ownerAddress;
+    await expect(service.checkOnchainOwner(ownerAddress, 8453)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('generates an admin challenge nonce with expected message structure', () => {
@@ -71,6 +88,13 @@ describe('AdminAuthService', () => {
     await expect(service.verifyChallenge(ownerAddress, message, invalidSignature, 8453)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
+  it('rejects a signed challenge with altered text even when its nonce is valid', async () => {
+    const { message } = service.generateChallenge(ownerAddress, 8453);
+    const altered = `${message}\nExtra authorization`;
+    const signature = await ownerAccount.signMessage({ message: altered });
+    await expect(service.verifyChallenge(ownerAddress, altered, signature, 8453)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('rejects a valid signature from a non-owner address', async () => {
     const { message } = service.generateChallenge(otherAddress, 8453);
     const signature = await otherAccount.signMessage({ message });
@@ -108,7 +132,7 @@ describe('AdminAuthService', () => {
     await expect(service.checkOnchainOwner(ownerAddress, 8453)).resolves.not.toThrow();
 
     // Owner revoked
-    process.env.ADMIN_WALLETS = '0x0000000000000000000000000000000000000001';
+    factoryOwner = otherAddress;
     await expect(service.checkOnchainOwner(ownerAddress, 8453)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

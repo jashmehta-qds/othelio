@@ -1,6 +1,6 @@
 "use client";
 
-import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, useChainId, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
 import { formatUnits, parseUnits } from "viem";
 import { RISK_SPLIT_SERIES_ABI, SETTLEMENT_ADAPTER_ABI } from "@/lib/contracts";
@@ -67,12 +67,13 @@ const ERC20_ABI = [
 
 export function useRiskSplit(selectedAddress?: string) {
   const { address } = useAccount();
-  const publicClient = usePublicClient({ chainId: 8453 });
+  const chainId = useChainId();
+  const publicClient = usePublicClient({ chainId });
 
   // 1. Fetch Series List from Backend API
   const { data: seriesList = [], isLoading: isLoadingList, isError: isErrorList, refetch: refetchList } = useQuery<RiskSplitSeriesData[]>({
-    queryKey: ["risk-split-series", 8453],
-    queryFn: () => fetchApi("/v1/risksplit/series?chainId=8453"),
+    queryKey: ["risk-split-series", chainId],
+    queryFn: () => fetchApi(`/v1/risksplit/series?chainId=${chainId}`),
   });
 
   const activeSeries = selectedAddress
@@ -85,9 +86,9 @@ export function useRiskSplit(selectedAddress?: string) {
   const upsideTokenAddress = (activeSeries?.upsideTokenAddress || "0x0000000000000000000000000000000000000000") as `0x${string}`;
   const adapterAddress = (activeSeries?.settlementAdapterAddress || "0x0000000000000000000000000000000000000000") as `0x${string}`;
 
-  const { data: underlyingDecimalsRaw } = useReadContract({ address: underlyingAddress, abi: ERC20_ABI, functionName: "decimals", chainId: 8453, query: { enabled: Boolean(activeSeries) } });
-  const { data: protectedDecimalsRaw } = useReadContract({ address: protectedTokenAddress, abi: ERC20_ABI, functionName: "decimals", chainId: 8453, query: { enabled: Boolean(activeSeries) } });
-  const { data: upsideDecimalsRaw } = useReadContract({ address: upsideTokenAddress, abi: ERC20_ABI, functionName: "decimals", chainId: 8453, query: { enabled: Boolean(activeSeries) } });
+  const { data: underlyingDecimalsRaw } = useReadContract({ address: underlyingAddress, abi: ERC20_ABI, functionName: "decimals", chainId, query: { enabled: Boolean(activeSeries) } });
+  const { data: protectedDecimalsRaw } = useReadContract({ address: protectedTokenAddress, abi: ERC20_ABI, functionName: "decimals", chainId, query: { enabled: Boolean(activeSeries) } });
+  const { data: upsideDecimalsRaw } = useReadContract({ address: upsideTokenAddress, abi: ERC20_ABI, functionName: "decimals", chainId, query: { enabled: Boolean(activeSeries) } });
   const underlyingDecimals = underlyingDecimalsRaw == null ? null : Number(underlyingDecimalsRaw);
   const protectedDecimals = protectedDecimalsRaw == null ? null : Number(protectedDecimalsRaw);
   const upsideDecimals = upsideDecimalsRaw == null ? null : Number(upsideDecimalsRaw);
@@ -96,7 +97,7 @@ export function useRiskSplit(selectedAddress?: string) {
   // 2. Onchain Balances
   const { data: underlyingBal, refetch: refetchUnderlyingBal } = useReadContract({
     address: underlyingAddress,
-    chainId: 8453,
+    chainId,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
@@ -105,7 +106,7 @@ export function useRiskSplit(selectedAddress?: string) {
 
   const { data: underlyingAllowance, refetch: refetchUnderlyingAllowance } = useReadContract({
     address: underlyingAddress,
-    chainId: 8453,
+    chainId,
     abi: ERC20_ABI,
     functionName: "allowance",
     args: address && seriesAddress ? [address, seriesAddress] : undefined,
@@ -114,7 +115,7 @@ export function useRiskSplit(selectedAddress?: string) {
 
   const { data: protectedBal, refetch: refetchProtectedBal } = useReadContract({
     address: protectedTokenAddress,
-    chainId: 8453,
+    chainId,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
@@ -123,7 +124,7 @@ export function useRiskSplit(selectedAddress?: string) {
 
   const { data: upsideBal, refetch: refetchUpsideBal } = useReadContract({
     address: upsideTokenAddress,
-    chainId: 8453,
+    chainId,
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
@@ -133,7 +134,7 @@ export function useRiskSplit(selectedAddress?: string) {
   // 3. Series Onchain Status
   const { data: onchainIsSettled } = useReadContract({
     address: seriesAddress,
-    chainId: 8453,
+    chainId,
     abi: RISK_SPLIT_SERIES_ABI,
     functionName: "isSettled",
     query: { enabled: seriesAddress !== "0x0000000000000000000000000000000000000000" },
@@ -141,7 +142,7 @@ export function useRiskSplit(selectedAddress?: string) {
 
   const { data: onchainProtectedFraction } = useReadContract({
     address: seriesAddress,
-    chainId: 8453,
+    chainId,
     abi: RISK_SPLIT_SERIES_ABI,
     functionName: "protectedFraction",
     query: { enabled: !!onchainIsSettled },
@@ -149,7 +150,7 @@ export function useRiskSplit(selectedAddress?: string) {
 
   const { data: onchainUpsideFraction } = useReadContract({
     address: seriesAddress,
-    chainId: 8453,
+    chainId,
     abi: RISK_SPLIT_SERIES_ABI,
     functionName: "upsideFraction",
     query: { enabled: !!onchainIsSettled },

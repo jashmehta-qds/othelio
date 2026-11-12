@@ -1,0 +1,15 @@
+{
+  "chainId": 8453,
+  "networkName": "Base Mainnet",
+  "deployer": "0xECCEc5B076D97d455Ce9416012876BdACC97939a",
+  "factoryAddress": "0x18F2cBF92d7d54c26e36039f61880d6028FB4518",
+  "settlementAdapterAddress": "0xDf802E50C0d36E9cFFA2b3365cd931243450BEB2",
+  "factoryTransaction": "0x567fa42d4f4037474157deda58b4d81b61e60eef578a0f27f3b64222c0191897",
+  "adapterTransaction": "0x33b89e6f86b32baca526d291f95f67e5a3fc22bd70b18e52ff446d6e8603ba75",
+  "factoryDeploymentBlock": 55448539,
+  "adapterDeploymentBlock": 55448549,
+  "underlyingSymbol": "MSFTc",
+  "underlyingTokenAddress": "0xB200000000000000000000Ab99cFa739E253872B",
+  "settlementFeedAddress": "0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c",
+  "maxStalenessSeconds": 86400
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useAccount, useChainId, useSignTypedData, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, useChainId, usePublicClient, useSignTypedData, useReadContract, useWriteContract } from "wagmi";
 import {
   BASE_CHAIN_ID,
   BASE_USDC_ADDRESS,
@@ -11,6 +11,7 @@ import {
   ZERO_EX_LIMIT_ORDER_ABI,
   ZeroExLimitOrder,
   ZeroExSignature,
+  toZeroExAbiOrder,
 } from "@othelio/shared";
 import { parseUnits, formatUnits, getAddress, parseAbi, maxUint256 } from "viem";
 
@@ -26,6 +27,7 @@ interface OrderTicketProps {
   seriesAddress: string;
   claimType: "protected" | "upside";
   claimTokenAddress: string;
+  claimDecimals: number | null;
   symbol: string;
   seriesExpiryTimestamp: number;
   initialPrice?: string;
@@ -38,6 +40,7 @@ export function OrderTicket({
   seriesAddress,
   claimType,
   claimTokenAddress,
+  claimDecimals,
   symbol,
   seriesExpiryTimestamp,
   initialPrice = "",
@@ -47,6 +50,7 @@ export function OrderTicket({
 }: OrderTicketProps) {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
+  const publicClient = usePublicClient();
   const { signTypedDataAsync, isPending: isSigning } = useSignTypedData();
   const { writeContractAsync, isPending: isTxPending } = useWriteContract();
 
@@ -57,6 +61,7 @@ export function OrderTicket({
   const [amountClaims, setAmountClaims] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isWaitingReceipt, setIsWaitingReceipt] = useState(false);
 
   useEffect(() => {
     if (initialPrice) setPriceUsd(initialPrice);
@@ -75,10 +80,10 @@ export function OrderTicket({
 
   // Determine token that user must spend
   // BUY: user spends USDC (6 dec)
-  // SELL: user spends Claims (8 dec)
+  // SELL: user spends claims in the underlying token's decimal scale.
   const isBuy = side === "BUY";
   const userToken = isBuy ? BASE_USDC_ADDRESS : claimTokenAddress;
-  const userDecimals = isBuy ? 6 : 8;
+  const userDecimals = isBuy ? 6 : (claimDecimals ?? 0);
 
   // Read balance and allowance for 0x ExchangeProxy
   const { data: balanceData, refetch: refetchBalance } = useReadContract({
@@ -97,37 +102,49 @@ export function OrderTicket({
     query: { enabled: Boolean(address && userToken) },
   });
 
-  const userBalance = balanceData ? formatUnits(balanceData, userDecimals) : "0";
+  const userBalance = balanceData && (isBuy || claimDecimals !== null) ? formatUnits(balanceData, userDecimals) : "—";
   const userAllowance = allowanceData ?? BigInt(0);
 
   // Calculations
   const claimAmtNum = parseFloat(amountClaims || "0");
   const priceNum = parseFloat(priceUsd || "0");
-  const totalUsdcNum = claimAmtNum * priceNum;
-
-  const requiredUnits = isBuy
-    ? parseUnits(totalUsdcNum.toFixed(6), 6)
-    : parseUnits(claimAmtNum.toFixed(8), 8);
+  let claimUnits = BigInt(0);
+  let priceE6 = BigInt(0);
+  try {
+    if (claimDecimals !== null && claimDecimals >= 0 && claimDecimals <= 36) {
+      claimUnits = parseUnits(amountClaims || "0", claimDecimals);
+    }
+    priceE6 = parseUnits(priceUsd || "0", 6);
+  } catch {
+    // Invalid precision or input is shown as a disabled ticket below.
+  }
+  const totalUsdcUnits = claimDecimals === null ? BigInt(0) : claimUnits * priceE6 / (BigInt(10) ** BigInt(claimDecimals));
+  const totalUsdcNum = Number(formatUnits(totalUsdcUnits, 6));
+  const requiredUnits = isBuy ? totalUsdcUnits : claimUnits;
 
   const needsApproval = isConnected && userAllowance < requiredUnits && requiredUnits > BigInt(0);
 
   const handleApprove = async () => {
     setErrorMessage(null);
     try {
+      if (!publicClient) throw new Error("Wallet RPC is unavailable");
       const maxApproval = maxUint256;
-      await writeContractAsync({
+      const hash = await writeContractAsync({
         address: userToken as `0x${string}`,
         abi: ERC20_ABI,
         functionName: "approve",
         args: [ZERO_EX_EXCHANGE_PROXY_BASE, maxApproval],
       });
-      setStatusMessage("Approval submitted. Updating allowance...");
-      setTimeout(() => {
-        refetchAllowance();
-        setStatusMessage(null);
-      }, 3000);
+      setIsWaitingReceipt(true);
+      setStatusMessage("Waiting for approval confirmation...");
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("Token approval reverted");
+      await refetchAllowance();
+      setStatusMessage("Approval confirmed");
     } catch (err: any) {
       setErrorMessage(err?.message || "Token approval failed");
+    } finally {
+      setIsWaitingReceipt(false);
     }
   };
 
@@ -137,8 +154,8 @@ export function OrderTicket({
       return;
     }
 
-    if (claimAmtNum <= 0 || priceNum <= 0) {
-      setErrorMessage("Please enter a valid price and claim amount.");
+    if (claimDecimals === null || claimUnits <= BigInt(0) || priceE6 <= BigInt(0) || totalUsdcUnits <= BigInt(0)) {
+      setErrorMessage("Enter a valid claim amount and USDC price after token decimals load.");
       return;
     }
 
@@ -146,9 +163,7 @@ export function OrderTicket({
     setStatusMessage("Preparing signed limit order...");
 
     try {
-      const takerAmountUnits = isBuy
-        ? parseUnits(claimAmtNum.toFixed(8), 8)
-        : parseUnits(totalUsdcNum.toFixed(6), 6);
+      const takerAmountUnits = isBuy ? claimUnits : totalUsdcUnits;
 
       const orderExpiry = Math.min(
         Math.floor(Date.now() / 1000) + 7 * 86400, // 7 days or series expiry
@@ -172,11 +187,9 @@ export function OrderTicket({
         salt,
       };
 
-      const domain = {
-        ...ZERO_EX_EIP712_DOMAIN,
-        chainId,
-        verifyingContract: ZERO_EX_EXCHANGE_PROXY_BASE,
-      };
+      // The local Base fork talks to Base's forked 0x deployment, whose
+      // domain separator remains bound to Base chain ID 8453.
+      const domain = ZERO_EX_EIP712_DOMAIN;
 
       const rawSig = await signTypedDataAsync({
         domain,
@@ -243,7 +256,7 @@ export function OrderTicket({
       setErrorMessage("No resting order selected. Click an order in the book to fill it.");
       return;
     }
-    if (claimAmtNum <= 0) {
+    if (claimDecimals === null || claimUnits <= BigInt(0) || totalUsdcUnits <= BigInt(0)) {
       setErrorMessage("Please enter a valid claim amount to fill.");
       return;
     }
@@ -252,12 +265,11 @@ export function OrderTicket({
     setStatusMessage("Preparing onchain fill transaction...");
 
     try {
+      if (!publicClient) throw new Error("Wallet RPC is unavailable");
       // 0x takerTokenFillAmount:
       // If BUYing claims: taker pays USDC -> takerTokenFillAmount is total USDC (6 decimals)
       // If SELLing claims: taker pays Claim -> takerTokenFillAmount is Claims (8 decimals)
-      const takerFillUnits = isBuy
-        ? parseUnits(totalUsdcNum.toFixed(6), 6)
-        : parseUnits(claimAmtNum.toFixed(8), 8);
+      const takerFillUnits = isBuy ? totalUsdcUnits : claimUnits;
 
       const buildRes = await fetch(
         `${API_BASE}/v1/orders/${selectedOrderHash}/build-fill?chainId=${chainId}`,
@@ -284,20 +296,31 @@ export function OrderTicket({
         address: fillData.target as `0x${string}`,
         abi: ZERO_EX_LIMIT_ORDER_ABI,
         functionName: "fillLimitOrder",
-        args: fillData.args,
+        args: [toZeroExAbiOrder(fillData.args[0]), fillData.args[1], BigInt(fillData.args[2])],
       });
 
-      setStatusMessage(`Fill submitted onchain: ${txHash.slice(0, 10)}…`);
+      setIsWaitingReceipt(true);
+      setStatusMessage(`Waiting for fill ${txHash.slice(0, 10)}…`);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status !== "success") throw new Error("Order fill reverted");
+      const reconcileRes = await fetch(`${API_BASE}/v1/orders/${selectedOrderHash}/reconcile-fill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ txHash }),
+      });
+      if (!reconcileRes.ok) {
+        const errorJson = await reconcileRes.json().catch(() => ({}));
+        throw new Error(errorJson.message || "Fill confirmed, but book reconciliation failed");
+      }
+      setStatusMessage("Fill confirmed and book reconciled");
       setAmountClaims("");
-      setTimeout(() => {
-        setStatusMessage(null);
-        refetchBalance();
-        refetchAllowance();
-        onOrderCreated?.();
-      }, 4000);
+      await Promise.all([refetchBalance(), refetchAllowance()]);
+      onOrderCreated?.();
     } catch (err: any) {
       setErrorMessage(err?.message || "Fill execution failed");
       setStatusMessage(null);
+    } finally {
+      setIsWaitingReceipt(false);
     }
   };
 
@@ -457,7 +480,7 @@ export function OrderTicket({
           <button
             type="button"
             onClick={handleApprove}
-            disabled={isTxPending}
+            disabled={isTxPending || isWaitingReceipt}
             className="w-full py-2.5 rounded bg-[#292a27] hover:bg-[#3f413c] text-white font-semibold tracking-wider uppercase transition-colors disabled:opacity-50"
           >
             {isTxPending ? "Approving in Wallet..." : `Approve ${isBuy ? "USDC" : "Claim"} for Trading`}
@@ -466,7 +489,7 @@ export function OrderTicket({
           <button
             type="button"
             onClick={handleFillOrder}
-            disabled={isTxPending || !isConnected || claimAmtNum <= 0 || !selectedOrderHash}
+            disabled={isTxPending || isWaitingReceipt || !isConnected || claimDecimals === null || claimUnits <= BigInt(0) || !selectedOrderHash}
             className={`w-full py-2.5 rounded font-semibold tracking-wider uppercase transition-colors disabled:opacity-50 ${
               side === "BUY"
                 ? "bg-emerald-600 hover:bg-emerald-500 text-black"
@@ -483,7 +506,7 @@ export function OrderTicket({
           <button
             type="button"
             onClick={handlePlaceLimitOrder}
-            disabled={isSigning || !isConnected || claimAmtNum <= 0}
+            disabled={isSigning || !isConnected || claimDecimals === null || claimUnits <= BigInt(0) || totalUsdcUnits <= BigInt(0)}
             className={`w-full py-2.5 rounded font-semibold tracking-wider uppercase transition-colors disabled:opacity-50 ${
               side === "BUY"
                 ? "bg-emerald-600 hover:bg-emerald-500 text-black"

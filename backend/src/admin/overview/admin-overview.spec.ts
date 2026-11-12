@@ -42,6 +42,11 @@ describe('AdminOverviewService', () => {
     const service = new AdminOverviewService(mockDb as any, mockRiskSplitService as any);
     const result = await service.getOverview(8453);
 
+    const activityQuery = mockDb.query.mock.calls.find(([query]) => query.includes('all_activity'))?.[0] as string;
+    expect(activityQuery).toContain('risk_split_events');
+    expect(activityQuery).toContain('occurred_at AS ts');
+    expect(activityQuery).toContain('account_address');
+
     expect(result.asOfBlock).toBe(198);
     expect(result.indexerHealth.isFresh).toBe(true);
     expect(result.indexerHealth.blockLag).toBe(2);

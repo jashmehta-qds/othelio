@@ -5,17 +5,18 @@ pragma solidity ^0.8.24;
 /// @notice Interface for deploying and tracking RiskSplitSeries vaults.
 interface ISeriesFactory {
     event SeriesCreated(
-        address indexed seriesAddress, address indexed underlying, uint256 floorPrice, uint256 capPrice, uint256 expiry
-    );
-    event SeriesCreatedWithReference(
         address indexed seriesAddress,
         address indexed underlying,
         uint256 floorPrice,
         uint256 capPrice,
         uint256 expiry,
+        address settlementAdapter,
         address referenceFeed,
         uint80 referenceRoundId,
-        uint256 referencePrice
+        uint256 referencePrice,
+        uint256 referenceBlock,
+        address protectedToken,
+        address upsideToken
     );
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);

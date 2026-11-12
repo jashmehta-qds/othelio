@@ -1,6 +1,25 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AdminOperationsService } from './admin-operations.service';
 
+vi.mock('viem', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('viem')>();
+  return {
+    ...actual,
+    createPublicClient: () => ({
+      readContract: async ({ functionName, args }: { functionName: string; args?: bigint[] }) => {
+        if (functionName === 'getFixingRound') {
+          return {
+            roundId: 123n, price: 50000000000n,
+            updatedAt: args![0] - 30n,
+            feed: '0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c', decimals: 8,
+          };
+        }
+        return [124n, 50500000000n, 0n, BigInt(Math.floor(Date.now() / 1000)), 124n];
+      },
+    }),
+  };
+});
+
 describe('AdminOperationsService', () => {
   it('constructs operations response with expiry queue, audit trail, and incidents', async () => {
     const nowSecs = Math.floor(Date.now() / 1000);
@@ -77,5 +96,25 @@ describe('AdminOperationsService', () => {
 
     expect(result.incidentAlerts.length).toBeGreaterThan(0);
     expect(result.incidentAlerts[0].message).toContain('Indexer lag detected: 120 blocks');
+  });
+
+  it('uses the adapter to find a valid pre-expiry round after the feed advances', async () => {
+    const expiry = Math.floor(Date.now() / 1000) - 3600;
+    const series = '0x1111111111111111111111111111111111111111';
+    const adapter = '0x3333333333333333333333333333333333333333';
+    const service = new AdminOperationsService({
+      query: vi.fn().mockResolvedValue({ rows: [{
+        series_address: series,
+        underlying_address: '0xb200000000000000000000ab99cfa739e253872b',
+        settlement_adapter_address: adapter,
+        expiry_timestamp: expiry,
+        is_settled: false,
+      }] }),
+    } as any);
+    const result = await service.getOperations(8453);
+    expect(result.expiryQueue[0].candidateFixingRound?.roundId).toBe('123');
+    expect(result.expiryQueue[0].settlementReady).toBe(true);
+    expect(result.expiryQueue[0].settlementPreviewTx?.target).toBe(adapter);
+    expect(result.expiryQueue[0].settlementPreviewTx?.args).toEqual([series, '123']);
   });
 });

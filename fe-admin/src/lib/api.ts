@@ -44,10 +44,12 @@ class AdminApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const res = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+    } catch {
+      throw new Error(`Cannot reach Othelio API at ${API_BASE_URL}. Check the admin app's NEXT_PUBLIC_BACKEND_URL and backend service.`);
+    }
 
     if (!res.ok) {
       const errorText = await res.text();
@@ -57,7 +59,9 @@ class AdminApiClient {
       } catch {
         // Not JSON
       }
-      throw new Error(errorJson?.message || errorJson?.error || `API error ${res.status}: ${errorText}`);
+      const error: any = new Error(errorJson?.message || errorJson?.error || `API error ${res.status}: ${errorText}`);
+      error.status = res.status;
+      throw error;
     }
 
     return res.json();

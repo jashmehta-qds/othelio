@@ -67,4 +67,10 @@ export class OrderbookController {
   ) {
     return this.orderbookService.buildFillTransaction(hash, body, chainId ? Number(chainId) : 8453);
   }
+
+  @Post('v1/orders/:hash/reconcile-fill')
+  async reconcileFill(@Param('hash') hash: string, @Body() body: { txHash: string }) {
+    if (!body?.txHash) throw new BadRequestException('Body parameter "txHash" is required');
+    return this.orderbookService.reconcileFillTransaction(hash, body.txHash);
+  }
 }

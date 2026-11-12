@@ -1,18 +1,21 @@
 "use client";
 
 import React, { useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { useQuery as useReactQuery } from "@tanstack/react-query";
-import { ZERO_EX_EXCHANGE_PROXY_BASE, ZERO_EX_LIMIT_ORDER_ABI } from "@othelio/shared";
+import { ZERO_EX_EXCHANGE_PROXY_BASE, ZERO_EX_LIMIT_ORDER_ABI, toZeroExAbiOrder } from "@othelio/shared";
+import { formatUnits } from "viem";
 
 interface MyOrdersProps {
   seriesAddress?: string;
+  claimDecimals: number | null;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
 
-export function MyOrders({ seriesAddress }: MyOrdersProps) {
+export function MyOrders({ seriesAddress, claimDecimals }: MyOrdersProps) {
   const { address } = useAccount();
+  const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const [cancellingHash, setCancellingHash] = useState<string | null>(null);
 
@@ -32,7 +35,8 @@ export function MyOrders({ seriesAddress }: MyOrdersProps) {
     if (seriesAddress && o.seriesAddress.toLowerCase() !== seriesAddress.toLowerCase()) {
       return false;
     }
-    return o.orderStatus === "FILLABLE" && !o.isLocallyHidden;
+    const remaining = o.side === "BUY" ? o.remainingTakerAmount : o.remainingMakerAmount;
+    return o.orderStatus === "FILLABLE" && !o.isLocallyHidden && BigInt(remaining || "0") > BigInt(0);
   });
 
   const handleCancel = async (order: any) => {
@@ -40,7 +44,8 @@ export function MyOrders({ seriesAddress }: MyOrdersProps) {
     setCancellingHash(order.orderHash);
 
     try {
-      // 1. Submit cancel intent to hide immediately
+      if (!publicClient) throw new Error("Wallet RPC is unavailable");
+      // 1. Prepare the cancellation. The book updates after onchain confirmation.
       const intentRes = await fetch(`${API_BASE}/v1/orders/${order.orderHash}/cancel-intent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -55,12 +60,14 @@ export function MyOrders({ seriesAddress }: MyOrdersProps) {
 
       // 2. Execute onchain cancellation via 0x ExchangeProxy
       if (intentData.cancelTx) {
-        await writeContractAsync({
+        const hash = await writeContractAsync({
           address: intentData.cancelTx.target as `0x${string}`,
           abi: ZERO_EX_LIMIT_ORDER_ABI,
           functionName: "cancelLimitOrder",
-          args: intentData.cancelTx.args,
+          args: [toZeroExAbiOrder(intentData.cancelTx.args[0])],
         });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") throw new Error("Order cancellation reverted");
       }
 
       refetch();
@@ -71,7 +78,7 @@ export function MyOrders({ seriesAddress }: MyOrdersProps) {
     }
   };
 
-  if (!address || activeOrders.length === 0) return null;
+  if (!address || activeOrders.length === 0 || claimDecimals === null) return null;
 
   return (
     <div className="bg-[#161715] border border-[#292a27] rounded-lg p-5 space-y-3 text-xs font-mono">
@@ -99,8 +106,9 @@ export function MyOrders({ seriesAddress }: MyOrdersProps) {
             {activeOrders.map((ord) => {
               const remClaims =
                 ord.side === "BUY"
-                  ? (Number(ord.remainingTakerAmount) / 1e8).toFixed(4)
-                  : (Number(ord.remainingMakerAmount) / 1e8).toFixed(4);
+                  ? Number(formatUnits(BigInt(ord.remainingTakerAmount), claimDecimals)).toFixed(4)
+                  : Number(formatUnits(BigInt(ord.remainingMakerAmount), claimDecimals)).toFixed(4);
+              const displayedRemainder = Number(remClaims) === 0 ? "<0.0001" : remClaims;
 
               return (
                 <tr key={ord.orderHash} className="hover:bg-[#1a1b18]">
@@ -115,7 +123,7 @@ export function MyOrders({ seriesAddress }: MyOrdersProps) {
                   </td>
                   <td className="py-2 text-zinc-400">{ord.claimType}</td>
                   <td className="py-2 font-semibold text-white">{ord.priceFormatted}</td>
-                  <td className="py-2">{remClaims}</td>
+                  <td className="py-2">{displayedRemainder}</td>
                   <td className="py-2 text-right">
                     <button
                       onClick={() => handleCancel(ord)}

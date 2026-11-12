@@ -12,6 +12,8 @@ interface OrderBookProps {
   spreadUsd: string | null;
   onSelectPrice?: (priceUsd: string, side: "BUY" | "SELL", orderHash?: string) => void;
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
   sequence: number;
 }
 
@@ -23,6 +25,8 @@ export function OrderBook({
   spreadUsd,
   onSelectPrice,
   isLoading,
+  isError,
+  onRetry,
 }: OrderBookProps) {
   const maxAskTotal = asks.length > 0 ? Number(asks[asks.length - 1].totalClaim) : 1;
   const maxBidTotal = bids.length > 0 ? Number(bids[bids.length - 1].totalClaim) : 1;
@@ -30,6 +34,12 @@ export function OrderBook({
 
   return (
     <div className="space-y-4">
+      {isError && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+          <span>Live book unavailable. Market data is catching up; this does not mean there are no orders.</span>
+          <button type="button" onClick={onRetry} className="shrink-0 underline underline-offset-2 hover:text-white">Retry</button>
+        </div>
+      )}
       {/* Ladder Grid */}
       <div className="grid grid-cols-2 gap-3 text-xs font-mono">
         {/* Bids Side */}
@@ -41,7 +51,7 @@ export function OrderBook({
 
           <div className="divide-y divide-[#1e1f1c] mt-1 min-h-[140px]">
             {bids.length === 0 ? (
-              <div className="py-12 text-center text-zinc-600">No resting bids</div>
+              <div className="py-12 text-center text-zinc-600">{isError ? "Book unavailable" : "No resting bids"}</div>
             ) : (
               bids.slice(0, 8).map((bid, i) => {
                 const depthPct = Math.min(100, Math.round((Number(bid.totalClaim) / maxTotal) * 100));
@@ -75,7 +85,7 @@ export function OrderBook({
 
           <div className="divide-y divide-[#1e1f1c] mt-1 min-h-[140px]">
             {asks.length === 0 ? (
-              <div className="py-12 text-center text-zinc-600">No resting asks</div>
+              <div className="py-12 text-center text-zinc-600">{isError ? "Book unavailable" : "No resting asks"}</div>
             ) : (
               asks.slice(0, 8).map((ask, i) => {
                 const depthPct = Math.min(100, Math.round((Number(ask.totalClaim) / maxTotal) * 100));

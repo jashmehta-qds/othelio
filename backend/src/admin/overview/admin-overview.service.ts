@@ -61,13 +61,13 @@ export class AdminOverviewService {
             FROM basket_events
             WHERE chain_id = $1 AND actor_address IS NOT NULL
             UNION ALL
-            SELECT LOWER(actor_address) AS wallet, created_at AS ts
+            SELECT LOWER(actor_address) AS wallet, occurred_at AS ts
             FROM risk_split_events
             WHERE chain_id = $1 AND actor_address IS NOT NULL
             UNION ALL
-            SELECT LOWER(wallet_address) AS wallet, updated_at AS ts
+            SELECT LOWER(account_address) AS wallet, updated_at AS ts
             FROM account_settings
-            WHERE wallet_address IS NOT NULL
+            WHERE account_address IS NOT NULL
           )
           SELECT
             COUNT(DISTINCT CASE WHEN ts >= NOW() - INTERVAL '24 hours' THEN wallet END)::int AS count_24h,

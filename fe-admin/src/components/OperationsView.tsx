@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { AdminOperationsResponse, AdminOperationQueueItem, riskSplitSeriesAbi } from '@othelio/shared';
-import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { AdminOperationsResponse, AdminOperationQueueItem, settlementAdapterAbi } from '@othelio/shared';
+import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 
 interface OperationsViewProps {
   operations: AdminOperationsResponse | null;
@@ -20,27 +20,35 @@ export function OperationsView({ operations, isLoading, onRefresh, isOwner }: Op
   };
 
   const { writeContractAsync, isPending } = useWriteContract();
-  const [pendingTxHash, setPendingTxHash] = React.useState<`0x${string}` | undefined>(undefined);
-  const { isLoading: isWaitingReceipt } = useWaitForTransactionReceipt({ hash: pendingTxHash });
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const [isWaitingReceipt, setIsWaitingReceipt] = React.useState(false);
 
   const handleSettle = async (item: AdminOperationQueueItem) => {
-    if (!item.candidateFixingRound) {
-      alert('No valid pre-expiry fixing round found for settlement.');
+    if (!item.settlementReady || !item.settlementPreviewTx) {
+      alert('No adapter-verified pre-expiry fixing round is ready for settlement.');
       return;
     }
 
     try {
-      const hash = await writeContractAsync({
-        address: item.seriesAddress as `0x${string}`,
-        abi: riskSplitSeriesAbi,
-        functionName: 'settleSeriesWithFixing',
-        args: [BigInt(item.candidateFixingRound.roundId)],
+      if (!publicClient || !address) throw new Error('Connect a wallet with a working RPC first.');
+      const tx = item.settlementPreviewTx;
+      const request = await publicClient.simulateContract({
+        account: address,
+        address: tx.target,
+        abi: settlementAdapterAbi,
+        functionName: 'settleSeries',
+        args: [item.seriesAddress as `0x${string}`, BigInt(item.candidateFixingRound!.roundId)],
       });
-      setPendingTxHash(hash);
-      alert(`Settlement transaction submitted: ${hash}`);
+      const hash = await writeContractAsync(request.request);
+      setIsWaitingReceipt(true);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error(`Settlement transaction ${hash} reverted.`);
       onRefresh();
     } catch (err: any) {
       alert(`Settlement failed: ${err?.message}`);
+    } finally {
+      setIsWaitingReceipt(false);
     }
   };
 

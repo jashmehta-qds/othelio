@@ -7,7 +7,24 @@ import {
   seriesFactoryAbi,
 } from '@othelio/shared';
 import { adminApi } from '../lib/api';
-import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { usePublicClient, useWriteContract } from 'wagmi';
+
+function nextFridayNewYorkClose(): number {
+  const earliest = Date.now() + 7 * 24 * 60 * 60 * 1000;
+  const start = new Date(earliest);
+  const easternHour = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hour: '2-digit', hourCycle: 'h23',
+  });
+  for (let offset = 0; offset < 15; offset++) {
+    const day = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + offset));
+    if (day.getUTCDay() !== 5) continue;
+    const guess = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 21);
+    const localHour = Number(easternHour.formatToParts(guess).find((part) => part.type === 'hour')?.value);
+    const close = guess + (16 - localHour) * 60 * 60 * 1000;
+    if (close > earliest) return Math.floor(close / 1000);
+  }
+  throw new Error('Could not determine the next New York Friday close.');
+}
 
 interface CreateMarketModalProps {
   isOpen: boolean;
@@ -23,31 +40,14 @@ export function CreateMarketModal({ isOpen, onClose, onSuccess, isOwner }: Creat
   const [floorPercent, setFloorPercent] = useState<number>(80);
   const [capPercent, setCapPercent] = useState<number>(120);
 
-  // Compute next Friday 16:00 ET (21:00 UTC) default
-  const getDefaultExpiry = () => {
-    const d = new Date();
-    const day = d.getUTCDay();
-    // Target Friday (day 5)
-    let diff = (5 - day + 7) % 7;
-    if (diff === 0 && d.getUTCHours() >= 21) {
-      diff = 7;
-    }
-    const target = new Date(d.getTime() + diff * 24 * 60 * 60 * 1000);
-    // Set to 21:00 UTC (16:00 ET)
-    target.setUTCHours(21, 0, 0, 0);
-    return Math.floor(target.getTime() / 1000);
-  };
-
-  const [expiryTimestamp, setExpiryTimestamp] = useState<number>(getDefaultExpiry());
+  const [expiryTimestamp, setExpiryTimestamp] = useState<number>(nextFridayNewYorkClose);
   const [preview, setPreview] = useState<AdminMarketPreviewResponse | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   const { writeContractAsync, isPending: isTxPending } = useWriteContract();
-  const [pendingTxHash, setPendingTxHash] = useState<`0x${string}` | undefined>(undefined);
-  const { isLoading: isWaitingReceipt, isSuccess: isTxConfirmed } = useWaitForTransactionReceipt({
-    hash: pendingTxHash,
-  });
+  const publicClient = usePublicClient();
+  const [isWaitingReceipt, setIsWaitingReceipt] = useState(false);
 
   const handleFetchPreview = async () => {
     setIsLoadingPreview(true);
@@ -77,16 +77,21 @@ export function CreateMarketModal({ isOpen, onClose, onSuccess, isOwner }: Creat
 
   const handleExecuteApproval = async (target: `0x${string}`, underlying: string, expiry: number) => {
     try {
+      if (!publicClient) throw new Error('Wallet RPC is unavailable.');
       const hash = await writeContractAsync({
         address: target,
         abi: seriesFactoryAbi,
         functionName: 'setApprovedExpiry',
         args: [underlying as `0x${string}`, BigInt(expiry), true],
       });
-      setPendingTxHash(hash);
-      alert(`Expiry approval transaction submitted: ${hash}`);
+      setIsWaitingReceipt(true);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error(`Expiry approval ${hash} reverted.`);
+      await handleFetchPreview();
     } catch (err: any) {
       alert(`Approval failed: ${err?.message}`);
+    } finally {
+      setIsWaitingReceipt(false);
     }
   };
 
@@ -99,17 +104,21 @@ export function CreateMarketModal({ isOpen, onClose, onSuccess, isOwner }: Creat
     adapter: string
   ) => {
     try {
+      if (!publicClient) throw new Error('Wallet RPC is unavailable.');
       const hash = await writeContractAsync({
         address: target,
         abi: seriesFactoryAbi,
         functionName: 'createSeries',
         args: [underlying as `0x${string}`, BigInt(floor), BigInt(cap), BigInt(expiry), adapter as `0x${string}`],
       });
-      setPendingTxHash(hash);
-      alert(`Series creation transaction submitted: ${hash}`);
+      setIsWaitingReceipt(true);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error(`Series creation ${hash} reverted.`);
       onSuccess();
     } catch (err: any) {
       alert(`Create series failed: ${err?.message}`);
+    } finally {
+      setIsWaitingReceipt(false);
     }
   };
 
@@ -198,7 +207,7 @@ export function CreateMarketModal({ isOpen, onClose, onSuccess, isOwner }: Creat
               />
               <button
                 type="button"
-                onClick={() => setExpiryTimestamp(getDefaultExpiry())}
+                onClick={() => setExpiryTimestamp(nextFridayNewYorkClose())}
                 className="px-3 py-2 bg-[#292a27] hover:bg-[#3f413c] text-zinc-300 rounded"
               >
                 Next Friday

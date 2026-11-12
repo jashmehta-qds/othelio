@@ -1,0 +1,99 @@
+<style>
+#othelio-home-concepts{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f5f4f0}
+#othelio-home-concepts *{box-sizing:border-box}
+#othelio-home-concepts .concept{min-height:690px;background:#101315;border:1px solid #303739;border-radius:22px;overflow:hidden;box-shadow:0 22px 70px #0004}
+#othelio-home-concepts .top{height:66px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;border-bottom:1px solid #2b3234;gap:16px}
+#othelio-home-concepts .brand{display:flex;align-items:center;gap:10px;font-weight:750;font-size:19px;letter-spacing:-.05em}
+#othelio-home-concepts .brandmark{width:25px;height:25px;border-radius:8px;background:#c8f26b;color:#101315;display:grid;place-items:center;font-size:17px;font-weight:800}
+#othelio-home-concepts .topnav{display:flex;gap:24px;color:#9ca6a3;font-size:13px}
+#othelio-home-concepts .topnav strong{color:#f5f4f0;font-weight:600}
+#othelio-home-concepts .wallet{font-size:12px;color:#cdd3cf;border:1px solid #3b4443;border-radius:999px;padding:8px 12px;white-space:nowrap}
+#othelio-home-concepts .inner{padding:28px 30px 34px}
+#othelio-home-concepts h1,#othelio-home-concepts h2,#othelio-home-concepts h3,#othelio-home-concepts p{margin:0}
+#othelio-home-concepts h1{font-size:38px;letter-spacing:-.065em;line-height:1.08;font-weight:680}
+#othelio-home-concepts h2{font-size:20px;letter-spacing:-.04em}
+#othelio-home-concepts .sub{color:#9ca6a3;font-size:14px;line-height:1.5;margin-top:8px}
+#othelio-home-concepts .eyebrow{color:#b9e66c;font-size:11px;letter-spacing:.15em;text-transform:uppercase;font-weight:800;margin-bottom:10px}
+#othelio-home-concepts .sectionhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}
+#othelio-home-concepts .link{background:none;border:0;color:#a7d858;font:inherit;font-size:12px;padding:4px;cursor:pointer}
+#othelio-home-concepts .stockgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:18px 0 31px}
+#othelio-home-concepts .stock{background:#1a2021;border:1px solid #303a39;border-radius:14px;padding:15px;text-align:left;color:inherit;min-height:93px;cursor:pointer}
+#othelio-home-concepts .stock:hover,#othelio-home-concepts .stock.selected{border-color:#b9e66c}
+#othelio-home-concepts .stock .ticker{font-size:17px;font-weight:750;letter-spacing:-.035em}
+#othelio-home-concepts .stock .company{font-size:12px;color:#aab2ae;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#othelio-home-concepts .stock .smallprice{font-size:12px;color:#c5ccc7;margin-top:13px}
+#othelio-home-concepts .stock .smallprice b{color:#a7d858;font-weight:600}
+#othelio-home-concepts .v1layout{display:grid;grid-template-columns:minmax(0,1.33fr) minmax(285px,.85fr);gap:25px;align-items:start}
+#othelio-home-concepts .marketrows{border-top:1px solid #303738}
+#othelio-home-concepts .marketrow{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;width:100%;background:transparent;color:inherit;border:0;border-bottom:1px solid #303738;text-align:left;padding:18px 2px;cursor:pointer}
+#othelio-home-concepts .marketrow:hover{background:#1a2021}
+#othelio-home-concepts .marketrow strong{display:block;font-size:15px;font-weight:620;letter-spacing:-.025em}
+#othelio-home-concepts .marketrow span{display:block;color:#8f9b96;font-size:12px;margin-top:5px}
+#othelio-home-concepts .quote{text-align:right;white-space:nowrap}
+#othelio-home-concepts .quote strong{font-size:17px;color:#cbf27b}
+#othelio-home-concepts .quote span{font-size:11px}
+#othelio-home-concepts .ticket{background:#202729;border:1px solid #37413f;border-radius:17px;padding:20px}
+#othelio-home-concepts .tickethead{font-weight:650;font-size:17px;letter-spacing:-.035em;margin-bottom:7px}
+#othelio-home-concepts .ticket .muted{color:#a1aaa5;font-size:12px;line-height:1.45}
+#othelio-home-concepts .fieldlabel{display:block;margin-top:22px;margin-bottom:9px;color:#c2cbc4;font-size:12px}
+#othelio-home-concepts .targetrow{display:flex;gap:9px}
+#othelio-home-concepts .target{min-width:0;width:100%;background:#121718;border:1px solid #4a5853;border-radius:10px;padding:12px 11px;color:#f5f4f0;font:inherit;font-size:19px;font-weight:700;outline:none}
+#othelio-home-concepts .target:focus{border-color:#c5ee72}
+#othelio-home-concepts .date{background:#121718;border:1px solid #4a5853;border-radius:10px;padding:12px 10px;color:#f5f4f0;font-size:13px;white-space:nowrap}
+#othelio-home-concepts .suggestions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+#othelio-home-concepts .suggestions button{background:#303b38;border:0;border-radius:999px;color:#d9e2d9;font-size:11px;padding:6px 9px;cursor:pointer}
+#othelio-home-concepts .bestoffer{margin-top:22px;border-top:1px solid #3c4743;padding-top:17px;display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+#othelio-home-concepts .bestoffer span{font-size:12px;color:#adb8ae}
+#othelio-home-concepts .bestoffer strong{font-size:23px;letter-spacing:-.05em;color:#cbf27b}
+#othelio-home-concepts .payoff{font-size:12px;color:#d2dbd1;line-height:1.55;margin-top:13px}
+#othelio-home-concepts .cta{width:100%;margin-top:20px;background:#c8f26b;color:#182016;border:0;border-radius:10px;padding:13px;font-size:14px;font-weight:750;cursor:pointer}
+#othelio-home-concepts .booklink{display:block;text-align:center;color:#aab6ad;font-size:12px;margin-top:13px}
+#othelio-home-concepts .fineprint{color:#717f77;font-size:11px;margin-top:18px}
+#othelio-home-concepts .v2hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(290px,.8fr);gap:27px;align-items:start;margin-bottom:34px}
+#othelio-home-concepts .v2hero h1{max-width:570px}
+#othelio-home-concepts .leadmarket{margin-top:28px;background:#25302b;border:1px solid #4f674b;border-radius:17px;padding:20px;display:flex;align-items:flex-end;justify-content:space-between;gap:18px}
+#othelio-home-concepts .leadmarket .tag{color:#bedb8c;font-size:11px;text-transform:uppercase;letter-spacing:.13em;font-weight:700;margin-bottom:9px}
+#othelio-home-concepts .leadmarket .title{font-size:22px;font-weight:680;line-height:1.2;letter-spacing:-.045em}
+#othelio-home-concepts .leadmarket .caption{font-size:12px;color:#b7c3b7;margin-top:9px}
+#othelio-home-concepts .leadmarket .leadprice{text-align:right;white-space:nowrap}
+#othelio-home-concepts .leadmarket .leadprice b{font-size:29px;letter-spacing:-.05em;color:#d4f88c}
+#othelio-home-concepts .leadmarket .leadprice span{display:block;color:#b7c3b7;font-size:11px;margin-top:5px}
+#othelio-home-concepts .v2bottom{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(230px,.65fr);gap:30px}
+#othelio-home-concepts .v2bottom .stockgrid{grid-template-columns:repeat(2,minmax(0,1fr));margin:14px 0 0}
+#othelio-home-concepts .v2bottom .stock{min-height:76px}
+#othelio-home-concepts .v2bottom .stock .smallprice{margin-top:9px}
+#othelio-home-concepts .sidehint{border-top:1px solid #303738;padding-top:15px;color:#aeb9ae;font-size:13px;line-height:1.55}
+#othelio-home-concepts .sidehint strong{display:block;color:#f4f5ef;font-size:16px;margin-bottom:8px}
+@media(max-width:760px){#othelio-home-concepts .top{padding:0 16px}#othelio-home-concepts .topnav{display:none}#othelio-home-concepts .inner{padding:23px 17px}#othelio-home-concepts h1{font-size:31px}#othelio-home-concepts .stockgrid{grid-template-columns:repeat(2,minmax(0,1fr))}#othelio-home-concepts .v1layout,#othelio-home-concepts .v2hero,#othelio-home-concepts .v2bottom{grid-template-columns:1fr}#othelio-home-concepts .ticket{margin-top:2px}#othelio-home-concepts .concept{min-height:1090px}}
+</style>
+<div id="othelio-home-concepts" class="viz-carousel" aria-label="Othelio home screen concepts">
+  <section data-variant="Stock-led" aria-label="Stock-led Othelio home" class="concept">
+    <div class="top"><div class="brand"><span class="brandmark">O</span> othelio</div><div class="topnav"><strong>Explore</strong><span>Portfolio</span><span>Activity</span></div><div class="wallet">Connect wallet</div></div>
+    <div class="inner">
+      <div class="eyebrow">Stock upside</div><h1>Find a stock. Pick your upside.</h1><p class="sub">Buy the gains above your target, until a date you choose.</p>
+      <div class="stockgrid">
+        <button class="stock selected" type="button" data-stock="NVIDIA"><div class="ticker">NVDA</div><div class="company">NVIDIA</div><div class="smallprice">Gains from <b>$4.10</b></div></button>
+        <button class="stock" type="button" data-stock="Microsoft"><div class="ticker">MSFT</div><div class="company">Microsoft</div><div class="smallprice">Gains from <b>$6.25</b></div></button>
+        <button class="stock" type="button" data-stock="Apple"><div class="ticker">AAPL</div><div class="company">Apple</div><div class="smallprice">Gains from <b>$2.80</b></div></button>
+        <button class="stock" type="button" data-stock="Tesla"><div class="ticker">TSLA</div><div class="company">Tesla</div><div class="smallprice">Gains from <b>$3.30</b></div></button>
+      </div>
+      <div class="v1layout"><div><div class="sectionhead"><h2>Trading now</h2><button type="button" class="link">See all trades →</button></div><div class="marketrows">
+        <button class="marketrow" type="button" data-market="200"><div><strong>NVIDIA above $200</strong><span>Nov 27 · 12.4 shares of exposure offered</span></div><div class="quote"><strong>$4.10</strong><span>best ask / share</span></div></button>
+        <button class="marketrow" type="button" data-market="205"><div><strong>NVIDIA above $205</strong><span>Nov 27 · 5.8 shares of exposure offered</span></div><div class="quote"><strong>$2.70</strong><span>best ask / share</span></div></button>
+        <button class="marketrow" type="button"><div><strong>Microsoft above $550</strong><span>Dec 18 · 8.1 shares of exposure offered</span></div><div class="quote"><strong>$6.25</strong><span>best ask / share</span></div></button>
+        <button class="marketrow" type="button"><div><strong>Apple above $300</strong><span>Dec 18 · 3.2 shares of exposure offered</span></div><div class="quote"><strong>$2.80</strong><span>best ask / share</span></div></button>
+      </div></div><div class="ticket" data-ticket><div class="tickethead">Buy NVIDIA gains</div><div class="muted">Choose where your gains begin.</div><label class="fieldlabel" for="stock-target">Above this stock price</label><div class="targetrow"><input id="stock-target" class="target" type="number" value="200" min="0" step="1" aria-label="Target stock price"><button class="date" type="button">Nov 27 ▾</button></div><div class="suggestions"><button type="button" data-set-target="200">$200 · $4.10</button><button type="button" data-set-target="205">$205 · $2.70</button><button type="button" data-set-target="210">$210 · $1.60</button></div><div class="bestoffer"><span>Best available ask</span><strong data-price>$4.10</strong></div><div class="payoff" data-payoff>If NVIDIA ends at $220, this pays $20 per share of exposure. The most you can lose is what you pay.</div><button type="button" class="cta" data-cta>See offer</button><span class="booklink">View bids and offers →</span></div></div>
+      <p class="fineprint">Illustrative markets and prices for concept exploration.</p>
+    </div>
+  </section>
+  <section data-variant="Activity-led" aria-label="Activity-led Othelio home" class="concept" hidden>
+    <div class="top"><div class="brand"><span class="brandmark">O</span> othelio</div><div class="topnav"><strong>Explore</strong><span>Portfolio</span><span>Activity</span></div><div class="wallet">Connect wallet</div></div>
+    <div class="inner"><div class="v2hero"><div><div class="eyebrow">Stock upside</div><h1>What are people buying above?</h1><p class="sub">Explore live offers, or set a target of your own.</p><div class="leadmarket"><div><div class="tag">Most active trade</div><div class="title">NVIDIA gains above $200</div><div class="caption">Nov 27 · 12.4 shares of exposure offered</div></div><div class="leadprice"><b>$4.10</b><span>best ask / share</span></div></div><div class="marketrows"><button class="marketrow" type="button"><div><strong>Microsoft above $550</strong><span>Dec 18 · 8.1 shares of exposure offered</span></div><div class="quote"><strong>$6.25</strong><span>best ask / share</span></div></button><button class="marketrow" type="button"><div><strong>Apple above $300</strong><span>Dec 18 · 3.2 shares of exposure offered</span></div><div class="quote"><strong>$2.80</strong><span>best ask / share</span></div></button></div></div>
+      <div class="ticket" data-ticket><div class="tickethead">Make it yours</div><div class="muted">Any stock, any target price.</div><label class="fieldlabel" for="activity-stock">Stock</label><select id="activity-stock" class="target" aria-label="Stock" style="font-size:15px"><option>NVIDIA</option><option>Microsoft</option><option>Apple</option><option>Tesla</option></select><label class="fieldlabel" for="activity-target">Gains above</label><div class="targetrow"><input id="activity-target" class="target" type="number" value="200" min="0" step="1" aria-label="Target stock price"><button class="date" type="button">Nov 27 ▾</button></div><div class="suggestions"><button type="button" data-set-target="200">$200 · $4.10</button><button type="button" data-set-target="205">$205 · $2.70</button><button type="button" data-set-target="210">$210 · $1.60</button></div><div class="bestoffer"><span>Best available ask</span><strong data-price>$4.10</strong></div><div class="payoff" data-payoff>If NVIDIA ends at $220, this pays $20 per share of exposure. The most you can lose is what you pay.</div><button type="button" class="cta" data-cta>See offer</button><span class="booklink">View bids and offers →</span></div></div>
+      <div class="v2bottom"><div><div class="sectionhead"><h2>Explore by stock</h2><button class="link" type="button">See all stocks →</button></div><div class="stockgrid"><button class="stock" type="button"><div class="ticker">NVDA</div><div class="company">NVIDIA</div><div class="smallprice">4 active targets</div></button><button class="stock" type="button"><div class="ticker">MSFT</div><div class="company">Microsoft</div><div class="smallprice">3 active targets</div></button><button class="stock" type="button"><div class="ticker">AAPL</div><div class="company">Apple</div><div class="smallprice">2 active targets</div></button><button class="stock" type="button"><div class="ticker">TSLA</div><div class="company">Tesla</div><div class="smallprice">2 active targets</div></button></div></div><div class="sidehint"><strong>Have a different target?</strong>Enter any price, including $2,000. If there’s no offer, you can leave a bid for sellers.</div></div><p class="fineprint">Illustrative markets and prices for concept exploration.</p>
+    </div>
+  </section>
+</div>
+<script>
+(()=>{const root=document.getElementById('othelio-home-concepts');const quotes={200:'$4.10',205:'$2.70',210:'$1.60'};for(const ticket of root.querySelectorAll('[data-ticket]')){const input=ticket.querySelector('.target[type=number]');const price=ticket.querySelector('[data-price]');const payoff=ticket.querySelector('[data-payoff]');const cta=ticket.querySelector('[data-cta]');function render(){const strike=Number(input.value);const q=quotes[strike];price.textContent=q||'No offers';payoff.textContent=q?`If NVIDIA ends at $220, this pays $${Math.max(220-strike,0).toFixed(0)} per share of exposure. The most you can lose is what you pay.`:'No one is selling at this target yet. You can leave a bid.';cta.textContent=q?'See offer':'Place a bid';}input.addEventListener('input',render);ticket.querySelectorAll('[data-set-target]').forEach(b=>b.addEventListener('click',()=>{input.value=b.dataset.setTarget;render()}));render()}root.querySelectorAll('[data-market]').forEach(b=>b.addEventListener('click',()=>{const input=root.querySelector('#stock-target');input.value=b.dataset.market;input.dispatchEvent(new Event('input'))}));})();
+</script>

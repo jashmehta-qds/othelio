@@ -1,5 +1,15 @@
 use ethers::prelude::*;
 
+// The new factory's rich event reuses the SeriesCreated name with a distinct
+// signature. Keep its signature here while the generated event ABI below
+// remains available for legacy factory events.
+pub const RISK_SPLIT_SERIES_CREATED_RICH_SIGNATURE: &str =
+    "SeriesCreated(address,address,uint256,uint256,uint256,address,address,uint80,uint256,uint256,address,address)";
+pub const RISK_SPLIT_SERIES_CREATED_LEGACY_SIGNATURE: &str =
+    "SeriesCreated(address,address,uint256,uint256,uint256)";
+pub const RISK_SPLIT_SERIES_CREATED_REFERENCE_LEGACY_SIGNATURE: &str =
+    "SeriesCreatedWithReference(address,address,uint256,uint256,uint256,address,address,uint80,uint256,uint256)";
+
 abigen!(
     IOthelioEvents,
     r#"[
@@ -55,7 +65,7 @@ abigen!(
     IRiskSplitEvents,
     r#"[
         event SeriesCreated(address indexed series, address indexed underlying, uint256 floorPrice, uint256 capPrice, uint256 expiry, address settlementAdapter)
-        event SeriesCreatedWithReference(address indexed series, address indexed underlying, uint256 floorPrice, uint256 capPrice, uint256 expiry, address settlementAdapter, address referenceFeed, uint80 referenceRoundId, uint256 referencePrice, uint256 referenceBlock)
+        event SeriesCreatedWithReference(address indexed series, address indexed underlying, uint256 floorPrice, uint256 capPrice, uint256 expiry, address settlementAdapter, address referenceFeed, uint80 referenceRoundId, uint256 referencePrice, uint256 referenceBlock, address protectedToken, address upsideToken)
         event TokensInitialized(address protectedToken, address upsideToken)
         event Minted(address indexed user, uint256 amount)
         event PairRedeemed(address indexed user, uint256 amount)

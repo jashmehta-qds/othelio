@@ -14,6 +14,7 @@ indexer/target/
 contracts/cache/
 contracts/out/
 contracts/lib/
+contracts/broadcast/
 foundry-pp/
 
 # Agent & AI Tooling

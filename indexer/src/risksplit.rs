@@ -1,6 +1,10 @@
-use crate::abis::{IRiskSplitEventsEvents, SnapshotErc20};
+use crate::abis::{
+    IRiskSplitEventsEvents, SeriesCreatedFilter, SeriesCreatedWithReferenceFilter, SnapshotErc20,
+    RISK_SPLIT_SERIES_CREATED_LEGACY_SIGNATURE, RISK_SPLIT_SERIES_CREATED_REFERENCE_LEGACY_SIGNATURE,
+    RISK_SPLIT_SERIES_CREATED_RICH_SIGNATURE,
+};
 use crate::utils::fmt_addr;
-use ethers::abi::RawLog;
+use ethers::abi::{decode, ParamType, RawLog, Token};
 use ethers::prelude::*;
 use ethers::providers::{Http, Provider};
 use ethers::types::{Address, Log, U256};
@@ -8,6 +12,146 @@ use serde_json::json;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::{HashMap, HashSet};
 use tracing::info;
+
+fn topic(signature: &str) -> H256 {
+    ethers::utils::keccak256(signature.as_bytes()).into()
+}
+
+fn indexed_address(raw_log: &RawLog, index: usize) -> Option<Address> {
+    let value = raw_log.topics.get(index)?;
+    Some(Address::from_slice(&value.as_bytes()[12..]))
+}
+
+fn uint_token(tokens: &[Token], index: usize) -> Option<U256> {
+    tokens.get(index)?.clone().into_uint()
+}
+
+fn full_reference_round_id(raw_log: &RawLog) -> Option<U256> {
+    let signature = raw_log.topics.first()?;
+    let value_count = if *signature == topic(RISK_SPLIT_SERIES_CREATED_RICH_SIGNATURE) {
+        10
+    } else if *signature == topic(RISK_SPLIT_SERIES_CREATED_REFERENCE_LEGACY_SIGNATURE) {
+        8
+    } else {
+        return None;
+    };
+    let mut params = vec![
+        ParamType::Uint(256),
+        ParamType::Uint(256),
+        ParamType::Uint(256),
+        ParamType::Address,
+        ParamType::Address,
+        ParamType::Uint(80),
+        ParamType::Uint(256),
+        ParamType::Uint(256),
+    ];
+    if value_count == 10 {
+        params.extend([ParamType::Address, ParamType::Address]);
+    }
+    let values = decode(&params, &raw_log.data).ok()?;
+    uint_token(&values, 5)
+}
+
+fn address_token(tokens: &[Token], index: usize) -> Option<Address> {
+    tokens.get(index)?.clone().into_address()
+}
+
+fn decode_legacy_series_created(raw_log: &RawLog) -> Option<IRiskSplitEventsEvents> {
+    if raw_log.topics.first() != Some(&topic(RISK_SPLIT_SERIES_CREATED_LEGACY_SIGNATURE)) {
+        return None;
+    }
+    let values = decode(
+        &[ParamType::Uint(256), ParamType::Uint(256), ParamType::Uint(256)],
+        &raw_log.data,
+    )
+    .ok()?;
+    Some(IRiskSplitEventsEvents::SeriesCreatedFilter(SeriesCreatedFilter {
+        series: indexed_address(raw_log, 1)?,
+        underlying: indexed_address(raw_log, 2)?,
+        floor_price: uint_token(&values, 0)?,
+        cap_price: uint_token(&values, 1)?,
+        expiry: uint_token(&values, 2)?,
+        settlement_adapter: Address::zero(),
+    }))
+}
+
+fn decode_canonical_series_created(raw_log: &RawLog) -> Option<IRiskSplitEventsEvents> {
+    if raw_log.topics.first()
+        != Some(&topic(RISK_SPLIT_SERIES_CREATED_RICH_SIGNATURE))
+    {
+        return None;
+    }
+    let values = decode(
+        &[
+            ParamType::Uint(256),
+            ParamType::Uint(256),
+            ParamType::Uint(256),
+            ParamType::Address,
+            ParamType::Address,
+            ParamType::Uint(80),
+            ParamType::Uint(256),
+            ParamType::Uint(256),
+            ParamType::Address,
+            ParamType::Address,
+        ],
+        &raw_log.data,
+    )
+    .ok()?;
+    Some(IRiskSplitEventsEvents::SeriesCreatedWithReferenceFilter(
+        SeriesCreatedWithReferenceFilter {
+            series: indexed_address(raw_log, 1)?,
+            underlying: indexed_address(raw_log, 2)?,
+            floor_price: uint_token(&values, 0)?,
+            cap_price: uint_token(&values, 1)?,
+            expiry: uint_token(&values, 2)?,
+            settlement_adapter: address_token(&values, 3)?,
+            reference_feed: address_token(&values, 4)?,
+            reference_round_id: uint_token(&values, 5)?.low_u64().into(),
+            reference_price: uint_token(&values, 6)?,
+            reference_block: uint_token(&values, 7)?,
+            protected_token: address_token(&values, 8)?,
+            upside_token: address_token(&values, 9)?,
+        },
+    ))
+}
+
+fn decode_legacy_reference_series_created(raw_log: &RawLog) -> Option<IRiskSplitEventsEvents> {
+    if raw_log.topics.first()
+        != Some(&topic(RISK_SPLIT_SERIES_CREATED_REFERENCE_LEGACY_SIGNATURE))
+    {
+        return None;
+    }
+    let values = decode(
+        &[
+            ParamType::Uint(256),
+            ParamType::Uint(256),
+            ParamType::Uint(256),
+            ParamType::Address,
+            ParamType::Address,
+            ParamType::Uint(80),
+            ParamType::Uint(256),
+            ParamType::Uint(256),
+        ],
+        &raw_log.data,
+    )
+    .ok()?;
+    Some(IRiskSplitEventsEvents::SeriesCreatedWithReferenceFilter(
+        SeriesCreatedWithReferenceFilter {
+            series: indexed_address(raw_log, 1)?,
+            underlying: indexed_address(raw_log, 2)?,
+            floor_price: uint_token(&values, 0)?,
+            cap_price: uint_token(&values, 1)?,
+            expiry: uint_token(&values, 2)?,
+            settlement_adapter: address_token(&values, 3)?,
+            reference_feed: address_token(&values, 4)?,
+            reference_round_id: uint_token(&values, 5)?.low_u64().into(),
+            reference_price: uint_token(&values, 6)?,
+            reference_block: uint_token(&values, 7)?,
+            protected_token: Address::zero(),
+            upside_token: Address::zero(),
+        },
+    ))
+}
 
 #[derive(Debug, Clone)]
 pub struct RiskSplitState {
@@ -118,9 +262,12 @@ pub async fn process_risksplit_log(
         data: log.data.to_vec(),
     };
 
-    let event = match IRiskSplitEventsEvents::decode_log(&raw_log) {
-        Ok(ev) => ev,
-        Err(_) => return Ok(false),
+    let event = decode_canonical_series_created(&raw_log)
+        .or_else(|| decode_legacy_series_created(&raw_log))
+        .or_else(|| decode_legacy_reference_series_created(&raw_log))
+        .or_else(|| IRiskSplitEventsEvents::decode_log(&raw_log).ok());
+    let Some(event) = event else {
+        return Ok(false);
     };
 
     let emitter = log.address;
@@ -216,16 +363,23 @@ pub async fn process_risksplit_log(
             let adapter_str = fmt_addr(&e.settlement_adapter);
             let factory_str = fmt_addr(&emitter);
             let feed_str = fmt_addr(&e.reference_feed);
+            let protected_str = fmt_addr(&e.protected_token);
+            let upside_str = fmt_addr(&e.upside_token);
+            let reference_round_id = full_reference_round_id(&raw_log)
+                .unwrap_or_else(|| U256::from(e.reference_round_id));
 
             sqlx::query(
                 "INSERT INTO risk_split_series (
-                    chain_id, series_address, underlying_address, settlement_adapter_address,
+                    chain_id, series_address, underlying_address, protected_token_address,
+                    upside_token_address, settlement_adapter_address,
                     floor_price, cap_price, expiry_timestamp, created_block, created_tx,
                     factory_address, creation_reference_price_usd_e8, creation_feed_address,
                     creation_feed_round_id, creation_reference_block, creation_reference_verified,
                     last_indexed_block
-                ) VALUES ($1, $2, $3, $4, $5::numeric, $6::numeric, $7, $8, $9, $10, $11::numeric, $12, $13::numeric, $14, true, $15)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8::numeric, $9, $10, $11, $12, $13::numeric, $14, $15::numeric, $16, true, $17)
                 ON CONFLICT (chain_id, series_address) DO UPDATE SET
+                    protected_token_address = EXCLUDED.protected_token_address,
+                    upside_token_address = EXCLUDED.upside_token_address,
                     settlement_adapter_address = EXCLUDED.settlement_adapter_address,
                     creation_reference_price_usd_e8 = EXCLUDED.creation_reference_price_usd_e8,
                     creation_feed_address = EXCLUDED.creation_feed_address,
@@ -237,6 +391,8 @@ pub async fn process_risksplit_log(
             .bind(chain_id)
             .bind(&series_str)
             .bind(&underlying_str)
+            .bind(&protected_str)
+            .bind(&upside_str)
             .bind(&adapter_str)
             .bind(e.floor_price.to_string())
             .bind(e.cap_price.to_string())
@@ -246,7 +402,7 @@ pub async fn process_risksplit_log(
             .bind(&factory_str)
             .bind(e.reference_price.to_string())
             .bind(&feed_str)
-            .bind(e.reference_round_id.to_string())
+            .bind(reference_round_id.to_string())
             .bind(e.reference_block.as_u64() as i64)
             .bind(block_number as i64)
             .execute(&mut **tx)
@@ -258,9 +414,11 @@ pub async fn process_risksplit_log(
                 "expiry": e.expiry.to_string(),
                 "settlementAdapter": adapter_str,
                 "referenceFeed": feed_str,
-                "referenceRoundId": e.reference_round_id.to_string(),
+                "referenceRoundId": reference_round_id.to_string(),
                 "referencePrice": e.reference_price.to_string(),
                 "referenceBlock": e.reference_block.to_string(),
+                "protectedToken": protected_str,
+                "upsideToken": upside_str,
             });
 
             sqlx::query(
@@ -279,7 +437,7 @@ pub async fn process_risksplit_log(
             .execute(&mut **tx)
             .await?;
 
-            state.track_series(e.series);
+            state.track_claims(e.series, e.protected_token, e.upside_token);
             info!(
                 series = %series_str,
                 underlying = %underlying_str,
@@ -1124,6 +1282,8 @@ mod tests {
         round_id: u64,
         price: U256,
         block: U256,
+        protected_token: Address,
+        upside_token: Address,
         block_number: u64,
         tx_hash: H256,
     ) -> Log {
@@ -1141,6 +1301,8 @@ mod tests {
             Token::Uint(round_id.into()),
             Token::Uint(price),
             Token::Uint(block),
+            Token::Address(protected_token),
+            Token::Address(upside_token),
         ]);
         make_raw_log(emitter, topics, data, block_number, tx_hash, 0)
     }
@@ -1288,6 +1450,8 @@ mod tests {
             1001,
             U256::from(500_00000000u64),
             U256::from(99u64),
+            prot_token,
+            up_token,
             100,
             tx1,
         );
@@ -1300,6 +1464,8 @@ mod tests {
         tx.commit().await.unwrap();
 
         assert!(state.is_tracked_series(&series));
+        assert_eq!(state.get_claim_series(&prot_token), Some((series, true)));
+        assert_eq!(state.get_claim_series(&up_token), Some((series, false)));
 
         // Verify series in DB
         let row_series: (String, bool, String) = sqlx::query_as(

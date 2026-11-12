@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
+import { useAccount, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface AdminHeaderProps {
@@ -15,12 +15,16 @@ export function AdminHeader({
   currentTab,
   onSelectTab,
   indexerLag = 0,
-  lastIndexedBlock = 0,
+  lastIndexedBlock,
 }: AdminHeaderProps) {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
-  const { isAuthenticated, isOwner, login, logout, isLoggingIn, error } = useAdminAuth();
+  const { switchChain } = useSwitchChain();
+  const { isAuthenticated, isOwner, login, logout, isLoggingIn, error, chainId } = useAdminAuth();
+  const targetChainId = process.env.NEXT_PUBLIC_CHAIN_ID ? Number(process.env.NEXT_PUBLIC_CHAIN_ID) : 31337;
+  const isWrongNetwork = isConnected && chainId !== targetChainId;
+  const hasIndexerStatus = lastIndexedBlock !== undefined;
 
   const handleConnect = () => {
     const injectedConnector = connectors.find((c) => c.id === 'injected') || connectors[0];
@@ -45,7 +49,9 @@ export function AdminHeader({
                   OPERATOR
                 </span>
               </div>
-              <p className="text-xs text-zinc-500 font-mono">Base Risk Split Console</p>
+              <p className="text-xs text-zinc-500 font-mono">
+                {chainId === 31337 ? 'Base Fork' : 'Base'} Risk Split Console
+              </p>
             </div>
           </div>
 
@@ -72,12 +78,22 @@ export function AdminHeader({
           <div className="hidden sm:flex items-center space-x-2 text-xs font-mono px-3 py-1.5 rounded bg-[#161715] border border-[#292a27]">
             <span
               className={`h-2 w-2 rounded-full ${
-                indexerLag === 0 ? 'bg-emerald-500' : indexerLag < 10 ? 'bg-amber-500' : 'bg-red-500'
+                !hasIndexerStatus
+                  ? 'bg-zinc-600'
+                  : indexerLag === 0
+                    ? 'bg-emerald-500'
+                    : indexerLag < 10
+                      ? 'bg-amber-500'
+                      : 'bg-red-500'
               }`}
             />
             <span className="text-zinc-400">INDEXER:</span>
-            <span className="text-zinc-200">#{lastIndexedBlock}</span>
-            {indexerLag > 0 && <span className="text-amber-400">(-{indexerLag})</span>}
+            <span className="text-zinc-200">
+              {hasIndexerStatus ? `#${lastIndexedBlock}` : '—'}
+            </span>
+            {hasIndexerStatus && indexerLag > 0 && (
+              <span className="text-amber-400">(-{indexerLag})</span>
+            )}
           </div>
 
           {/* Wallet & Auth */}
@@ -107,7 +123,14 @@ export function AdminHeader({
               </span>
 
               {/* Session State */}
-              {isAuthenticated ? (
+              {isWrongNetwork ? (
+                <button
+                  onClick={() => switchChain?.({ chainId: targetChainId })}
+                  className="px-3 py-1.5 rounded bg-amber-500/20 text-amber-300 border border-amber-600/50 hover:bg-amber-500/30 text-xs font-mono transition-colors"
+                >
+                  Switch to {targetChainId === 31337 ? 'Base Fork' : 'Base'}
+                </button>
+              ) : isAuthenticated ? (
                 <button
                   onClick={logout}
                   className="text-xs font-mono text-zinc-400 hover:text-white px-2 py-1 rounded border border-[#292a27] hover:bg-[#161715]"

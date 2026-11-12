@@ -9,23 +9,21 @@ import {TokenizedAssetConstants} from "../../src/constants/TokenizedAssetConstan
 
 contract DeployRiskSplit is Script {
     function run() external returns (address factoryAddr, address adapterAddr) {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerPrivateKey);
-
-        vm.startBroadcast(deployerPrivateKey);
+        vm.startBroadcast();
 
         // Deploy hardened SeriesFactory
         SeriesFactory factory = new SeriesFactory();
         factoryAddr = address(factory);
 
         // Deploy SettlementAdapter for MSFTc feed on Base
-        address feedMsft = TokenizedAssetConstants.FEED_MSFT;
-        SettlementAdapter adapter = new SettlementAdapter(feedMsft, 86400); // 24h max staleness
+        address feedMsft = vm.envOr("RISK_SPLIT_FEED_ADDRESS", TokenizedAssetConstants.FEED_MSFT);
+        uint256 maxStaleness = vm.envOr("RISK_SPLIT_MAX_STALENESS_SECONDS", uint256(86400));
+        SettlementAdapter adapter = new SettlementAdapter(feedMsft, maxStaleness);
         adapterAddr = address(adapter);
 
         console2.log("SeriesFactory deployed at:", factoryAddr);
         console2.log("SettlementAdapter deployed at:", adapterAddr);
-        console2.log("Deployer / Initial Owner:", deployer);
+        console2.log("Deployer / Initial Owner:", factory.owner());
 
         vm.stopBroadcast();
     }

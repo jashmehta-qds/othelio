@@ -27,6 +27,7 @@
     "dev:backend": "npm run dev -w @othelio/backend",
     "dev:fe": "npm run dev -w @othelio/fe",
     "dev:admin": "npm run dev -w @othelio/fe-admin",
+    "dev:admin:base": "bash ./scripts/dev-admin-base.sh",
     "build": "npm run build -w @othelio/shared && npm run build -w @othelio/fe && npm run build -w @othelio/fe-admin && npm run build -w @othelio/backend",
     "test": "npm run test -ws --if-present",
     "typecheck": "npm run typecheck -ws --if-present"

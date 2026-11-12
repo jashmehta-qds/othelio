@@ -99,8 +99,7 @@ export function isUSEquityHoliday(year: number, month: number, day: number, dayO
  * 3. Not on an equity market holiday.
  * 4. Aligned to the 16:00 ET regular market close with a max permitted buffer (e.g. 0 to 15 minutes).
  */
-export function validateExpiryCalendar(expiryTimestampSecs: number): CalendarValidationResult {
-  const nowSecs = Math.floor(Date.now() / 1000);
+export function validateExpiryCalendar(expiryTimestampSecs: number, nowSecs: number = Math.floor(Date.now() / 1000)): CalendarValidationResult {
   if (expiryTimestampSecs <= nowSecs) {
     return {
       valid: false,

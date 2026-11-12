@@ -78,7 +78,7 @@ describe('OrderbookService', () => {
         const match = storedOrders.find((o) => o.order_hash === hash);
         return Promise.resolve({ rows: match ? [match] : [] });
       }
-      if (query.includes('SELECT * FROM risk_split_orders WHERE chain_id = $1 AND LOWER(series_address) = $2')) {
+      if (query.includes('FROM risk_split_orders') && query.includes('LOWER(series_address) = $2')) {
         const match = storedOrders.filter((o) => o.order_status === 'FILLABLE' && !o.is_locally_hidden);
         return Promise.resolve({ rows: match });
       }
@@ -134,15 +134,38 @@ describe('OrderbookService', () => {
     storedOrders = [];
     storedTrades = [];
     service = new OrderbookService(mockDb as any, mockRiskSplitService as any);
+    (service as any).getClaimDecimals = async () => 8;
+    (service as any).createVenueClient = () => ({
+      readContract: async ({ functionName, args }: { functionName: string; args?: any[] }) => {
+        if (functionName === 'getLimitOrderInfo') {
+          const encoded = args?.[0];
+          return {
+            orderHash: service.computeOrderHash({
+              ...encoded,
+              makerAmount: String(encoded.makerAmount),
+              takerAmount: String(encoded.takerAmount),
+              takerTokenFeeAmount: String(encoded.takerTokenFeeAmount),
+              expiry: Number(encoded.expiry),
+              salt: String(encoded.salt),
+            }),
+            status: 1,
+            takerTokenFilledAmount: 0n,
+          };
+        }
+        if (functionName === 'balanceOf' || functionName === 'allowance') return 1000000000000n;
+        if (functionName === 'decimals') return 8;
+        throw new Error(`Unexpected contract read: ${functionName}`);
+      },
+    });
   });
 
-  async function createSignedBuyOrder(saltStr = '1001') {
+  async function createSignedBuyOrder(saltStr = '1001', claimUnits = '100000000') {
     // BUY Claim: maker offering 400 USDC (400 * 1e6) for 1 Protected Claim (1 * 1e8)
     const order: ZeroExLimitOrder = {
       makerToken: BASE_USDC_ADDRESS,
       takerToken: protectedToken as `0x${string}`,
       makerAmount: '400000000', // 400 USDC
-      takerAmount: '100000000', // 1.0 Protected Claim
+      takerAmount: claimUnits, // 1.0 Protected Claim in token base units
       takerTokenFeeAmount: '0',
       maker: maker as `0x${string}`,
       taker: '0x0000000000000000000000000000000000000000',
@@ -207,6 +230,13 @@ describe('OrderbookService', () => {
     expect(storedOrders.length).toBe(1);
   });
 
+  it('normalizes the price of a six-decimal claim', async () => {
+    (service as any).getClaimDecimals = async () => 6;
+    const { order, signature } = await createSignedBuyOrder('2011', '1000000');
+    const stored = await service.validateAndStoreOrder({ order, signature, chainId: BASE_CHAIN_ID, seriesAddress, claimType: 'PROTECTED' });
+    expect(stored.priceUsdE6).toBe('400000000');
+  });
+
   it('rejects order with invalid cryptographic signature', async () => {
     const { order, signature } = await createSignedBuyOrder('2002');
     const corruptedSignature: ZeroExSignature = {
@@ -240,6 +270,13 @@ describe('OrderbookService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('rejects restricted or fee-bearing orders from the public book', async () => {
+    const { order, signature } = await createSignedBuyOrder('2013');
+    order.takerTokenFeeAmount = '1';
+    await expect(service.validateAndStoreOrder({ order, signature, chainId: BASE_CHAIN_ID, seriesAddress, claimType: 'PROTECTED' }))
+      .rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('rejects duplicate order (replay attack)', async () => {
     const { order, signature } = await createSignedBuyOrder('2004');
 
@@ -261,6 +298,34 @@ describe('OrderbookService', () => {
         claimType: 'PROTECTED',
       })
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('removes a resting bid from executable depth after maker allowance is revoked', async () => {
+    const { order, signature } = await createSignedBuyOrder('2010');
+    await service.validateAndStoreOrder({
+      order,
+      signature,
+      chainId: BASE_CHAIN_ID,
+      seriesAddress,
+      claimType: 'PROTECTED',
+    });
+
+    let allowance = BigInt(order.makerAmount);
+    (service as any).createVenueClient = () => ({
+      readContract: async ({ functionName }: { functionName: string }) => {
+        if (functionName === 'getLimitOrderInfo') {
+          return { orderHash: service.computeOrderHash(order), status: 1, takerTokenFilledAmount: 0n };
+        }
+        if (functionName === 'balanceOf') return BigInt(order.makerAmount);
+        if (functionName === 'allowance') return allowance;
+        if (functionName === 'decimals') return 8;
+        throw new Error(`Unexpected contract read: ${functionName}`);
+      },
+    });
+
+    expect((await service.getOrderBook(seriesAddress, 'PROTECTED')).bids).toHaveLength(1);
+    allowance = 0n;
+    expect((await service.getOrderBook(seriesAddress, 'PROTECTED')).bids).toHaveLength(0);
   });
 
   it('builds fill transaction and rejects self-match', async () => {
@@ -290,9 +355,25 @@ describe('OrderbookService', () => {
     expect(fillTx.target).toBe(ZERO_EX_EXCHANGE_PROXY_BASE);
     expect(fillTx.method).toBe('fillLimitOrder');
     expect(fillTx.orderHash).toBe(stored.orderHash);
+    expect(() => JSON.stringify(fillTx)).not.toThrow();
   });
 
-  it('handles cancel intent and marks order locally hidden', async () => {
+  it('rejects a fill build after maker allowance is revoked', async () => {
+    const { order, signature } = await createSignedBuyOrder('2012');
+    const stored = await service.validateAndStoreOrder({ order, signature, chainId: BASE_CHAIN_ID, seriesAddress, claimType: 'PROTECTED' });
+    (service as any).createVenueClient = () => ({
+      readContract: async ({ functionName }: { functionName: string }) => {
+        if (functionName === 'getLimitOrderInfo') return { orderHash: stored.orderHash, status: 1, takerTokenFilledAmount: 0n };
+        if (functionName === 'balanceOf') return BigInt(order.makerAmount);
+        if (functionName === 'allowance') return 0n;
+        throw new Error(`Unexpected contract read: ${functionName}`);
+      },
+    });
+    await expect(service.buildFillTransaction(stored.orderHash, { takerAddress: taker, takerTokenFillAmount: '1000000' }))
+      .rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('builds an onchain cancel without hiding a maker order before confirmation', async () => {
     const { order, signature } = await createSignedBuyOrder('2006');
     const stored = await service.validateAndStoreOrder({
       order,
@@ -309,12 +390,12 @@ describe('OrderbookService', () => {
 
     // Maker cancels
     const cancelRes = await service.cancelOrderIntent(stored.orderHash, maker);
-    expect(cancelRes.isLocallyHidden).toBe(true);
+    expect(cancelRes.isLocallyHidden).toBe(false);
     expect(cancelRes.cancelTx.method).toBe('cancelLimitOrder');
 
-    // Confirm hidden in DB
+    // A caller-supplied address is not authorization to mutate the public book.
     const orderInDb = storedOrders.find((o) => o.order_hash === stored.orderHash);
-    expect(orderInDb.is_locally_hidden).toBe(true);
+    expect(orderInDb.is_locally_hidden).toBe(false);
   });
 
   it('reconciles partial fills onchain and updates remaining quantity', async () => {

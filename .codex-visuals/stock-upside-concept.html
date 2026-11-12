@@ -1,0 +1,88 @@
+<div id="upside-concept" class="oc-app">
+  <style>
+    #upside-concept{--ink:#f3f6ef;--muted:#a1aaa0;--line:#303a32;--bg:#0d120f;--panel:#18221b;--green:#b8f17d;--soft:#243528;color:var(--ink);background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,sans-serif;border-radius:18px;overflow:hidden;max-width:1024px;margin:auto}
+    #upside-concept *{box-sizing:border-box}
+    #upside-concept button,#upside-concept input{font:inherit}
+    #upside-concept button{cursor:pointer}
+    #upside-concept .top{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:1px solid var(--line)}
+    #upside-concept .brand{font-size:22px;font-weight:800;letter-spacing:-.07em}
+    #upside-concept .brand i{font-style:normal;color:var(--green)}
+    #upside-concept .nav{display:flex;gap:28px;color:var(--muted);font-size:14px}
+    #upside-concept .nav strong{color:var(--ink)}
+    #upside-concept .wallet{background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:9px 13px;font-size:12px;color:var(--ink)}
+    #upside-concept .layout{display:grid;grid-template-columns:minmax(0,1fr) 365px;gap:30px;padding:30px}
+    #upside-concept h1{font-size:38px;line-height:1.08;letter-spacing:-.06em;margin:4px 0 8px}
+    #upside-concept .sub{color:var(--muted);font-size:14px;margin:0 0 28px}
+    #upside-concept .eyebrow{color:var(--green);font-size:11px;text-transform:uppercase;letter-spacing:.16em;font-weight:700}
+    #upside-concept .section-title{display:flex;justify-content:space-between;align-items:center;margin:0 0 12px}
+    #upside-concept .section-title b{font-size:15px}
+    #upside-concept .section-title span{color:var(--muted);font-size:12px}
+    #upside-concept .market{display:flex;align-items:center;justify-content:space-between;width:100%;padding:17px 18px;margin-bottom:10px;text-align:left;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:14px}
+    #upside-concept .market.active{border-color:var(--green);background:#213026}
+    #upside-concept .ticker{width:39px;height:39px;border-radius:11px;background:#2d3733;display:grid;place-items:center;font-weight:800;font-size:13px;margin-right:13px}
+    #upside-concept .identity{display:flex;align-items:center;min-width:0}
+    #upside-concept .market strong{font-size:15px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #upside-concept .market small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+    #upside-concept .quote{text-align:right;white-space:nowrap;margin-left:10px}
+    #upside-concept .quote b{font-size:20px;letter-spacing:-.04em}
+    #upside-concept .quote small{color:var(--muted)}
+    #upside-concept .how{margin-top:25px;border-top:1px solid var(--line);padding-top:18px;color:var(--muted);font-size:13px;line-height:1.6}
+    #upside-concept .how b{color:var(--ink)}
+    #upside-concept .ticket{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;align-self:start}
+    #upside-concept .ticket-top{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:12px;margin-bottom:13px}
+    #upside-concept .ticket h2{font-size:24px;letter-spacing:-.045em;line-height:1.15;margin:0 0 5px}
+    #upside-concept .ticket .date{color:var(--muted);font-size:13px;margin:0 0 22px}
+    #upside-concept .label{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin:0 0 8px}
+    #upside-concept .label b{color:var(--ink)}
+    #upside-concept .chips{display:flex;gap:7px;margin-bottom:21px}
+    #upside-concept .chip{flex:1;border:1px solid var(--line);border-radius:9px;background:#111a14;color:var(--ink);padding:10px 4px;font-size:13px}
+    #upside-concept .chip.active{background:var(--green);border-color:var(--green);color:#14200e;font-weight:800}
+    #upside-concept .amount{display:flex;gap:7px;margin-bottom:22px}
+    #upside-concept .amount button{flex:1;border:1px solid var(--line);border-radius:9px;background:#111a14;color:var(--ink);padding:10px 4px;font-size:13px}
+    #upside-concept .amount button.active{background:var(--soft);border-color:#627e55;color:var(--green)}
+    #upside-concept .summary{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:15px 0;display:grid;gap:10px;margin-bottom:18px}
+    #upside-concept .summary div{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+    #upside-concept .summary b{color:var(--ink)}
+    #upside-concept .scenario{background:#111a14;border-radius:12px;padding:15px;margin-bottom:17px}
+    #upside-concept .scenario strong{font-size:13px}
+    #upside-concept input[type=range]{width:100%;accent-color:var(--green);margin:15px 0 12px}
+    #upside-concept .scenario .result{display:flex;justify-content:space-between;align-items:end}
+    #upside-concept .scenario .result small{color:var(--muted);font-size:12px;display:block}
+    #upside-concept .scenario .result b{font-size:22px;letter-spacing:-.04em}
+    #upside-concept .scenario .result b.positive{color:var(--green)}
+    #upside-concept .cta{width:100%;background:var(--green);color:#13200c;border:0;border-radius:11px;padding:15px;font-weight:800;font-size:15px}
+    #upside-concept .foot{color:var(--muted);font-size:11px;text-align:center;margin-top:11px;line-height:1.4}
+    #upside-concept .review{display:none;margin-top:12px;padding:12px;border-radius:9px;background:#293c2b;color:var(--ink);font-size:12px;line-height:1.5}
+    #upside-concept .review.show{display:block}
+    @media(max-width:760px){#upside-concept .layout{grid-template-columns:1fr;padding:18px;gap:18px}#upside-concept .top{padding:14px 18px}#upside-concept .nav{display:none}#upside-concept h1{font-size:31px}#upside-concept .ticket{order:1}#upside-concept .feed{order:2}}
+  </style>
+  <div class="top"><div class="brand">othel<i>io</i></div><div class="nav"><strong>Discover</strong><span>My positions</span><span>For stockholders</span></div><div class="wallet">Connect wallet</div></div>
+  <div class="layout">
+    <section class="feed">
+      <div class="eyebrow">Example concept</div>
+      <h1>Own the upside.</h1>
+      <p class="sub">Pick a stock, a price, and a date. Know what you pay and what you can make.</p>
+      <div class="section-title"><b>Popular this week</b><span>See all markets →</span></div>
+      <button class="market active" type="button" aria-label="NVIDIA above $200, November 27"><span class="identity"><span class="ticker">NV</span><span><strong>NVIDIA above $200</strong><small>Nov 27 · 16 days left</small></span></span><span class="quote"><b>$5</b><small> / share</small></span></button>
+      <button class="market" type="button" aria-label="Microsoft above $600, November 27"><span class="identity"><span class="ticker">MS</span><span><strong>Microsoft above $600</strong><small>Nov 27 · 16 days left</small></span></span><span class="quote"><b>$8</b><small> / share</small></span></button>
+      <button class="market" type="button" aria-label="Coinbase above $325, December 4"><span class="identity"><span class="ticker">CO</span><span><strong>Coinbase above $325</strong><small>Dec 4 · 23 days left</small></span></span><span class="quote"><b>$11</b><small> / share</small></span></button>
+      <div class="how"><b>Holding the stock?</b> Sell its gains above a price you choose. Keep the remaining stock exposure and receive the sale proceeds upfront. <span style="color:var(--green)">Explore selling upside →</span></div>
+    </section>
+    <section class="ticket" aria-label="Example trade preview">
+      <div class="ticket-top"><span>BUY UPSIDE</span><span>↗ Payout grows above your price</span></div>
+      <h2>NVIDIA above <span class="strike-label">$200</span></h2>
+      <p class="date">Expires Nov 27, 2026</p>
+      <div class="label"><span>Choose your price</span><b>Higher price = lower cost</b></div>
+      <div class="chips"><button type="button" class="chip" data-strike="190" data-premium="9">$190</button><button type="button" class="chip active" data-strike="200" data-premium="5">$200</button><button type="button" class="chip" data-strike="210" data-premium="2">$210</button></div>
+      <div class="label"><span>Shares of upside</span><b>1 token = 1 share of exposure</b></div>
+      <div class="amount"><button type="button" data-qty="1">1</button><button type="button" data-qty="5">5</button><button type="button" class="active" data-qty="10">10</button></div>
+      <div class="summary"><div><span>You pay</span><b class="cost">$50</b></div><div><span>Most you can lose</span><b class="risk">$50</b></div><div><span>You break even at expiry</span><b class="breakeven">$205</b></div></div>
+      <div class="scenario"><strong>If NVIDIA ends at <span class="settle">$220</span>…</strong><input aria-label="Hypothetical expiry stock price" type="range" min="150" max="260" value="220"><div class="result"><span><small>Your payout</small><b class="payout">$200</b></span><span style="text-align:right"><small>Your profit / loss</small><b class="profit positive">+$150</b></span></div></div>
+      <button type="button" class="cta">Review buy for $50</button><div class="review" role="status">Example preview · You pay $50 for 10 shares of upside above $200. Maximum loss: $50. Final payout is delivered in stock tokens.</div>
+      <div class="foot">Payout at expiry is in stock tokens. Figures exclude fees and show USD value at the fixing price.</div>
+    </section>
+  </div>
+  <script>
+    (()=>{const root=document.getElementById('upside-concept');let strike=200,premium=5,qty=10;const money=n=>'$'+n.toLocaleString('en-US',{maximumFractionDigits:0});function render(){const s=Number(root.querySelector('input[type=range]').value),cost=premium*qty,payout=Math.max(s-strike,0)*qty,profit=payout-cost;root.querySelector('.strike-label').textContent=money(strike);root.querySelector('.cost').textContent=money(cost);root.querySelector('.risk').textContent=money(cost);root.querySelector('.breakeven').textContent=money(strike+premium);root.querySelector('.settle').textContent=money(s);root.querySelector('.payout').textContent=money(payout);const p=root.querySelector('.profit');p.textContent=(profit>=0?'+':'−')+money(Math.abs(profit));p.classList.toggle('positive',profit>=0);root.querySelector('.cta').textContent='Review buy for '+money(cost);root.querySelector('.review').textContent=`Example preview · You pay ${money(cost)} for ${qty} shares of upside above ${money(strike)}. Maximum loss: ${money(cost)}. Final payout is delivered in stock tokens.`}root.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{root.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');strike=Number(b.dataset.strike);premium=Number(b.dataset.premium);render()}));root.querySelectorAll('.amount button').forEach(b=>b.addEventListener('click',()=>{root.querySelectorAll('.amount button').forEach(x=>x.classList.remove('active'));b.classList.add('active');qty=Number(b.dataset.qty);render()}));root.querySelector('input[type=range]').addEventListener('input',render);root.querySelector('.cta').addEventListener('click',()=>root.querySelector('.review').classList.toggle('show'));render()})()
+  </script>
+</div>

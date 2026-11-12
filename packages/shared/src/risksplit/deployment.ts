@@ -23,9 +23,9 @@ export interface RiskSplitDeploymentManifest {
 export const BASE_MAINNET_RISKSPLIT_MANIFEST: RiskSplitDeploymentManifest = {
   chainId: 8453,
   networkName: 'Base Mainnet',
-  factoryAddress: '0x0000000000000000000000000000000000000000', // Pinned upon broadcast
-  factoryOwner: '0x0000000000000000000000000000000000000000', // Deployer wallet
-  settlementAdapterAddress: '0x0000000000000000000000000000000000000000', // Pinned upon broadcast
+  factoryAddress: '0x18F2cBF92d7d54c26e36039f61880d6028FB4518', // Deployed on Base mainnet, block 55448539
+  factoryOwner: '0xECCEc5B076D97d455Ce9416012876BdACC97939a', // Deployer wallet
+  settlementAdapterAddress: '0xDf802E50C0d36E9cFFA2b3365cd931243450BEB2', // Deployed on Base mainnet, block 55448549
   settlementFeedAddress: '0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c', // MSFT/USD Chainlink Feed on Base
   maxStalenessSeconds: 86400, // 24 hours
   underlyingTokenAddress: '0xB200000000000000000000Ab99cFa739E253872B', // Coinbase B20 MSFTc on Base

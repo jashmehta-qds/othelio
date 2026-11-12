@@ -44,6 +44,18 @@ export interface ZeroExSignature {
   s: `0x${string}`;
 }
 
+/** Convert JSON-safe limit-order fields into the integer types required by viem's ABI encoder. */
+export function toZeroExAbiOrder(order: ZeroExLimitOrder) {
+  return {
+    ...order,
+    makerAmount: BigInt(order.makerAmount),
+    takerAmount: BigInt(order.takerAmount),
+    takerTokenFeeAmount: BigInt(order.takerTokenFeeAmount),
+    expiry: BigInt(order.expiry),
+    salt: BigInt(order.salt),
+  };
+}
+
 export interface SignedOrder {
   order: ZeroExLimitOrder;
   signature: ZeroExSignature;
@@ -215,6 +227,8 @@ export const ZERO_EX_LIMIT_ORDER_ABI = [
       { indexed: false, name: 'takerToken', type: 'address' },
       { indexed: false, name: 'takerTokenFilledAmount', type: 'uint128' },
       { indexed: false, name: 'makerTokenFilledAmount', type: 'uint128' },
+      { indexed: false, name: 'takerTokenFeeFilledAmount', type: 'uint128' },
+      { indexed: false, name: 'protocolFeePaid', type: 'uint256' },
       { indexed: false, name: 'pool', type: 'bytes32' },
     ],
   },

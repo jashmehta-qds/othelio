@@ -83,7 +83,7 @@ flowchart TD
 
 | Event Name | Signature & Topic0 | Indexed Parameters | Unindexed Parameters |
 | :--- | :--- | :--- | :--- |
-| `SeriesCreated` | `SeriesCreated(address,address,uint256,uint256,uint256)`<br>`0x...` | `address indexed seriesAddress`<br>`address indexed underlying` | `uint256 floorPrice`<br>`uint256 capPrice`<br>`uint256 expiry` |
+| `SeriesCreated` | `SeriesCreated(address,address,uint256,uint256,uint256,address)` | `address indexed seriesAddress`<br>`address indexed underlying` | `uint256 floorPrice`<br>`uint256 capPrice`<br>`uint256 expiry`<br>`address settlementAdapter` |
 
 #### Ingestion Flow:
 1. Parse log data:

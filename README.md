@@ -55,7 +55,9 @@ cp .env.base.example .env.base
 npm run dev:base
 ```
 
-This starts a separate Postgres database on port `5434`, runs the frontend on port `3002` and backend on port `3003`, verifies the RPC reports chain ID `8453`, runs migrations, and then starts all three application services. Wallet-signed actions are real Base transactions. It does not start Anvil and it does not use the fork database. `npm run dev` and `npm run dev:services:fork` remain the safe local-fork workflow.
+This starts a separate Postgres database on port `5434`, runs the main frontend on port `3002` and backend on port `3003`, verifies the RPC reports chain ID `8453`, runs migrations, and starts the indexer. Wallet-signed actions are real Base transactions. It does not start Anvil and it does not use the fork database. `npm run dev` and `npm run dev:services:fork` remain the safe local-fork workflow.
+
+To run the admin frontend with the same Base profile, use `npm run dev:admin:base` in a separate terminal. It reads `.env.base`, so the wallet network and backend URL match the main frontend. Admin market actions still require the Risk Split factory and settlement adapter to be configured in the backend for Base.
 
 With `START_BLOCK=latest`, the Base profile moves both saved event cursors to the current head on each startup. Events emitted while the local stack was stopped are skipped. Use a numeric `START_BLOCK` when you need to resume the saved cursor or replay history.
 

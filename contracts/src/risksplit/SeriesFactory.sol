@@ -98,10 +98,19 @@ contract SeriesFactory is ISeriesFactory {
         isSeries[seriesAddress] = true;
         seriesByTermKey[termKey] = seriesAddress;
 
-        emit SeriesCreated(seriesAddress, underlying, floorPrice, capPrice, expiry);
-
-        emit SeriesCreatedWithReference(
-            seriesAddress, underlying, floorPrice, capPrice, expiry, feedAddr, refRoundId, uint256(refPrice)
+        emit SeriesCreated(
+            seriesAddress,
+            underlying,
+            floorPrice,
+            capPrice,
+            expiry,
+            settlementAdapter,
+            feedAddr,
+            refRoundId,
+            uint256(refPrice),
+            block.number,
+            address(protectedToken),
+            address(upsideToken)
         );
     }
 }
