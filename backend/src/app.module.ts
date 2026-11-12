@@ -10,10 +10,11 @@ import { AgentModule } from './agent/agent.module';
 import { RiskSplitModule } from './risksplit/risksplit.module';
 import { AdminModule } from './admin/admin.module';
 import { OrderbookModule } from './orderbook/orderbook.module';
+import { UpsideModule } from './upside/upside.module';
 import { HealthController } from './health.controller';
 
 @Module({
-  imports: [DatabaseModule, BasketsModule, PrepareModule, DexModule, LendingModule, SettingsModule, AuthModule, AgentModule, RiskSplitModule, AdminModule, OrderbookModule],
+  imports: [DatabaseModule, BasketsModule, PrepareModule, DexModule, LendingModule, SettingsModule, AuthModule, AgentModule, RiskSplitModule, AdminModule, OrderbookModule, UpsideModule],
   controllers: [HealthController],
 })
 export class AppModule {}

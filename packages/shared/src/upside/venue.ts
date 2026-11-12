@@ -75,3 +75,64 @@ export interface UpsideSweepQuoteResponse {
   to?: `0x${string}`;
   value?: string;
 }
+
+export const UPSIDE_BATCH_FILL_ROUTER_ABI = [
+  {
+    type: 'function',
+    name: 'batchFillLimitOrders',
+    stateMutability: 'nonpayable',
+    inputs: [
+      {
+        name: 'orders',
+        type: 'tuple[]',
+        components: [
+          { name: 'makerToken', type: 'address' },
+          { name: 'takerToken', type: 'address' },
+          { name: 'makerAmount', type: 'uint128' },
+          { name: 'takerAmount', type: 'uint128' },
+          { name: 'takerTokenFeeAmount', type: 'uint128' },
+          { name: 'maker', type: 'address' },
+          { name: 'taker', type: 'address' },
+          { name: 'sender', type: 'address' },
+          { name: 'feeRecipient', type: 'address' },
+          { name: 'pool', type: 'bytes32' },
+          { name: 'expiry', type: 'uint64' },
+          { name: 'salt', type: 'uint256' },
+        ],
+      },
+      {
+        name: 'signatures',
+        type: 'tuple[]',
+        components: [
+          { name: 'signatureType', type: 'uint8' },
+          { name: 'v', type: 'uint8' },
+          { name: 'r', type: 'bytes32' },
+          { name: 's', type: 'bytes32' },
+        ],
+      },
+      { name: 'takerTokenFillAmounts', type: 'uint128[]' },
+      { name: 'revertIfIncomplete', type: 'bool' },
+    ],
+    outputs: [
+      { name: 'takerTokenFilledAmounts', type: 'uint128[]' },
+      { name: 'makerTokenFilledAmounts', type: 'uint128[]' },
+    ],
+  },
+] as const;
+
+export function buildBatchFillLimitOrdersTx(
+  routerAddress: `0x${string}`,
+  orders: UpsideLimitOrder[],
+  signatures: UpsideSignature[],
+  takerTokenFillAmounts: bigint[],
+  revertIfIncomplete = true,
+) {
+  return {
+    to: routerAddress,
+    data: {
+      abi: UPSIDE_BATCH_FILL_ROUTER_ABI,
+      functionName: 'batchFillLimitOrders',
+      args: [orders, signatures, takerTokenFillAmounts, revertIfIncomplete],
+    },
+  };
+}

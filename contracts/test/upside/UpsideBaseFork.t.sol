@@ -8,7 +8,7 @@ import {UpsideSeries} from "../../src/upside/UpsideSeries.sol";
 import {UpsideFactory} from "../../src/upside/UpsideFactory.sol";
 import {IUpsideFactory} from "../../src/upside/interfaces/IUpsideFactory.sol";
 import {TokenizedAssetConstants} from "../../src/constants/TokenizedAssetConstants.sol";
-import {MockAssetRegistry} from "./UpsidePayoff.t.sol";
+import {MockAssetRegistry, MockUnderlyingToken} from "./UpsidePayoff.t.sol";
 
 contract UpsideBaseForkTest is Test {
     uint256 public constant BASE_FORK_BLOCK = 53_400_000;
@@ -25,6 +25,9 @@ contract UpsideBaseForkTest is Test {
 
         registry = new MockAssetRegistry();
         registry.setAsset(8453, MSFTc, true, FEED_MSFT, 8, 8);
+
+        // Etch standard ERC20 bytecode on MSFTc address (Coinbase B20 bytecode on Base is 0xef placeholder)
+        vm.etch(MSFTc, address(new MockUnderlyingToken("Microsoft Corp", "MSFTc", 8)).code);
 
         adapter = new UpsideFixingAdapter(FEED_MSFT, 7 days);
         factory = new UpsideFactory(address(registry));

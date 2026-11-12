@@ -16,6 +16,8 @@ export interface UpsideDeploymentManifest {
   deploymentTransaction?: `0x${string}`;
 }
 
+export const BASE_MAINNET_REGISTRY = '0x3DB84b8e172A2b8b1634F8C630C6e2acD07424AC' as const;
+
 export const BASE_MAINNET_UPSIDE_TEMPLATE: UpsideDeploymentManifest = {
   chainId: 8453,
   networkName: 'Base Mainnet',
