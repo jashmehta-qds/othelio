@@ -973,6 +973,160 @@ pub async fn process_risksplit_log(
     }
 }
 
+pub fn parse_risk_split_indexing_flag(val: Option<&str>) -> Result<bool, String> {
+    match val {
+        None => Ok(true),
+        Some(v) => {
+            let trimmed = v.trim().to_lowercase();
+            if trimmed.is_empty() || trimmed == "true" || trimmed == "1" {
+                Ok(true)
+            } else if trimmed == "false" || trimmed == "0" {
+                Ok(false)
+            } else {
+                Err(format!(
+                    "Invalid RISK_SPLIT_INDEXING_ENABLED value '{}'. Expected 'true', 'false', '1', or '0'.",
+                    v
+                ))
+            }
+        }
+    }
+}
+
+pub fn parse_risk_split_indexing_enabled() -> Result<bool, String> {
+    match std::env::var("RISK_SPLIT_INDEXING_ENABLED") {
+        Ok(val) => parse_risk_split_indexing_flag(Some(&val)),
+        Err(_) => Ok(true),
+    }
+}
+
+pub async fn resolve_risksplit_start_block(
+    pool: &PgPool,
+    chain_id: i64,
+    default_start: u64,
+) -> u64 {
+    if let Ok(start_env) = std::env::var("RISK_SPLIT_FACTORY_START_BLOCK") {
+        if let Ok(block_num) = start_env.parse::<u64>() {
+            return block_num.saturating_sub(1);
+        }
+    }
+
+    let worker_block: Option<(Option<i64>,)> = sqlx::query_as(
+        "SELECT next_block FROM indexer_worker_state WHERE chain_id = $1 AND worker_name = 'risksplit'",
+    )
+    .bind(chain_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some((Some(block),)) = worker_block {
+        if block > 0 {
+            return block as u64;
+        }
+    }
+
+    let min_series_block: Option<(Option<i64>,)> = sqlx::query_as(
+        "SELECT MIN(created_block) FROM risk_split_series WHERE chain_id = $1",
+    )
+    .bind(chain_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some((Some(min_b),)) = min_series_block {
+        if min_b > 0 {
+            return (min_b as u64).saturating_sub(1);
+        }
+    }
+
+    default_start
+}
+
+pub async fn catch_up_risksplit(
+    pool: &PgPool,
+    provider: &Provider<Http>,
+    chain_id: i64,
+    state: &mut RiskSplitState,
+    from_block: u64,
+    to_block: u64,
+    batch_size: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if from_block > to_block {
+        return Ok(());
+    }
+
+    info!(
+        from_block,
+        to_block,
+        "[RiskSplit] Catching up Risk Split indexing independently..."
+    );
+
+    let mut current = from_block;
+    while current <= to_block {
+        let chunk_to = (current + batch_size).min(to_block);
+        let filter_addrs = state.filter_addresses();
+
+        if !filter_addrs.is_empty() {
+            let filter = Filter::new()
+                .address(filter_addrs)
+                .from_block(current)
+                .to_block(chunk_to);
+
+            let logs = provider.get_logs(&filter).await?;
+            let mut tx = pool.begin().await?;
+
+            for log in logs {
+                process_risksplit_log(state, &mut tx, chain_id, &log).await?;
+            }
+
+            sqlx::query(
+                "INSERT INTO indexer_worker_state (chain_id, worker_name, next_block, last_success_block, last_attempt_at, last_success_at, consecutive_failures, last_error, updated_at)
+                 VALUES ($1, 'risksplit', $2, $3, NOW(), NOW(), 0, NULL, NOW())
+                 ON CONFLICT (chain_id, worker_name) DO UPDATE SET
+                    next_block = GREATEST(indexer_worker_state.next_block, EXCLUDED.next_block),
+                    last_success_block = EXCLUDED.last_success_block,
+                    last_attempt_at = NOW(),
+                    last_success_at = NOW(),
+                    consecutive_failures = 0,
+                    last_error = NULL,
+                    updated_at = NOW()",
+            )
+            .bind(chain_id)
+            .bind(chunk_to as i64 + 1)
+            .bind(chunk_to as i64)
+            .execute(&mut *tx)
+            .await?;
+
+            tx.commit().await?;
+        } else {
+            sqlx::query(
+                "INSERT INTO indexer_worker_state (chain_id, worker_name, next_block, last_success_block, last_attempt_at, last_success_at, consecutive_failures, last_error, updated_at)
+                 VALUES ($1, 'risksplit', $2, $3, NOW(), NOW(), 0, NULL, NOW())
+                 ON CONFLICT (chain_id, worker_name) DO UPDATE SET
+                    next_block = GREATEST(indexer_worker_state.next_block, EXCLUDED.next_block),
+                    last_success_block = EXCLUDED.last_success_block,
+                    last_attempt_at = NOW(),
+                    last_success_at = NOW(),
+                    consecutive_failures = 0,
+                    last_error = NULL,
+                    updated_at = NOW()",
+            )
+            .bind(chain_id)
+            .bind(chunk_to as i64 + 1)
+            .bind(chunk_to as i64)
+            .execute(pool)
+            .await?;
+        }
+
+        current = chunk_to + 1;
+    }
+
+    info!(
+        caught_up_to = to_block,
+        "[RiskSplit] Independent catch-up complete."
+    );
+    Ok(())
+}
+
 pub async fn rollback_risksplit_reorg(
     tx: &mut Transaction<'_, Postgres>,
     chain_id: i64,
@@ -1396,6 +1550,23 @@ mod tests {
         assert!(addrs.contains(&series));
         assert!(addrs.contains(&prot));
         assert!(addrs.contains(&up));
+    }
+
+    #[test]
+    fn test_parse_risk_split_indexing_flag_behavior() {
+        assert_eq!(parse_risk_split_indexing_flag(None).unwrap(), true);
+        assert_eq!(parse_risk_split_indexing_flag(Some("")).unwrap(), true);
+        assert_eq!(parse_risk_split_indexing_flag(Some("true")).unwrap(), true);
+        assert_eq!(parse_risk_split_indexing_flag(Some("1")).unwrap(), true);
+        assert_eq!(parse_risk_split_indexing_flag(Some("TRUE")).unwrap(), true);
+
+        assert_eq!(parse_risk_split_indexing_flag(Some("false")).unwrap(), false);
+        assert_eq!(parse_risk_split_indexing_flag(Some("0")).unwrap(), false);
+        assert_eq!(parse_risk_split_indexing_flag(Some("FALSE")).unwrap(), false);
+
+        assert!(parse_risk_split_indexing_flag(Some("invalid")).is_err());
+        assert!(parse_risk_split_indexing_flag(Some("yes")).is_err());
+        assert!(parse_risk_split_indexing_flag(Some("no")).is_err());
     }
 
     #[tokio::test]

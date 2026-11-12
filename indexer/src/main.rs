@@ -7,6 +7,7 @@ mod oracle;
 mod price_worker;
 mod reconciliation;
 mod risksplit;
+mod upside;
 mod utils;
 
 use dotenvy::dotenv;
@@ -66,6 +67,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
     let risk_split_factory_addr_str = std::env::var("RISK_SPLIT_FACTORY_ADDRESS")
         .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
+    let upside_factory_addr_str = std::env::var("UPSIDE_FACTORY_ADDRESS")
+        .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
     let module_addr_str = std::env::var("MODULE_ADDRESS")
         .unwrap_or_else(|_| "0x0000000000000000000000000000000000000000".to_string());
     let registry_addr_str = std::env::var("ASSET_REGISTRY_ADDRESS")
@@ -93,9 +96,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let factory_addr: Address = factory_addr_str.parse()?;
     let risk_split_factory_addr: Address = risk_split_factory_addr_str.parse().unwrap_or(Address::zero());
+    let upside_factory_addr: Address = upside_factory_addr_str.parse().unwrap_or(Address::zero());
     let module_addr: Address = module_addr_str.parse()?;
     let registry_addr: Address = registry_addr_str.parse()?;
     let usdc_addr: Address = usdc_addr_str.parse()?;
+
+    let risk_split_enabled = risksplit::parse_risk_split_indexing_enabled().map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
 
     info!("🚀 [Rust Othelio Indexer] Initializing on Chain ID {} (Valuation Interval: {}s, Confirmations: {})...", chain_id, valuation_interval_secs, indexer_confirmations);
 
@@ -104,9 +110,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .connect(&db_url)
         .await?;
 
-    let mut risk_split_state = risksplit::RiskSplitState::load_from_db(&pool, chain_id, risk_split_factory_addr).await.unwrap_or_else(|e| {
-        warn!(error = %e, "Failed to load risksplit state from DB; initializing clean");
-        risksplit::RiskSplitState::new(risk_split_factory_addr)
+    let mut risk_split_state = if risk_split_enabled {
+        risksplit::RiskSplitState::load_from_db(&pool, chain_id, risk_split_factory_addr).await.unwrap_or_else(|e| {
+            warn!(error = %e, "Failed to load risksplit state from DB; initializing clean");
+            risksplit::RiskSplitState::new(risk_split_factory_addr)
+        })
+    } else {
+        info!("⚠️ [Rust Indexer] RISK_SPLIT_INDEXING_ENABLED=false: Risk Split indexing is PAUSED. Omitting Risk Split addresses and log processing.");
+        sqlx::query(
+            "INSERT INTO indexer_worker_state (chain_id, worker_name, next_block, last_attempt_at, last_error, updated_at)
+             VALUES ($1, 'risksplit', 0, NOW(), 'PAUSED', NOW())
+             ON CONFLICT (chain_id, worker_name) DO UPDATE SET
+                last_attempt_at = NOW(),
+                last_error = 'PAUSED',
+                updated_at = NOW()",
+        )
+        .bind(chain_id)
+        .execute(&pool)
+        .await?;
+        risksplit::RiskSplitState::new(Address::zero())
+    };
+
+    let mut upside_state = upside::UpsideState::load_from_db(&pool, chain_id, upside_factory_addr).await.unwrap_or_else(|e| {
+        warn!(error = %e, "Failed to load upside state from DB; initializing clean");
+        upside::UpsideState::new(upside_factory_addr)
     });
 
     let primary_provider = Arc::new(Provider::<Http>::try_from(rpc_url.clone())?);
@@ -152,6 +179,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut current_block = get_next_block(&pool, chain_id, default_start).await?;
     current_block =
         validate_or_rollback_checkpoint(&pool, &provider, chain_id, current_block).await?;
+
+    if risk_split_enabled {
+        let risksplit_start = risksplit::resolve_risksplit_start_block(&pool, chain_id, default_start).await;
+        if risksplit_start < current_block {
+            if let Err(e) = risksplit::catch_up_risksplit(
+                &pool,
+                &provider,
+                chain_id,
+                &mut risk_split_state,
+                risksplit_start,
+                current_block.saturating_sub(1),
+                batch_size,
+            )
+            .await
+            {
+                warn!(error = %e, "Initial Risk Split catch-up failed; continuing with main scanner");
+            }
+        }
+    }
     let price_primary_url = std::env::var("INDEXER_PRICE_RPC_URL")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -243,11 +289,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let worker_timeout =
                         Duration::from_secs(configured_u64("INDEXER_RPC_TIMEOUT_SECS", 30));
                     let events_owner = lease_owner("events");
+                    let rs_addresses = if risk_split_enabled {
+                        risk_split_state.filter_addresses()
+                    } else {
+                        Vec::new()
+                    };
+                    let upside_addresses = upside_state.filter_addresses();
                     let event_addresses = event_filter_addresses(
                         factory_addr,
                         module_addr,
                         &lending_pool_addrs,
-                        &risk_split_state.filter_addresses(),
+                        &rs_addresses,
+                        &upside_addresses,
                     );
                     match tokio::time::timeout(
                         worker_timeout,
@@ -257,7 +310,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             chain_id,
                             registry_addr,
                             usdc_addr,
+                            risk_split_enabled,
                             &mut risk_split_state,
+                            &mut upside_state,
                             &event_addresses,
                             current_block,
                             latest_block,

@@ -306,6 +306,7 @@ pub fn event_filter_addresses(
     module_addr: Address,
     lending_pool_addrs: &[Address],
     risksplit_addrs: &[Address],
+    upside_addrs: &[Address],
 ) -> Vec<Address> {
     let mut addresses = Vec::new();
     if factory_addr != Address::zero() {
@@ -322,6 +323,12 @@ pub fn event_filter_addresses(
     );
     addresses.extend(
         risksplit_addrs
+            .iter()
+            .copied()
+            .filter(|address| *address != Address::zero()),
+    );
+    addresses.extend(
+        upside_addrs
             .iter()
             .copied()
             .filter(|address| *address != Address::zero()),
@@ -415,7 +422,9 @@ pub async fn fetch_and_process_ranges(
     chain_id: i64,
     registry_addr: Address,
     usdc_addr: Address,
+    risk_split_enabled: bool,
     risk_split_state: &mut RiskSplitState,
+    upside_state: &mut crate::upside::UpsideState,
     addresses: &[Address],
     from_block: u64,
     latest_block: u64,
@@ -443,7 +452,9 @@ pub async fn fetch_and_process_ranges(
             chain_id,
             registry_addr,
             usdc_addr,
+            risk_split_enabled,
             risk_split_state,
+            upside_state,
             range,
             owner,
         )
@@ -458,7 +469,9 @@ pub async fn process_block_range(
     chain_id: i64,
     registry_addr: Address,
     usdc_addr: Address,
+    risk_split_enabled: bool,
     risk_split_state: &mut RiskSplitState,
+    upside_state: &mut crate::upside::UpsideState,
     fetched: FetchedBlockRange,
     owner: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -478,7 +491,11 @@ pub async fn process_block_range(
         let block_number = log.block_number.unwrap_or_default().as_u64();
         let log_index = log.log_index.unwrap_or_default().as_u32() as i32;
 
-        if crate::risksplit::process_risksplit_log(risk_split_state, &mut range_tx, chain_id, &log).await? {
+        if risk_split_enabled && crate::risksplit::process_risksplit_log(risk_split_state, &mut range_tx, chain_id, &log).await? {
+            continue;
+        }
+
+        if crate::upside::process_upside_log(upside_state, &mut range_tx, chain_id, &log).await? {
             continue;
         }
 
@@ -1227,6 +1244,49 @@ pub async fn process_block_range(
     if updated.rows_affected() != 1 {
         return Err("event lease was lost before checkpoint advancement".into());
     }
+
+    if risk_split_enabled {
+        sqlx::query(
+            "INSERT INTO indexer_worker_state (chain_id, worker_name, next_block, last_success_block, last_success_hash, last_attempt_at, last_success_at, consecutive_failures, last_error, updated_at)
+             VALUES ($1, 'risksplit', $2, $3, $4, NOW(), NOW(), 0, NULL, NOW())
+             ON CONFLICT (chain_id, worker_name) DO UPDATE SET
+                next_block = GREATEST(indexer_worker_state.next_block, EXCLUDED.next_block),
+                last_success_block = EXCLUDED.last_success_block,
+                last_success_hash = EXCLUDED.last_success_hash,
+                last_attempt_at = NOW(),
+                last_success_at = NOW(),
+                consecutive_failures = 0,
+                last_error = NULL,
+                updated_at = NOW()",
+        )
+        .bind(chain_id)
+        .bind(to_block as i64 + 1)
+        .bind(to_block as i64)
+        .bind(&completed_hash)
+        .execute(&mut *range_tx)
+        .await?;
+    }
+
+    sqlx::query(
+        "INSERT INTO indexer_worker_state (chain_id, worker_name, next_block, last_success_block, last_success_hash, last_attempt_at, last_success_at, consecutive_failures, last_error, updated_at)
+         VALUES ($1, 'upside', $2, $3, $4, NOW(), NOW(), 0, NULL, NOW())
+         ON CONFLICT (chain_id, worker_name) DO UPDATE SET
+            next_block = GREATEST(indexer_worker_state.next_block, EXCLUDED.next_block),
+            last_success_block = EXCLUDED.last_success_block,
+            last_success_hash = EXCLUDED.last_success_hash,
+            last_attempt_at = NOW(),
+            last_success_at = NOW(),
+            consecutive_failures = 0,
+            last_error = NULL,
+            updated_at = NOW()",
+    )
+    .bind(chain_id)
+    .bind(to_block as i64 + 1)
+    .bind(to_block as i64)
+    .bind(&completed_hash)
+    .execute(&mut *range_tx)
+    .await?;
+
     range_tx.commit().await?;
 
     Ok(())

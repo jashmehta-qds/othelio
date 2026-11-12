@@ -42,3 +42,13 @@ This runbook guides operators through the deployment and launch verification of 
 4. Review 4 preset strikes: Starting price, Reach, Strong move, Long shot.
 5. Sign round registration and market creation transactions.
 6. Verify indexing status and book display in the public UI.
+
+## 5. Indexer Operations & Legacy Risk Split Switch
+
+- `RISK_SPLIT_INDEXING_ENABLED` (default: `true`):
+  Controls whether legacy Risk Split series events are indexed.
+  When set to `false`, the indexer omits Risk Split filter addresses, skips state loading and log processing for Risk Split, while continuing to index baskets, price feeds, and Upside markets without interruption.
+  Risk Split retains its own independent resume cursor in `indexer_worker_state` (`worker_name = 'risksplit'`).
+  When re-enabled, it resumes from its last indexed block and catches up independently without rewinding the basket or Upside event cursors.
+- `UPSIDE_FACTORY_ADDRESS`:
+  Configure this with the deployed `UpsideFactory` address to index Upside rounds, series markets, mints, pair withdrawals, ERC20 claim transfers, fixing settlement, and redemptions.
