@@ -119,16 +119,7 @@ contract UpsideInvariantTest is Test {
 
         uint256 expiry = block.timestamp + 7 days;
         series = new UpsideSeries(
-            address(this),
-            address(registry),
-            address(stock),
-            adapter,
-            STRIKE,
-            expiry,
-            feed,
-            1,
-            STRIKE,
-            1
+            address(this), address(registry), address(stock), adapter, STRIKE, expiry, feed, 1, STRIKE, 1
         );
 
         upsideToken = new UpsideClaimToken("Upside", "UP", address(series), 18);

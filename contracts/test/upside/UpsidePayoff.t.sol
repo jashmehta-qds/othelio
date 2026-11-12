@@ -28,20 +28,9 @@ contract MockAssetRegistry is IOthelioAssetRegistry {
     mapping(uint256 => mapping(address => Asset)) public assetMap;
     address[] public supportedTokens;
 
-    function setAsset(
-        uint256 chainId,
-        address token,
-        bool supported,
-        address feed,
-        uint8 tDec,
-        uint8 fDec
-    ) external {
+    function setAsset(uint256 chainId, address token, bool supported, address feed, uint8 tDec, uint8 fDec) external {
         assetMap[chainId][token] = Asset({
-            supported: supported,
-            priceFeed: feed,
-            tokenDecimals: tDec,
-            feedDecimals: fDec,
-            isCoinbaseB20: false
+            supported: supported, priceFeed: feed, tokenDecimals: tDec, feedDecimals: fDec, isCoinbaseB20: false
         });
         if (supported) supportedTokens.push(token);
     }

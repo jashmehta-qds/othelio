@@ -28,7 +28,11 @@ contract MockFeeOnTransferToken is ERC20 {
 contract MockReentrantToken is ERC20 {
     address public targetSeries;
     bool public shouldReenter;
-    enum Action { Mint, Combine, Redeem }
+    enum Action {
+        Mint,
+        Combine,
+        Redeem
+    }
     Action public actionToAttempt;
 
     constructor() ERC20("Reentrant Token", "REENT") {}
@@ -115,16 +119,7 @@ contract UpsideMaliciousTokenTest is Test {
 
     function _createSeries(address token) internal returns (UpsideSeries series) {
         series = new UpsideSeries(
-            address(this),
-            address(registry),
-            token,
-            adapter,
-            K,
-            block.timestamp + 7 days,
-            feed,
-            1,
-            K,
-            1
+            address(this), address(registry), token, adapter, K, block.timestamp + 7 days, feed, 1, K, 1
         );
 
         UpsideClaimToken up = new UpsideClaimToken("Upside", "UP", address(series), 18);

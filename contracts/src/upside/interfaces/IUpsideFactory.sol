@@ -32,10 +32,7 @@ interface IUpsideFactory {
     error DuplicateMarket();
 
     event RoundRegistered(
-        uint256 indexed roundId,
-        address indexed underlying,
-        address indexed feed,
-        RoundConfig config
+        uint256 indexed roundId, address indexed underlying, address indexed feed, RoundConfig config
     );
     event PublicCreationToggled(uint256 indexed roundId, bool enabled);
     event MarketCreated(

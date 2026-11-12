@@ -89,18 +89,10 @@ contract UpsideFactory is IUpsideFactory, Ownable2Step {
         uint8 decimals = IERC20Metadata(round.underlying).decimals();
         string memory symbol = IERC20Metadata(round.underlying).symbol();
 
-        UpsideClaimToken up = new UpsideClaimToken(
-            string.concat("Upside Claim ", symbol),
-            "UP",
-            address(series),
-            decimals
-        );
-        UpsideClaimToken res = new UpsideClaimToken(
-            string.concat("Residual Claim ", symbol),
-            "RES",
-            address(series),
-            decimals
-        );
+        UpsideClaimToken up =
+            new UpsideClaimToken(string.concat("Upside Claim ", symbol), "UP", address(series), decimals);
+        UpsideClaimToken res =
+            new UpsideClaimToken(string.concat("Residual Claim ", symbol), "RES", address(series), decimals);
         series.initializeTokens(address(up), address(res));
 
         seriesAddress = address(series);

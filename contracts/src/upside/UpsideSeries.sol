@@ -170,9 +170,7 @@ contract UpsideSeries is IUpsideSeries, ReentrancyGuard {
             residualAllocation = collateral - uAlloc;
         }
 
-        emit SettledWithFixing(
-            settlementPrice_, roundId_, observedTimestamp_, upsideAllocation, residualAllocation
-        );
+        emit SettledWithFixing(settlementPrice_, roundId_, observedTimestamp_, upsideAllocation, residualAllocation);
         emit Settled(settlementPrice_, upsideAllocation, residualAllocation);
     }
 
