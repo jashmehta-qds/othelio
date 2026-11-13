@@ -96,10 +96,11 @@ SQL
 fi
 
 # Keep the host services independent: an indexer restart or crash should not
-# tear down the backend and frontend while developing against Base RPC.
+# tear down the backend, frontend, and admin while developing against Base RPC.
 exec "$ROOT_DIR/node_modules/.bin/concurrently" \
-  -n "indexer,backend,frontend" \
-  -c "cyan,magenta,green" \
+  -n "indexer,backend,frontend,admin" \
+  -c "cyan,magenta,green,yellow" \
   "docker compose --env-file '$ENV_FILE' -f docker-compose.staging.yml up --force-recreate indexer" \
   "npm run dev:base -w @othelio/backend" \
-  "npm run dev -w @othelio/fe"
+  "npm run dev -w @othelio/fe" \
+  "npm run dev -w @othelio/fe-admin"
