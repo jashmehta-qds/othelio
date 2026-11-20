@@ -144,5 +144,4 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
         emit BasketWithdrawn(safe, msg.sender, address(0), redeemedNAV, tokens, amounts, remainingListedAssetsNavUsdc);
     }
 
-    receive() external payable virtual {}
 }

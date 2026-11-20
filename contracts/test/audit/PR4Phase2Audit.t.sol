@@ -605,5 +605,6 @@ contract PR4Phase2BasketAuditTest is Test {
         (bool success,) = address(module).call{value: 1 ether}("");
         assertFalse(success);
         assertEq(address(module).balance, 0);
+        assertEq(address(this).balance, 1 ether);
     }
 }
