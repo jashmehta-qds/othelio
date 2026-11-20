@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IUpsideFixingAdapter, AggregatorV3Interface} from "./interfaces/IUpsideFixingAdapter.sol";
 import {IUpsideSeries} from "./interfaces/IUpsideSeries.sol";
 
-contract UpsideFixingAdapter is IUpsideFixingAdapter {
+contract UpsideFixingAdapter is IUpsideFixingAdapter, Ownable2Step {
     uint256 public constant MAX_SUCCESSOR_SCAN = 20;
+    uint256 public constant EMERGENCY_SETTLEMENT_DELAY = 24 hours;
 
     struct RoundObservation {
         uint80 returnedId;
@@ -20,13 +23,25 @@ contract UpsideFixingAdapter is IUpsideFixingAdapter {
     uint256 public immutable override maxStaleness;
     uint8 public immutable override decimals;
 
-    constructor(address priceFeed_, uint256 maxStaleness_) {
+    constructor(address priceFeed_, uint256 maxStaleness_, address initialOwner_) Ownable(initialOwner_) {
         if (priceFeed_ == address(0)) revert ZeroAddress();
         if (maxStaleness_ == 0) revert InvalidParameters();
         priceFeed = AggregatorV3Interface(priceFeed_);
         maxStaleness = maxStaleness_;
         decimals = AggregatorV3Interface(priceFeed_).decimals();
         if (decimals == 0) revert InvalidDecimals();
+    }
+
+    function emergencySettle(address series, uint256 price) external override onlyOwner {
+        if (series == address(0)) revert ZeroAddress();
+        IUpsideSeries target = IUpsideSeries(series);
+        if (target.settlementAdapter() != address(this)) revert MismatchedAdapter();
+        if (target.isSettled()) revert AlreadySettled();
+        if (block.timestamp <= target.expiry() + EMERGENCY_SETTLEMENT_DELAY) revert ExpiryNotReached();
+        if (price == 0) revert ZeroPrice();
+
+        target.settleWithFixing(price, 0, block.timestamp);
+        emit EmergencySettled(series, price, msg.sender);
     }
 
     function getSettlementPrice() public view override returns (uint256 price, uint256 updatedAt) {

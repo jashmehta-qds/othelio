@@ -38,6 +38,7 @@ interface ISettlementAdapter {
     error StalePrice();
     error NegativePrice();
     error ZeroPrice();
+    error MismatchedAdapter();
     error ExpiryNotReached();
     error RoundNotComplete();
     error SeriesAlreadySettled();
@@ -48,6 +49,10 @@ interface ISettlementAdapter {
     error NotLastPreExpiryRound();
     error InvalidDecimals();
     error OracleCallFailed();
+
+    event EmergencySettled(address indexed series, uint256 price, address indexed caller);
+
+    function emergencySettle(address series, uint256 price) external;
 
     /// @notice Returns the Chainlink price feed aggregator
     function priceFeed() external view returns (AggregatorV3Interface);

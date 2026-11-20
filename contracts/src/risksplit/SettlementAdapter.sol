@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ISettlementAdapter, AggregatorV3Interface} from "./interfaces/ISettlementAdapter.sol";
 import {IRiskSplitSeries} from "./interfaces/IRiskSplitSeries.sol";
 
-contract SettlementAdapter is ISettlementAdapter {
+contract SettlementAdapter is ISettlementAdapter, Ownable2Step {
     uint256 public constant MAX_SUCCESSOR_SCAN = 20;
+    uint256 public constant EMERGENCY_SETTLEMENT_DELAY = 24 hours;
 
     struct RoundObservation {
         uint80 returnedId;
@@ -20,13 +23,25 @@ contract SettlementAdapter is ISettlementAdapter {
     uint256 public immutable override maxStaleness;
     uint8 public immutable override decimals;
 
-    constructor(address priceFeed_, uint256 maxStaleness_) {
+    constructor(address priceFeed_, uint256 maxStaleness_, address initialOwner_) Ownable(initialOwner_) {
         if (priceFeed_ == address(0)) revert ZeroAddress();
         if (maxStaleness_ == 0) revert InvalidParameters();
         priceFeed = AggregatorV3Interface(priceFeed_);
         maxStaleness = maxStaleness_;
         decimals = AggregatorV3Interface(priceFeed_).decimals();
         if (decimals == 0) revert InvalidDecimals();
+    }
+
+    function emergencySettle(address series, uint256 price) external override onlyOwner {
+        if (series == address(0)) revert ZeroAddress();
+        IRiskSplitSeries target = IRiskSplitSeries(series);
+        if (target.settlementAdapter() != address(this)) revert MismatchedAdapter();
+        if (target.isSettled()) revert SeriesAlreadySettled();
+        if (block.timestamp <= target.expiry() + EMERGENCY_SETTLEMENT_DELAY) revert ExpiryNotReached();
+        if (price == 0) revert ZeroPrice();
+
+        target.settleWithFixing(price, 0, block.timestamp);
+        emit EmergencySettled(series, price, msg.sender);
     }
 
     /// @notice Returns the validated current price and timestamp from the feed (spot check)

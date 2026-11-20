@@ -348,7 +348,7 @@ contract PR4Phase2SeriesAuditTest is Test {
     function test_FactoryPermissionsAndDuplicateTermsAreBlocked() public {
         Phase2Token underlying = new Phase2Token("Underlying", 18);
         Phase2Feed feed = new Phase2Feed(100e8, block.timestamp);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1 days);
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1 days, address(this));
         SeriesFactory riskFactory = new SeriesFactory();
         uint256 expiry = block.timestamp + 1 days;
         riskFactory.setApprovedExpiry(address(underlying), expiry, true);
@@ -367,7 +367,7 @@ contract PR4Phase2SeriesAuditTest is Test {
 
         OthelioAssetRegistry registry = new OthelioAssetRegistry(address(this));
         registry.configure(block.chainid, address(underlying), address(feed), true, 18, 8, false);
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1 days);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1 days, address(this));
         UpsideFactory upsideFactory = new UpsideFactory(address(registry));
         IUpsideFactory.RoundConfig memory config = IUpsideFactory.RoundConfig({
             underlying: address(underlying), feed: address(feed), adapter: address(upsideAdapter),

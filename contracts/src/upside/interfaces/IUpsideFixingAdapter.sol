@@ -30,6 +30,7 @@ interface IUpsideFixingAdapter {
     error StalePrice();
     error RoundNotComplete();
     error ZeroPrice();
+    error MismatchedAdapter();
     error NegativePrice();
     error PostExpiryRound();
     error NotLastPreExpiryRound();
@@ -38,6 +39,10 @@ interface IUpsideFixingAdapter {
     error MismatchedFeed();
 
     event SeriesSettled(address indexed series, uint80 indexed roundId, uint256 price, uint256 updatedAt);
+
+    event EmergencySettled(address indexed series, uint256 price, address indexed caller);
+
+    function emergencySettle(address series, uint256 price) external;
 
     function priceFeed() external view returns (AggregatorV3Interface);
     function maxStaleness() external view returns (uint256);

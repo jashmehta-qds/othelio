@@ -28,7 +28,7 @@ contract SeriesFactoryPermissionsTest is Test {
         factory = new SeriesFactory();
         stock = new MockStockToken();
         oracle = new MockOracle(50e8);
-        adapter = new SettlementAdapter(address(oracle), 86400);
+        adapter = new SettlementAdapter(address(oracle), 86400, address(this));
 
         expiry = block.timestamp + 7 days;
         factory.setApprovedExpiry(address(stock), expiry, true);
@@ -36,7 +36,7 @@ contract SeriesFactoryPermissionsTest is Test {
     }
 
     function test_Permissions_AdapterAllowlist() public {
-        SettlementAdapter untrusted = new SettlementAdapter(address(oracle), 86400);
+        SettlementAdapter untrusted = new SettlementAdapter(address(oracle), 86400, address(this));
         vm.prank(alice);
         vm.expectRevert(ISeriesFactory.Unauthorized.selector);
         factory.setApprovedAdapter(address(stock), address(untrusted), true);

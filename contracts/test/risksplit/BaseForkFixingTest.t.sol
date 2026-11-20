@@ -21,7 +21,7 @@ contract BaseForkFixingTest is Test {
         vm.createSelectFork(rpcUrl, BASE_FORK_BLOCK);
 
         // Max staleness covering multi-day spans (e.g. 7 days)
-        adapter = new SettlementAdapter(FEED_MSFT, 7 days);
+        adapter = new SettlementAdapter(FEED_MSFT, 7 days, address(this));
         factory = new SeriesFactory();
     }
 

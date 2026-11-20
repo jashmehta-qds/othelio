@@ -86,7 +86,7 @@ contract RiskSplitSeriesTest is Test {
     function setUp() public {
         stock = new MockStockToken();
         oracle = new MockOracle(50e8); // $50 initial price
-        adapter = new SettlementAdapter(address(oracle), HEARTBEAT);
+        adapter = new SettlementAdapter(address(oracle), HEARTBEAT, address(this));
         factory = new SeriesFactory();
 
         expiry = block.timestamp + 7 days;

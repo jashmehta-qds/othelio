@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SettlementAdapter} from "../../src/risksplit/SettlementAdapter.sol";
 import {ISettlementAdapter, AggregatorV3Interface} from "../../src/risksplit/interfaces/ISettlementAdapter.sol";
 import {RiskSplitSeries} from "../../src/risksplit/RiskSplitSeries.sol";
@@ -79,7 +80,7 @@ contract RiskSplitFixingTest is Test {
         stock = new MockStockToken();
         // Start with phase 1, round 10 at timestamp 1000
         oracle = new MultiRoundMockOracle(10, 50e8, 1000);
-        adapter = new SettlementAdapter(address(oracle), MAX_STALENESS);
+        adapter = new SettlementAdapter(address(oracle), MAX_STALENESS, address(this));
         factory = new SeriesFactory();
 
         expiry = 2000;
@@ -89,6 +90,142 @@ contract RiskSplitFixingTest is Test {
 
         address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
         series = RiskSplitSeries(seriesAddr);
+    }
+
+    function test_Emergency_NonOwnerReverts() public {
+        vm.warp(expiry + 24 hours + 1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0xBEEF)));
+        vm.prank(address(0xBEEF));
+        adapter.emergencySettle(address(series), 63e8);
+        assertFalse(series.isSettled());
+    }
+
+    function test_Emergency_RequiresStrictGracePeriod() public {
+        assertEq(adapter.EMERGENCY_SETTLEMENT_DELAY(), 24 hours);
+        uint256[4] memory timestamps = [expiry - 1, expiry, expiry + 24 hours - 1, expiry + 24 hours];
+        for (uint256 i; i < timestamps.length; i++) {
+            vm.warp(timestamps[i]);
+            vm.expectRevert(ISettlementAdapter.ExpiryNotReached.selector);
+            adapter.emergencySettle(address(series), 63e8);
+            assertFalse(series.isSettled());
+        }
+    }
+
+    function test_Emergency_SettlesWithManualFixingAndEventWithoutOracle() public {
+        stock.mint(address(this), 100 ether);
+        stock.approve(address(series), 100 ether);
+        series.mint(100 ether);
+        vm.warp(expiry + 24 hours + 1);
+        vm.mockCallRevert(address(oracle), abi.encodeWithSelector(AggregatorV3Interface.latestRoundData.selector), "OFFLINE");
+        vm.mockCallRevert(address(oracle), abi.encodeWithSelector(AggregatorV3Interface.getRoundData.selector), "OFFLINE");
+        vm.expectEmit(true, true, false, true, address(adapter));
+        emit ISettlementAdapter.EmergencySettled(address(series), 63e8, address(this));
+        adapter.emergencySettle(address(series), 63e8);
+        assertTrue(series.isSettled());
+        assertEq(series.settledPrice(), 63e8);
+        assertEq(series.settledRoundId(), 0);
+        assertEq(series.settledTimestamp(), block.timestamp);
+    }
+
+    function test_Emergency_EmptySeriesAcceptsSmallestPositivePrice() public {
+        vm.warp(expiry + 24 hours + 1);
+        adapter.emergencySettle(address(series), 1);
+        assertTrue(series.isSettled());
+        assertEq(series.settledPrice(), 1);
+        assertEq(series.settledRoundId(), 0);
+    }
+
+    function _prepareOracleAfterDelay() internal {
+        oracle.setRound(11, 50e8, expiry + 1, expiry + 1, 11);
+        vm.warp(expiry + 24 hours + 1);
+    }
+
+    function test_Emergency_OracleSettlementStillPermissionlessAfterDelay() public {
+        _prepareOracleAfterDelay();
+        vm.prank(address(0xBEEF));
+        adapter.settleSeries(address(series), 10);
+        assertTrue(series.isSettled());
+        assertEq(series.settledPrice(), 50e8);
+        assertEq(series.settledRoundId(), 10);
+        assertEq(series.settledTimestamp(), 1000);
+    }
+
+    function test_Emergency_OracleDiscoveryStillPermissionlessAfterDelay() public {
+        _prepareOracleAfterDelay();
+        vm.prank(address(0xBEEF));
+        adapter.settleSeries(address(series));
+        assertTrue(series.isSettled());
+        assertEq(series.settledRoundId(), 10);
+    }
+
+    function test_Emergency_OracleSettledSeriesReverts() public {
+        _prepareOracleAfterDelay();
+        adapter.settleSeries(address(series), 10);
+        vm.expectRevert(ISettlementAdapter.SeriesAlreadySettled.selector);
+        adapter.emergencySettle(address(series), 63e8);
+        assertEq(series.settledRoundId(), 10);
+    }
+
+    function test_Emergency_ManualSettlementBlocksAllLaterSettlements() public {
+        _prepareOracleAfterDelay();
+        adapter.emergencySettle(address(series), 63e8);
+        vm.expectRevert(ISettlementAdapter.SeriesAlreadySettled.selector);
+        adapter.emergencySettle(address(series), 63e8);
+        vm.expectRevert(ISettlementAdapter.SeriesAlreadySettled.selector);
+        adapter.settleSeries(address(series), 10);
+        vm.expectRevert(ISettlementAdapter.SeriesAlreadySettled.selector);
+        adapter.settleSeries(address(series));
+        assertEq(series.settledPrice(), 63e8);
+        assertEq(series.settledRoundId(), 0);
+    }
+
+    function test_Emergency_DifferentAdapterReverts() public {
+        SettlementAdapter otherAdapter = new SettlementAdapter(address(oracle), MAX_STALENESS, address(this));
+        vm.warp(expiry + 24 hours + 1);
+        vm.expectRevert(ISettlementAdapter.MismatchedAdapter.selector);
+        otherAdapter.emergencySettle(address(series), 63e8);
+        assertFalse(series.isSettled());
+    }
+
+    function test_Emergency_ZeroPriceReverts() public {
+        vm.warp(expiry + 24 hours + 1);
+        vm.expectRevert(ISettlementAdapter.ZeroPrice.selector);
+        adapter.emergencySettle(address(series), 0);
+        assertFalse(series.isSettled());
+    }
+
+    function test_Emergency_ZeroSeriesReverts() public {
+        vm.warp(expiry + 24 hours + 1);
+        vm.expectRevert(ISettlementAdapter.ZeroAddress.selector);
+        adapter.emergencySettle(address(0), 63e8);
+    }
+
+    function test_Emergency_OwnershipTransferRequiresAcceptance() public {
+        address nextOwner = address(0xBEEF);
+        SettlementAdapter ownedAdapter = new SettlementAdapter(address(oracle), MAX_STALENESS, nextOwner);
+        assertEq(ownedAdapter.owner(), nextOwner);
+        assertEq(adapter.owner(), address(this));
+        adapter.transferOwnership(nextOwner);
+        assertEq(adapter.owner(), address(this));
+        assertEq(adapter.pendingOwner(), nextOwner);
+        vm.warp(expiry + 24 hours + 1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nextOwner));
+        vm.prank(nextOwner);
+        adapter.emergencySettle(address(series), 63e8);
+        vm.prank(nextOwner);
+        adapter.acceptOwnership();
+        assertEq(adapter.owner(), nextOwner);
+        assertEq(adapter.pendingOwner(), address(0));
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        adapter.emergencySettle(address(series), 63e8);
+        vm.prank(nextOwner);
+        adapter.emergencySettle(address(series), 63e8);
+        assertTrue(series.isSettled());
+    }
+
+    function test_Emergency_ZeroOwnerRejected() public {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
+        new SettlementAdapter(address(oracle), MAX_STALENESS, address(0));
     }
 
     function test_Fixing_ExactlyExpiryReverts() public {
@@ -175,7 +312,7 @@ contract RiskSplitFixingTest is Test {
         // MAX_STALENESS = 3600? Let's make round 10 older than max staleness:
         // updatedAt = 100, expiry = 5000 -> difference 4900 > 3600
         MultiRoundMockOracle staleOracle = new MultiRoundMockOracle(1, 50e8, 100);
-        SettlementAdapter staleAdapter = new SettlementAdapter(address(staleOracle), 3600);
+        SettlementAdapter staleAdapter = new SettlementAdapter(address(staleOracle), 3600, address(this));
 
         vm.expectRevert(ISettlementAdapter.StalePrice.selector);
         staleAdapter.verifyFixingRound(5000, 1);

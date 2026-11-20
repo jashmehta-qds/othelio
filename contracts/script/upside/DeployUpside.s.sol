@@ -27,7 +27,7 @@ contract DeployUpside is Script {
         // 2. Deploy UpsideFixingAdapter for MSFTc feed
         address feedMsft = vm.envOr("UPSIDE_FEED_ADDRESS", TokenizedAssetConstants.FEED_MSFT);
         uint256 maxStaleness = vm.envOr("UPSIDE_MAX_STALENESS_SECONDS", uint256(86400)); // 24 hours
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(feedMsft, maxStaleness);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(feedMsft, maxStaleness, factory.owner());
         adapterAddr = address(adapter);
 
         // 3. Deploy UpsideBatchFillRouter wrapping 0x ExchangeProxy

@@ -29,7 +29,7 @@ contract UpsideBaseForkTest is Test {
         // Etch standard ERC20 bytecode on MSFTc address (Coinbase B20 bytecode on Base is 0xef placeholder)
         vm.etch(MSFTc, address(new MockUnderlyingToken("Microsoft Corp", "MSFTc", 8)).code);
 
-        adapter = new UpsideFixingAdapter(FEED_MSFT, 7 days);
+        adapter = new UpsideFixingAdapter(FEED_MSFT, 7 days, address(this));
         factory = new UpsideFactory(address(registry));
     }
 

@@ -117,7 +117,7 @@ contract RiskSplitInvariantTest is Test {
     function setUp() public {
         stock = new MockStockToken();
         oracle = new MockOracle(50e8);
-        adapter = new SettlementAdapter(address(oracle), HEARTBEAT);
+        adapter = new SettlementAdapter(address(oracle), HEARTBEAT, address(this));
         factory = new SeriesFactory();
 
         uint256 expiry = block.timestamp + 7 days;

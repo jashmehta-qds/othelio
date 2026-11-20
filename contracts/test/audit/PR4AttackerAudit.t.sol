@@ -468,7 +468,7 @@ contract PR4AttackerAuditTest is Test {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 999, 99e8, 1900, 1900, 999);
         feed.setLatestReturnedId(10);
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
         MockUpsideSettlementTarget target = new MockUpsideSettlementTarget(address(feed), 2_000);
         vm.warp(3_000);
 
@@ -481,7 +481,7 @@ contract PR4AttackerAuditTest is Test {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 999, 99e8, 1900, 1900, 999);
         feed.setLatestReturnedId(10);
-        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000, address(this));
         MockRiskSettlementTarget target = new MockRiskSettlementTarget(2_000);
         vm.warp(3_000);
 
@@ -495,7 +495,7 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, 0, 1950, 1950, 11);
         feed.setRound(12, 12, 60e8, 2100, 2100, 12);
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
         vm.warp(3_000);
 
         IUpsideFixingAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
@@ -507,7 +507,7 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, 0, 1950, 1950, 11);
         feed.setRound(12, 12, 60e8, 2100, 2100, 12);
-        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000, address(this));
         ISettlementAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
         assertEq(fixing.roundId, 10);
     }
@@ -517,7 +517,7 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, 60e8, 1950, 0, 11);
         feed.setRound(12, 12, 70e8, 2100, 2100, 12);
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
 
         IUpsideFixingAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
         assertEq(fixing.roundId, 10);
@@ -528,7 +528,7 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, 60e8, 1950, 0, 11);
         feed.setRound(12, 12, 70e8, 2100, 2100, 12);
-        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000, address(this));
 
         ISettlementAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
         assertEq(fixing.roundId, 10);
@@ -540,7 +540,7 @@ contract PR4AttackerAuditTest is Test {
         uint80 laterPhaseRound = (uint80(2) << 64) | 2;
         feed.setRound(candidate, candidate, 50e8, 1900, 1900, candidate);
         feed.setRound(laterPhaseRound, laterPhaseRound, 70e8, 2100, 2100, laterPhaseRound);
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
 
         IUpsideFixingAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, candidate);
         assertEq(fixing.roundId, candidate);
@@ -552,7 +552,7 @@ contract PR4AttackerAuditTest is Test {
         uint80 laterPhaseRound = (uint80(2) << 64) | 2;
         feed.setRound(candidate, candidate, 50e8, 1900, 1900, candidate);
         feed.setRound(laterPhaseRound, laterPhaseRound, 70e8, 2100, 2100, laterPhaseRound);
-        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000, address(this));
 
         ISettlementAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, candidate);
         assertEq(fixing.roundId, candidate);
@@ -563,7 +563,7 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(10, 10, 50e8, 1500, 1500, 10);
         feed.setRound(11, 11, 0, 1800, 1800, 11);
         feed.setRound(12, 12, 60e8, 1900, 1900, 12);
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
 
         vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
         adapter.verifyFixingRound(2_000, 10);
@@ -574,7 +574,7 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(10, 10, 50e8, 1500, 1500, 10);
         feed.setRound(11, 11, 0, 1800, 1800, 11);
         feed.setRound(12, 12, 60e8, 1900, 1900, 12);
-        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000, address(this));
 
         vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
         adapter.verifyFixingRound(2_000, 10);
@@ -585,7 +585,7 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, -1, 1950, 1950, 11);
         feed.setRound(12, 12, 60e8, 2100, 2100, 12);
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
 
         IUpsideFixingAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
         assertEq(fixing.roundId, 10);
@@ -596,7 +596,7 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, -1, 1950, 1950, 11);
         feed.setRound(12, 12, 60e8, 2100, 2100, 12);
-        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000, address(this));
 
         ISettlementAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
         assertEq(fixing.roundId, 10);
@@ -606,7 +606,7 @@ contract PR4AttackerAuditTest is Test {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1500, 1500, 10);
         feed.setRound(11, 11, 60e8, 1900, 1900, 11);
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
 
         vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
         adapter.verifyFixingRound(2_000, 10);
@@ -616,7 +616,7 @@ contract PR4AttackerAuditTest is Test {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1500, 1500, 10);
         feed.setRound(11, 11, 60e8, 1900, 1900, 11);
-        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000, address(this));
 
         vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
         adapter.verifyFixingRound(2_000, 10);
@@ -625,7 +625,7 @@ contract PR4AttackerAuditTest is Test {
     function test_Upside_RoundUpdatedAtExactlyExpiryIsAccepted() public {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 2_000, 2_000, 10);
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
 
         IUpsideFixingAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
         assertEq(fixing.updatedAt, 2_000);
@@ -634,15 +634,15 @@ contract PR4AttackerAuditTest is Test {
     function test_RiskSplit_RoundUpdatedAtExactlyExpiryIsAccepted() public {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 2_000, 2_000, 10);
-        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000, address(this));
 
         ISettlementAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
         assertEq(fixing.updatedAt, 2_000);
     }
 
     function _assertBothDiscoverAndSettle(RoundFeedMock feed, uint80 expectedRound) internal {
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000, address(this));
         assertEq(upsideAdapter.getFixingRound(2_000).roundId, expectedRound);
         assertEq(riskAdapter.getFixingRound(2_000).roundId, expectedRound);
         MockUpsideSettlementTarget upsideTarget = new MockUpsideSettlementTarget(address(feed), 2_000);
@@ -671,8 +671,8 @@ contract PR4AttackerAuditTest is Test {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(40, 40, 70e8, 2100, 2100, 40);
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000, address(this));
         vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
         upsideAdapter.verifyFixingRound(2_000, 10);
         vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
@@ -689,8 +689,8 @@ contract PR4AttackerAuditTest is Test {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1500, 1500, 10);
         feed.setRound(30, 30, 60e8, 1900, 1900, 30);
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000, address(this));
         vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
         upsideAdapter.verifyFixingRound(2_000, 10);
         vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
@@ -704,8 +704,8 @@ contract PR4AttackerAuditTest is Test {
         uint80 successor = (uint80(2) << 64) | 20;
         feed.setRound(candidate, candidate, 50e8, 1500, 1500, candidate);
         feed.setRound(successor, successor, 60e8, 1900, 1900, successor);
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000, address(this));
         vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
         upsideAdapter.verifyFixingRound(2_000, candidate);
         vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
@@ -717,8 +717,8 @@ contract PR4AttackerAuditTest is Test {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, 0, 1950, 1950, 11);
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000, address(this));
         assertEq(upsideAdapter.verifyFixingRound(2_000, 10).roundId, 10);
         assertEq(riskAdapter.verifyFixingRound(2_000, 10).roundId, 10);
     }
@@ -732,8 +732,8 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(32, 32, 60e8, 1900, 1900, 32);
         feed.setRound(33, 33, 70e8, 2100, 2100, 33);
 
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000, address(this));
         vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
         upsideAdapter.verifyFixingRound(2_000, 10);
         vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
@@ -753,8 +753,8 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(oldPhasePreExpiry, oldPhasePreExpiry, 60e8, 1900, 1900, oldPhasePreExpiry);
         feed.setRound(latest, latest, 0, 2100, 2100, latest);
 
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000, address(this));
         vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
         upsideAdapter.verifyFixingRound(2_000, candidate);
         vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
@@ -762,8 +762,8 @@ contract PR4AttackerAuditTest is Test {
     }
 
     function _assertBothNominateAndSettle(RoundFeedMock feed, uint80 candidate) internal {
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000, address(this));
         assertEq(upsideAdapter.verifyFixingRound(2_000, candidate).roundId, candidate);
         assertEq(riskAdapter.verifyFixingRound(2_000, candidate).roundId, candidate);
         MockUpsideSettlementTarget upsideTarget = new MockUpsideSettlementTarget(address(feed), 2_000);
@@ -790,8 +790,8 @@ contract PR4AttackerAuditTest is Test {
         uint80 latest = (uint80(2) << 64) | 20;
         feed.setRound(latest, latest, validLatest ? int256(70e8) : int256(0), 2100, 2100, latest);
 
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000, address(this));
         vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
         upsideAdapter.verifyFixingRound(2_000, candidate);
         vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
@@ -884,7 +884,7 @@ contract PR4AttackerAuditTest is Test {
 
     function test_RiskSplit_DiscoveryAcrossScannedPhaseEndStillSettles() public {
         (RoundFeedMock feed, uint80 candidate) = _rolloverFeed(990, 0, true);
-        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000, address(this));
         assertEq(adapter.getFixingRound(2_000).roundId, candidate);
         MockRiskSettlementTarget target = new MockRiskSettlementTarget(2_000);
         vm.warp(3_000);
@@ -895,7 +895,7 @@ contract PR4AttackerAuditTest is Test {
 
     function test_Upside_DiscoveryAcrossScannedPhaseEndStillSettles() public {
         (RoundFeedMock feed, uint80 candidate) = _rolloverFeed(90, 0, true);
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
         assertEq(adapter.getFixingRound(2_000).roundId, candidate);
         MockUpsideSettlementTarget target = new MockUpsideSettlementTarget(address(feed), 2_000);
         vm.warp(3_000);
@@ -908,7 +908,7 @@ contract PR4AttackerAuditTest is Test {
         vm.warp(1_000);
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 500, 500, 10);
-        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
         AuditRegistryMock registry = new AuditRegistryMock();
         AuditToken underlying = new AuditToken("Underlying");
         UpsideSeries series = new UpsideSeries(
@@ -937,7 +937,7 @@ contract PR4AttackerAuditTest is Test {
         vm.warp(1_000);
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 500, 500, 10);
-        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000, address(this));
         AuditToken underlying = new AuditToken("Risk underlying");
         RiskSplitSeries series = new RiskSplitSeries(
             address(underlying), address(adapter), 45e8, 55e8, 2_000, address(feed), 10, 50e8

@@ -18,7 +18,7 @@ contract DeployRiskSplit is Script {
         // Deploy SettlementAdapter for MSFTc feed on Base
         address feedMsft = vm.envOr("RISK_SPLIT_FEED_ADDRESS", TokenizedAssetConstants.FEED_MSFT);
         uint256 maxStaleness = vm.envOr("RISK_SPLIT_MAX_STALENESS_SECONDS", uint256(86400));
-        SettlementAdapter adapter = new SettlementAdapter(feedMsft, maxStaleness);
+        SettlementAdapter adapter = new SettlementAdapter(feedMsft, maxStaleness, factory.owner());
         adapterAddr = address(adapter);
         factory.setApprovedAdapter(TokenizedAssetConstants.MSFTc, adapterAddr, true);
 
