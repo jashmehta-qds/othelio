@@ -12,6 +12,8 @@ TASK_ROUTER="0xBD606f1dAE0285D55113eFC11501677B2221A4dd"
 TASK_USDC="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
 "$TASK_CAST" rpc anvil_reset --rpc-url "$TASK_RPC_URL"
+"$TASK_FORGE" build
+RPC_URL="$TASK_RPC_URL" node ../scripts/seed-anvil-pools.js --tokens-only
 "$TASK_FORGE" script script/local/DeployLocalOthelio.s.sol --tc DeployLocalOthelio --rpc-url "$TASK_RPC_URL" --broadcast
 
 TASK_FACTORY=$(node -e '
