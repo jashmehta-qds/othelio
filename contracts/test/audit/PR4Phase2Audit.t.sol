@@ -447,7 +447,7 @@ contract PR4Phase2BasketAuditTest is Test {
         assertEq(token.balanceOf(address(safe)), 1 ether);
     }
 
-    function test_Basket_StaleOracleAllowsOverThreePercentRealMarketLoss() public {
+    function test_Fix_StaleOracleAggregateCapAllowsExactlyThreePercentOracleLoss() public {
         _setupModule();
         Phase2Token tokenIn = new Phase2Token("Input", 18);
         Phase2Token tokenOut = new Phase2Token("Output", 18);
@@ -472,7 +472,7 @@ contract PR4Phase2BasketAuditTest is Test {
         assertEq(tokenOut.balanceOf(address(safe)), 0.97 ether);
     }
 
-    function test_Basket_SixteenThreePercentLegsCompoundToLargeLoss() public {
+    function test_Fix_SixteenThreePercentLegsRevertOnAggregateCap() public {
         _setupModule();
         Phase2Token[] memory tokens = new Phase2Token[](17);
         feed = new Phase2Feed(1e8, block.timestamp);
@@ -493,13 +493,82 @@ contract PR4Phase2BasketAuditTest is Test {
             routes[i] = _route(address(tokens[i]), address(tokens[i + 1]), amountIn, amountOut);
             amountIn = amountOut;
         }
+        vm.expectRevert(OthelioPortfolioModule.TotalValueLossExceeded.selector);
         module.rebalanceAerodromePortfolio(address(safe), routes, block.timestamp + 1);
 
-        uint256 finalAmount = tokens[0].balanceOf(address(safe));
-        // The final token is held after 16 individually acceptable 2.99% legs.
-        finalAmount = tokens[16].balanceOf(address(safe));
-        assertLt(finalAmount, 0.62 ether);
-        assertGt(1 ether - finalAmount, 0.38 ether);
+        assertEq(tokens[0].balanceOf(address(safe)), 1 ether);
+        assertEq(tokens[16].balanceOf(address(safe)), 0);
+    }
+
+    function test_Fix_RebalanceAtTwoPointNinePercentPasses() public {
+        _setupModule();
+        Phase2Token tokenIn = new Phase2Token("Input", 18);
+        Phase2Token tokenOut = new Phase2Token("Output", 18);
+        feed = new Phase2Feed(1e8, block.timestamp);
+        _configureAsset(tokenIn, feed, 18);
+        _configureAsset(tokenOut, feed, 18);
+        routeRegistry.setPoolApproval(block.chainid, address(tokenIn), address(tokenOut), 1, address(poolFactory), true);
+        tokenIn.mint(address(safe), 1 ether);
+        tokenOut.mint(address(router), 0.971 ether);
+        router.addLeg(address(tokenIn), address(tokenOut), 0.971 ether);
+
+        AerodromeRoute[] memory routes = new AerodromeRoute[](1);
+        routes[0] = _route(address(tokenIn), address(tokenOut), 1 ether, 0.971 ether);
+        module.rebalanceAerodromePortfolio(address(safe), routes, block.timestamp + 1);
+        assertEq(tokenOut.balanceOf(address(safe)), 0.971 ether);
+    }
+
+    function test_Fix_RebalanceAtThreePointOnePercentReverts() public {
+        _setupModule();
+        Phase2Token[] memory tokens = new Phase2Token[](3);
+        feed = new Phase2Feed(1e8, block.timestamp);
+        for (uint256 i; i < tokens.length; ++i) {
+            tokens[i] = new Phase2Token("Leg", 18);
+            _configureAsset(tokens[i], feed, 18);
+        }
+        uint256 amountIn = 1 ether;
+        tokens[0].mint(address(safe), amountIn);
+        AerodromeRoute[] memory routes = new AerodromeRoute[](2);
+        for (uint256 i; i < routes.length; ++i) {
+            uint256 amountOut = amountIn * 984 / 1000;
+            routeRegistry.setPoolApproval(
+                block.chainid, address(tokens[i]), address(tokens[i + 1]), 1, address(poolFactory), true
+            );
+            tokens[i + 1].mint(address(router), amountOut);
+            router.addLeg(address(tokens[i]), address(tokens[i + 1]), amountOut);
+            routes[i] = _route(address(tokens[i]), address(tokens[i + 1]), amountIn, amountOut);
+            amountIn = amountOut;
+        }
+
+        vm.expectRevert(OthelioPortfolioModule.TotalValueLossExceeded.selector);
+        module.rebalanceAerodromePortfolio(address(safe), routes, block.timestamp + 1);
+        assertEq(tokens[0].balanceOf(address(safe)), 1 ether);
+        assertEq(tokens[2].balanceOf(address(safe)), 0);
+    }
+
+    function test_Basket_StaleOracleExternalMarketMoveStillExceedsThreePercent() public {
+        _setupModule();
+        Phase2Token tokenIn = new Phase2Token("Input", 18);
+        Phase2Token tokenOut = new Phase2Token("Output", 18);
+        feed = new Phase2Feed(100e8, block.timestamp);
+        _configureAsset(tokenIn, feed, 18);
+        _configureAsset(tokenOut, feed, 18);
+        routeRegistry.setPoolApproval(block.chainid, address(tokenIn), address(tokenOut), 1, address(poolFactory), true);
+        tokenIn.mint(address(safe), 1 ether);
+        tokenOut.mint(address(router), 0.97 ether);
+        vm.warp(block.timestamp + 7 days - 1);
+        feed.setUpdatedAt(block.timestamp - 7 days + 1);
+        router.addLeg(address(tokenIn), address(tokenOut), 0.97 ether);
+
+        AerodromeRoute[] memory routes = new AerodromeRoute[](1);
+        routes[0] = _route(address(tokenIn), address(tokenOut), 1 ether, 0.97 ether);
+        module.rebalanceAerodromePortfolio(address(safe), routes, block.timestamp + 1);
+
+        // The aggregate cap sees a 3% oracle-valued loss; it cannot detect an
+        // external market price that diverged from the stale feed.
+        uint256 realValueLossBps = 10000 - (0.97 ether * 50 * 10000 / (1 ether * 100));
+        assertGt(realValueLossBps, 300);
+        assertEq(tokenOut.balanceOf(address(safe)), 0.97 ether);
     }
 
     function test_Registry_UsesConfiguredDecimalsWithoutCheckingTokenDecimals() public {

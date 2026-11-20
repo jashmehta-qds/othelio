@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {OthelioBaseModule, ISafe} from "./OthelioBaseModule.sol";
 import {OthelioAaveV3Adapter} from "../lending/OthelioAaveV3Adapter.sol";
 import {OthelioAerodromeSlipstreamAdapter} from "../dex/OthelioAerodromeSlipstreamAdapter.sol";
@@ -22,6 +23,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
     address internal immutable usdc;
 
     uint256 public constant MAX_SWAP_VALUE_LOSS_BPS = 300; // 3% maximum allowed slippage/value-loss vs oracle
+    uint256 public constant MAX_TOTAL_VALUE_LOSS_BPS = 300; // 3% maximum aggregate rebalance loss
 
     event BasketAaveAction(address indexed safe, address indexed caller, address indexed asset, uint256 amount, bytes4 action);
 
@@ -36,6 +38,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
     error AerodromeSwapFailed();
     error SlippageExceeded();
     error ValueLossExceeded();
+    error TotalValueLossExceeded(uint256 beforeNAV, uint256 afterNAV);
 
     constructor(
         address oracle_,
@@ -207,6 +210,9 @@ contract OthelioPortfolioModule is OthelioBaseModule {
 
         IERC20(fundingToken).safeTransferFrom(msg.sender, safe, totalFundingAmount);
 
+        address[] memory touchedAssets = _collectTouchedAssets(routes);
+        uint256 beforeNAV = _snapshotNAV(safe, touchedAssets);
+
         address[] memory acquiredAssets = new address[](routes.length);
         uint256[] memory acquiredAmounts = new uint256[](routes.length);
 
@@ -219,6 +225,8 @@ contract OthelioPortfolioModule is OthelioBaseModule {
         }
 
         require(sumInput == totalFundingAmount, "FUNDING_AMOUNT_MISMATCH");
+
+        _enforceTotalValueLoss(beforeNAV, _snapshotNAV(safe, touchedAssets));
 
         // This values only assets acquired by these funding route legs; existing
         // basket positions and dust are intentionally excluded.
@@ -243,6 +251,9 @@ contract OthelioPortfolioModule is OthelioBaseModule {
         require(deadline <= block.timestamp + 5 minutes, "DEADLINE_TOO_FAR");
         require(routes.length > 0 && routes.length <= 16, "INVALID_ROUTE_COUNT");
 
+        address[] memory touchedAssets = _collectTouchedAssets(routes);
+        uint256 beforeNAV = _snapshotNAV(safe, touchedAssets);
+
         address[] memory soldAssets = new address[](routes.length);
         uint256[] memory soldAmounts = new uint256[](routes.length);
         address[] memory boughtAssets = new address[](routes.length);
@@ -254,6 +265,8 @@ contract OthelioPortfolioModule is OthelioBaseModule {
             boughtAssets[i] = routes[i].tokenOut;
             boughtAmounts[i] = _executeRoute(safe, routes[i], deadline);
         }
+
+        _enforceTotalValueLoss(beforeNAV, _snapshotNAV(safe, touchedAssets));
 
         // This values only the output of this rebalance's legs. Retained basket
         // assets are not included, so it must never be interpreted as whole-basket NAV.
@@ -302,5 +315,46 @@ contract OthelioPortfolioModule is OthelioBaseModule {
             compactAmounts[i] = uniqueAmounts[i];
         }
         return oracle.calculateNAV(compactAssets, compactAmounts);
+    }
+
+    function _collectTouchedAssets(AerodromeRoute[] calldata routes) private pure returns (address[] memory touchedAssets) {
+        address[] memory candidates = new address[](routes.length * 2);
+        uint256 count;
+
+        for (uint256 i = 0; i < routes.length; ++i) {
+            address tokenIn = routes[i].tokenIn;
+            address tokenOut = routes[i].tokenOut;
+            bool seen;
+            for (uint256 j = 0; j < count; ++j) {
+                if (candidates[j] == tokenIn) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (!seen) candidates[count++] = tokenIn;
+
+            seen = false;
+            for (uint256 j = 0; j < count; ++j) {
+                if (candidates[j] == tokenOut) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (!seen) candidates[count++] = tokenOut;
+        }
+
+        touchedAssets = new address[](count);
+        for (uint256 i = 0; i < count; ++i) touchedAssets[i] = candidates[i];
+    }
+
+    function _snapshotNAV(address safe, address[] memory assets) private view returns (uint256) {
+        uint256[] memory balances = new uint256[](assets.length);
+        for (uint256 i = 0; i < assets.length; ++i) balances[i] = IERC20(assets[i]).balanceOf(safe);
+        return _calculateUniqueNAV(assets, balances);
+    }
+
+    function _enforceTotalValueLoss(uint256 beforeNAV, uint256 afterNAV) private pure {
+        uint256 minimumNAV = Math.mulDiv(beforeNAV, 10000 - MAX_TOTAL_VALUE_LOSS_BPS, 10000);
+        if (afterNAV < minimumNAV) revert TotalValueLossExceeded(beforeNAV, afterNAV);
     }
 }
