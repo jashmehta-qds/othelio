@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { UnauthorizedException } from '@nestjs/common';
-import { AdminGuard } from './admin.guard';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { AdminGuard, RequireAdminOwner } from './admin.guard';
 
-function contextFor(request: Record<string, unknown>) {
+function contextFor(request: Record<string, unknown>, handler = () => {}) {
   return {
+    getHandler: () => handler,
     switchToHttp: () => ({ getRequest: () => request }),
   } as any;
 }
@@ -11,7 +12,9 @@ function contextFor(request: Record<string, unknown>) {
 describe('AdminGuard', () => {
   const authService = {
     verifySessionToken: vi.fn(() => ({ sub: '0xowner', chainId: 8453 })),
-    checkOnchainOwner: vi.fn(async () => undefined),
+    checkOnchainOwner: vi.fn(async () => ({
+      address: '0xowner', chainId: 8453, capabilities: { upside: true, riskSplit: false, assetRegistry: false },
+    })),
   };
 
   it('rejects a query for a chain different from the signed-in chain', async () => {
@@ -33,6 +36,22 @@ describe('AdminGuard', () => {
     };
     await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
     expect(authService.checkOnchainOwner).toHaveBeenCalledWith('0xowner', 8453);
-    expect(request.adminUser).toEqual({ address: '0xowner', chainId: 8453 });
+    expect(request.adminUser).toMatchObject({ address: '0xowner', chainId: 8453 });
+  });
+
+  it('does not grant permission to preview registry actions to an Upside-only owner', async () => {
+    const handler = () => {};
+    RequireAdminOwner('assetRegistry')(Object, 'preview', { value: handler });
+    const guard = new AdminGuard(authService as any);
+    await expect(guard.canActivate(contextFor({
+      headers: { authorization: 'Bearer token' }, body: {},
+    }, handler))).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('does not let a valid query chain override a conflicting body chain', async () => {
+    const guard = new AdminGuard(authService as any);
+    await expect(guard.canActivate(contextFor({
+      headers: { authorization: 'Bearer token' }, query: { chainId: '8453' }, body: { chainId: 31337 },
+    }))).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

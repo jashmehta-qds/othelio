@@ -24,10 +24,13 @@ describe('AdminMarketsService & Calendar Utilities', () => {
   const priorFactory = process.env.RISK_SPLIT_FACTORY_ADDRESS;
   const priorAdapter = process.env.RISK_SPLIT_SETTLEMENT_ADAPTER;
   beforeAll(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-01T12:00:00Z'));
     process.env.RISK_SPLIT_FACTORY_ADDRESS = '0x1111111111111111111111111111111111111111';
     process.env.RISK_SPLIT_SETTLEMENT_ADAPTER = '0x3333333333333333333333333333333333333333';
   });
   afterAll(() => {
+    vi.useRealTimers();
     if (priorFactory === undefined) delete process.env.RISK_SPLIT_FACTORY_ADDRESS;
     else process.env.RISK_SPLIT_FACTORY_ADDRESS = priorFactory;
     if (priorAdapter === undefined) delete process.env.RISK_SPLIT_SETTLEMENT_ADAPTER;

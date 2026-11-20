@@ -1,7 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RiskSplitService } from '../../risksplit/risksplit.service';
-import { AdminAuthService } from '../auth/admin-auth.service';
+import { adminContracts } from '../admin-deployment';
 import { AdminOverviewResponse, TOKEN_FEED_REGISTRY } from '@othelio/shared';
 import { createPublicClient, http } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
@@ -14,7 +14,6 @@ export class AdminOverviewService {
   constructor(
     @Optional() private readonly db?: DatabaseService,
     @Optional() private readonly riskSplitService?: RiskSplitService,
-    @Optional() private readonly adminAuthService?: AdminAuthService,
   ) {}
 
   async getOverview(chainIdInput = 8453): Promise<AdminOverviewResponse> {
@@ -167,14 +166,14 @@ export class AdminOverviewService {
     }
 
     // 6. Governed Contracts Info
-    const factoryAddress = this.adminAuthService?.getFactoryAddress(chainId) || '0x1111111111111111111111111111111111111111';
-    let factoryOwner = process.env.ADMIN_OWNER_ADDRESS || '0x0000000000000000000000000000000000000000';
+    const factoryAddress = adminContracts(chainId).riskSplit;
+    let factoryOwner: string | null = null;
     let pendingOwner: string | null = null;
     let publicCreationEnabled = false;
 
     try {
       const rpcUrl = rpcUrlForChain(chainId);
-      if (rpcUrl && factoryAddress !== '0x1111111111111111111111111111111111111111') {
+      if (rpcUrl && factoryAddress) {
         const client = createPublicClient({ transport: http(rpcUrl) });
         const [ownerRes, pendingOwnerRes, pubCreationRes] = await Promise.all([
           client.readContract({ address: factoryAddress, abi: seriesFactoryAbi, functionName: 'owner' }).catch(() => null),

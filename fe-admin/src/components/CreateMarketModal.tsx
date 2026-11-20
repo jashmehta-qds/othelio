@@ -3,11 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   AdminMarketPreviewResponse,
-  TOKEN_FEED_REGISTRY,
+  AdminAssetItem,
   seriesFactoryAbi,
 } from '@othelio/shared';
 import { adminApi } from '../lib/api';
-import { usePublicClient, useWriteContract } from 'wagmi';
+import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 function nextFridayNewYorkClose(): number {
   const earliest = Date.now() + 7 * 24 * 60 * 60 * 1000;
@@ -31,12 +32,14 @@ interface CreateMarketModalProps {
   onClose: () => void;
   onSuccess: () => void;
   isOwner: boolean;
+  assets: AdminAssetItem[];
 }
 
-export function CreateMarketModal({ isOpen, onClose, onSuccess, isOwner }: CreateMarketModalProps) {
-  const tokenOptions = Object.values(TOKEN_FEED_REGISTRY);
-
-  const [selectedToken, setSelectedToken] = useState(tokenOptions[7] || tokenOptions[0]); // Default MSFTc
+export function CreateMarketModal({ isOpen, onClose, onSuccess, isOwner, assets }: CreateMarketModalProps) {
+  const tokenOptions = assets.filter((asset) => asset.registryStatus.isSupported && asset.isCoinbaseB20);
+  const [selectedToken, setSelectedToken] = useState('');
+  const underlying = tokenOptions.some((asset) => asset.address === selectedToken)
+    ? selectedToken : (tokenOptions.find((asset) => asset.symbol === 'MSFTc') ?? tokenOptions[0])?.address;
   const [floorPercent, setFloorPercent] = useState<number>(80);
   const [capPercent, setCapPercent] = useState<number>(120);
 
@@ -46,17 +49,21 @@ export function CreateMarketModal({ isOpen, onClose, onSuccess, isOwner }: Creat
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   const { writeContractAsync, isPending: isTxPending } = useWriteContract();
-  const publicClient = usePublicClient();
+  const { chainId, contracts } = useAdminAuth();
+  const { address } = useAccount();
+  const publicClient = usePublicClient({ chainId });
   const [isWaitingReceipt, setIsWaitingReceipt] = useState(false);
 
   const handleFetchPreview = async () => {
+    if (!underlying) return;
     setIsLoadingPreview(true);
     setPreviewError(null);
     setPreview(null);
 
     try {
       const res = await adminApi.previewMarket({
-        underlying: selectedToken.tokenAddress,
+        underlying,
+        chainId,
         floorPercent,
         capPercent,
         expiryTimestamp,
@@ -73,18 +80,20 @@ export function CreateMarketModal({ isOpen, onClose, onSuccess, isOwner }: Creat
     if (isOpen) {
       handleFetchPreview();
     }
-  }, [isOpen, selectedToken, floorPercent, capPercent, expiryTimestamp]);
+  }, [isOpen, underlying, floorPercent, capPercent, expiryTimestamp, chainId]);
 
   const handleExecuteApproval = async (target: `0x${string}`, underlying: string, expiry: number) => {
     try {
-      if (!publicClient) throw new Error('Wallet RPC is unavailable.');
-      const hash = await writeContractAsync({
+      if (!publicClient || !address || target !== contracts?.riskSplit) throw new Error('Configured factory or wallet RPC is unavailable.');
+      setIsWaitingReceipt(true);
+      const { request } = await publicClient.simulateContract({
         address: target,
         abi: seriesFactoryAbi,
         functionName: 'setApprovedExpiry',
         args: [underlying as `0x${string}`, BigInt(expiry), true],
+        account: address,
       });
-      setIsWaitingReceipt(true);
+      const hash = await writeContractAsync(request);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') throw new Error(`Expiry approval ${hash} reverted.`);
       await handleFetchPreview();
@@ -104,14 +113,16 @@ export function CreateMarketModal({ isOpen, onClose, onSuccess, isOwner }: Creat
     adapter: string
   ) => {
     try {
-      if (!publicClient) throw new Error('Wallet RPC is unavailable.');
-      const hash = await writeContractAsync({
+      if (!publicClient || !address || target !== contracts?.riskSplit) throw new Error('Configured factory or wallet RPC is unavailable.');
+      setIsWaitingReceipt(true);
+      const { request } = await publicClient.simulateContract({
         address: target,
         abi: seriesFactoryAbi,
         functionName: 'createSeries',
         args: [underlying as `0x${string}`, BigInt(floor), BigInt(cap), BigInt(expiry), adapter as `0x${string}`],
+        account: address,
       });
-      setIsWaitingReceipt(true);
+      const hash = await writeContractAsync(request);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') throw new Error(`Series creation ${hash} reverted.`);
       onSuccess();
@@ -146,15 +157,13 @@ export function CreateMarketModal({ isOpen, onClose, onSuccess, isOwner }: Creat
           <div>
             <label className="text-zinc-400 uppercase tracking-wider block mb-1">Underlying Asset</label>
             <select
-              value={selectedToken.tokenAddress}
-              onChange={(e) => {
-                const found = tokenOptions.find((t) => t.tokenAddress === e.target.value);
-                if (found) setSelectedToken(found);
-              }}
+              value={underlying ?? ''}
+              onChange={(e) => setSelectedToken(e.target.value)}
               className="w-full bg-[#10110f] border border-[#292a27] rounded px-3 py-2 text-white focus:outline-none focus:border-[#ff5729]"
             >
+              {!underlying && <option value="">No supported assets</option>}
               {tokenOptions.map((token) => (
-                <option key={token.tokenAddress} value={token.tokenAddress}>
+                <option key={token.address} value={token.address}>
                   {token.symbol} — {token.name}
                 </option>
               ))}

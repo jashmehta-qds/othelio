@@ -19,12 +19,18 @@ export interface AdminVerifyRequest {
   chainId?: number;
 }
 
-export interface AdminVerifyResponse {
+export type AdminCapability = 'assetRegistry' | 'riskSplit' | 'upside';
+
+export interface AdminOperator {
+  address: string;
+  chainId: number;
+  capabilities: Record<AdminCapability, boolean>;
+  contracts: Record<AdminCapability, `0x${string}` | null>;
+}
+
+export interface AdminVerifyResponse extends AdminOperator {
   token: string;
   expiresAt: string;
-  isOwner: boolean;
-  address: string;
-  factoryAddress: string;
 }
 
 export interface AdminOverviewResponse {
@@ -57,8 +63,8 @@ export interface AdminOverviewResponse {
   };
   governedContracts: {
     factory: {
-      address: string;
-      owner: string;
+      address: string | null;
+      owner: string | null;
       pendingOwner?: string | null;
       publicCreationEnabled: boolean;
     };
@@ -97,6 +103,7 @@ export interface AdminAssetsResponse {
 }
 
 export interface AdminTransactionPreview {
+  data?: `0x${string}`;
   description: string;
   target: `0x${string}`;
   chainId: number;

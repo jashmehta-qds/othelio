@@ -3,10 +3,12 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAccount, useSignMessage, useChainId } from 'wagmi';
 import { adminApi } from '../lib/api';
+import type { AdminOperator } from '@othelio/shared';
 
 interface AdminAuthContextType {
   isAuthenticated: boolean;
-  isOwner: boolean;
+  capabilities: AdminOperator['capabilities'];
+  contracts: AdminOperator['contracts'] | null;
   token: string | null;
   operatorAddress: string | null;
   factoryAddress: string | null;
@@ -25,9 +27,8 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const { signMessageAsync } = useSignMessage();
 
   const [token, setToken] = useState<string | null>(null);
-  const [isOwner, setIsOwner] = useState(false);
-  const [factoryAddress, setFactoryAddress] = useState<string | null>(null);
-  const [operatorAddress, setOperatorAddress] = useState<string | null>(null);
+  const [operator, setOperator] = useState<AdminOperator | null>(null);
+  const operatorAddress = operator?.address ?? null;
   const [error, setError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [sessionChainId, setSessionChainId] = useState<number | null>(null);
@@ -40,9 +41,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       adminApi
         .getMe()
         .then((me) => {
-          setIsOwner(me.isOwner);
-          setOperatorAddress(me.address);
-          setFactoryAddress(me.factoryAddress);
+          setOperator(me);
           setSessionChainId(me.chainId);
         })
         .catch((err) => {
@@ -50,7 +49,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
           if (err?.status === 401) {
             adminApi.setToken(null);
             setToken(null);
-            setIsOwner(false);
+            setOperator(null);
             setSessionChainId(null);
           }
         });
@@ -66,9 +65,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
 
     if (status === 'disconnected' || !isConnected || !address) {
       setToken(null);
-      setIsOwner(false);
-      setOperatorAddress(null);
-      setFactoryAddress(null);
+      setOperator(null);
       setSessionChainId(null);
       adminApi.setToken(null);
       return;
@@ -77,9 +74,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     if (operatorAddress && operatorAddress.toLowerCase() !== address.toLowerCase()) {
       // Wallet switched accounts
       setToken(null);
-      setIsOwner(false);
-      setOperatorAddress(null);
-      setFactoryAddress(null);
+      setOperator(null);
       setSessionChainId(null);
       adminApi.setToken(null);
       return;
@@ -88,9 +83,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     if (sessionChainId !== null && currentChainId && sessionChainId !== currentChainId) {
       // Wallet switched networks
       setToken(null);
-      setIsOwner(false);
-      setOperatorAddress(null);
-      setFactoryAddress(null);
+      setOperator(null);
       setSessionChainId(null);
       adminApi.setToken(null);
     }
@@ -117,14 +110,12 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       const verifyRes = await adminApi.verifySignature(address, challenge.message, signature, currentChainId);
 
       setToken(verifyRes.token);
-      setIsOwner(verifyRes.isOwner);
-      setOperatorAddress(verifyRes.address);
-      setFactoryAddress(verifyRes.factoryAddress);
+      setOperator(verifyRes);
       setSessionChainId(currentChainId);
     } catch (err: any) {
       setError(err?.message || 'Authentication failed. Make sure you are the onchain owner.');
       setToken(null);
-      setIsOwner(false);
+      setOperator(null);
       setSessionChainId(null);
       adminApi.setToken(null);
     } finally {
@@ -134,9 +125,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     setToken(null);
-    setIsOwner(false);
-    setOperatorAddress(null);
-    setFactoryAddress(null);
+    setOperator(null);
     setSessionChainId(null);
     adminApi.setToken(null);
   }, []);
@@ -144,11 +133,12 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AdminAuthContext.Provider
       value={{
-        isAuthenticated: Boolean(token && isOwner),
-        isOwner,
+        isAuthenticated: Boolean(token && address && address.toLowerCase() === operatorAddress?.toLowerCase() && currentChainId === sessionChainId),
+        capabilities: operator?.capabilities ?? { assetRegistry: false, riskSplit: false, upside: false },
+        contracts: operator?.contracts ?? null,
         token,
         operatorAddress,
-        factoryAddress,
+        factoryAddress: operator?.contracts.riskSplit ?? null,
         chainId: currentChainId,
         login,
         logout,

@@ -1,5 +1,6 @@
 import {
   AdminChallengeResponse,
+  AdminOperator,
   AdminVerifyResponse,
   AdminOverviewResponse,
   AdminAssetsResponse,
@@ -89,7 +90,7 @@ class AdminApiClient {
     return res;
   }
 
-  async getMe(): Promise<{ address: string; chainId: number; isOwner: boolean; factoryAddress: string }> {
+  async getMe(): Promise<AdminOperator> {
     return this.fetchJson('/v1/admin/auth/me');
   }
 

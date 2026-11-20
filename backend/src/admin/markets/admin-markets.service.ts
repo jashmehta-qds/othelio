@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RiskSplitService } from '../../risksplit/risksplit.service';
-import { AdminAuthService } from '../auth/admin-auth.service';
+import { CoinbaseTokenMetadataService } from '../../baskets/coinbase-token-metadata.service';
+import { reviewedB20Additions, reviewedB20FeedAdditions } from '../../config/reviewed-b20-feeds';
 import {
   AdminMarketItem,
   AdminMarketPreviewRequest,
@@ -13,9 +14,10 @@ import {
   seriesFactoryAbi,
   TOKEN_FEED_REGISTRY,
 } from '@othelio/shared';
-import { createPublicClient, encodeAbiParameters, getAddress, http, isAddress, keccak256, parseAbiParameters } from 'viem';
+import { createPublicClient, encodeAbiParameters, http, isAddress, keccak256, parseAbiParameters } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
 import { validateExpiryCalendar } from './calendar.util';
+import { adminContracts, settlementAdapterForFeed } from '../admin-deployment';
 
 const AGGREGATOR_ABI = [
   {
@@ -36,11 +38,11 @@ const AGGREGATOR_ABI = [
 @Injectable()
 export class AdminMarketsService {
   private readonly logger = new Logger(AdminMarketsService.name);
+  private readonly coinbase = new CoinbaseTokenMetadataService();
 
   constructor(
     @Optional() private readonly db?: DatabaseService,
     @Optional() private readonly riskSplitService?: RiskSplitService,
-    @Optional() private readonly adminAuthService?: AdminAuthService,
   ) {}
 
   async getMarkets(chainIdInput = 8453): Promise<AdminMarketsResponse> {
@@ -128,31 +130,35 @@ export class AdminMarketsService {
 
   async previewMarket(params: AdminMarketPreviewRequest): Promise<AdminMarketPreviewResponse> {
     const chainId = params.chainId ? Number(params.chainId) : 8453;
+    if (typeof params.underlying !== 'string' || !isAddress(params.underlying)) {
+      throw new BadRequestException('Select a valid underlying address.');
+    }
     const underlyingNorm = params.underlying.toLowerCase();
 
-    const factoryRaw = process.env.RISK_SPLIT_FACTORY_ADDRESS?.trim();
-    const adapterRaw = (process.env.RISK_SPLIT_SETTLEMENT_ADAPTER || process.env.RISK_SPLIT_SETTLEMENT_ADAPTER_ADDRESS)?.trim();
-    if (!factoryRaw || !isAddress(factoryRaw) || /^0x0{40}$/i.test(factoryRaw)) {
+    const factoryAddress = adminContracts(chainId).riskSplit;
+    if (!factoryAddress) {
       throw new BadRequestException('Risk Split factory is not deployed/configured. Set RISK_SPLIT_FACTORY_ADDRESS.');
     }
-    if (!adapterRaw || !isAddress(adapterRaw) || /^0x0{40}$/i.test(adapterRaw)) {
-      throw new BadRequestException('Settlement adapter is not deployed/configured. Set RISK_SPLIT_SETTLEMENT_ADAPTER.');
-    }
-    const factoryAddress = getAddress(factoryRaw);
-    const settlementAdapter = getAddress(adapterRaw);
     if (params.factoryAddress && params.factoryAddress.toLowerCase() !== factoryAddress.toLowerCase()) {
       throw new BadRequestException('Requested factory does not match the configured deployment.');
-    }
-    if (params.settlementAdapter && params.settlementAdapter.toLowerCase() !== settlementAdapter.toLowerCase()) {
-      throw new BadRequestException('Requested adapter does not match the configured deployment.');
     }
 
     // 1. Identify underlying asset and feed
     const config = Object.values(TOKEN_FEED_REGISTRY).find(
       (c) => c.tokenAddress.toLowerCase() === underlyingNorm
-    );
+    ) ?? (reviewedB20FeedAdditions(chainId).has(underlyingNorm)
+      ? reviewedB20Additions(chainId, await this.coinbase.getAll()).find((asset) => asset.tokenAddress.toLowerCase() === underlyingNorm)
+      : undefined);
     if (!config) {
       throw new BadRequestException(`Underlying asset ${params.underlying} is not in the reviewed token catalog.`);
+    }
+    const settlementAdapter = settlementAdapterForFeed(config.feedAddress, 'RISK_SPLIT_SETTLEMENT_ADAPTERS_JSON',
+      'RISK_SPLIT_SETTLEMENT_ADAPTER', 'RISK_SPLIT_SETTLEMENT_ADAPTER_ADDRESS');
+    if (!settlementAdapter) {
+      throw new BadRequestException('Risk Split settlement adapter is not configured for this asset.');
+    }
+    if (params.settlementAdapter && params.settlementAdapter.toLowerCase() !== settlementAdapter.toLowerCase()) {
+      throw new BadRequestException('Requested adapter does not match the configured deployment.');
     }
 
     // 2. Calendar and publication window validation

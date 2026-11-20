@@ -7,8 +7,11 @@ import {
 } from '@othelio/shared';
 import { UpsideRoundModal } from './UpsideRoundModal';
 import { adminApi } from '../lib/api';
-import { usePublicClient, useWriteContract } from 'wagmi';
+import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 import { upsideFactoryAbi } from '@othelio/shared';
+import { decodeFunctionData } from 'viem';
+import { deployPresetStrikes } from '../lib/upside-launch';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface UpsideRoundsViewProps {
   rounds: AdminUpsideRoundItem[];
@@ -29,28 +32,55 @@ export function UpsideRoundsView({
 }: UpsideRoundsViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [togglingRoundId, setTogglingRoundId] = useState<number | null>(null);
+  const [resuming, setResuming] = useState<number | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
-  const publicClient = usePublicClient();
+  const { contracts } = useAdminAuth();
+  const { address } = useAccount();
+  const publicClient = usePublicClient({ chainId });
   const { writeContractAsync } = useWriteContract();
 
   const handleTogglePublicCreation = async (round: AdminUpsideRoundItem) => {
-    if (!isOwner || !publicClient) return;
+    if (!isOwner || !publicClient || !address) return;
     const targetState = !round.publicCreationEnabled;
     setTogglingRoundId(round.roundId);
 
     try {
-      const hash = await writeContractAsync({
-        address: round.factoryAddress as `0x${string}`,
+      const tx = await adminApi.togglePublicCreation({ chainId, roundId: round.roundId, enabled: targetState });
+      if (!tx.data || tx.target.toLowerCase() !== round.factoryAddress.toLowerCase()) throw new Error('Round is not on the configured factory.');
+      const decoded = decodeFunctionData({ abi: upsideFactoryAbi, data: tx.data });
+      if (decoded.functionName !== 'setPublicCreationEnabled') throw new Error('Invalid toggle calldata.');
+      const { request } = await publicClient.simulateContract({
+        address: tx.target,
         abi: upsideFactoryAbi,
         functionName: 'setPublicCreationEnabled',
-        args: [BigInt(round.roundId), targetState],
+        args: decoded.args,
+        account: address,
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      const hash = await writeContractAsync(request);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error('Public creation transaction reverted.');
       onRefresh();
     } catch (err: any) {
       alert(`Failed to update public creation setting: ${err?.message || err}`);
     } finally {
       setTogglingRoundId(null);
+    }
+  };
+
+  const resume = async (round: AdminUpsideRoundItem) => {
+    const factory = contracts?.upside;
+    if (!isOwner || !address || !publicClient || !factory || factory.toLowerCase() !== round.factoryAddress.toLowerCase()) return;
+    setResuming(round.roundId);
+    try {
+      await deployPresetStrikes(publicClient, address, factory, BigInt(round.roundId), writeContractAsync, (index, total) =>
+        setStatus(`Round #${round.roundId}: checking preset strike ${index}/${total}…`));
+      setStatus(`Round #${round.roundId}: all preset strikes confirmed onchain. Indexing may take a moment.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Could not finish preset strikes.');
+    } finally {
+      setResuming(null);
+      onRefresh();
     }
   };
 
@@ -81,6 +111,7 @@ export function UpsideRoundsView({
         </div>
       </div>
 
+      {status && <p role="status" className="text-xs font-mono text-zinc-300">{status}</p>}
       {/* Rounds Table */}
       <div className="bg-[#161715] border border-[#292a27] rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
@@ -124,6 +155,12 @@ export function UpsideRoundsView({
                       <span className="px-2 py-0.5 rounded bg-[#292a27] text-white font-semibold">
                         {round.marketsCount} strikes
                       </span>
+                      {isOwner && !round.isExpired && contracts?.upside?.toLowerCase() === round.factoryAddress.toLowerCase() && (
+                        <button type="button" onClick={() => void resume(round)} disabled={resuming !== null}
+                          className="block mt-2 text-[10px] text-[#ff5729] disabled:opacity-50">
+                          Finish preset strikes
+                        </button>
+                      )}
                     </td>
                     <td className="py-3.5 px-4">
                       {isOwner ? (
@@ -171,14 +208,14 @@ export function UpsideRoundsView({
         </div>
       </div>
 
-      <UpsideRoundModal
+      {isModalOpen && <UpsideRoundModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={onRefresh}
         assets={assets}
         isOwner={isOwner}
         chainId={chainId}
-      />
+      />}
     </div>
   );
 }

@@ -36,12 +36,18 @@ This runbook guides operators through the deployment and launch verification of 
 
 ## 4. Weekly Round Setup & Launch
 
-1. Open the Admin Console (`fe-admin` connected to deployer wallet).
-2. Select MSFTc asset from the onchain basket registry.
+1. Configure `UPSIDE_FACTORY_ADDRESS` on the API and indexer. Configure the API's `ASSET_REGISTRY_ADDRESS` to match the factory's registry and set `UPSIDE_SETTLEMENT_ADAPTER_ADDRESS` or `UPSIDE_SETTLEMENT_ADAPTERS_JSON` (feed address to adapter address).
+2. Open the Admin Console (`fe-admin`) with the Upside factory owner wallet. Select an enabled B20 asset, such as MSFTc, with a matching adapter and a fresh reference feed.
 3. Verify calendar alignment (Friday 16:00 ET US regular market close).
 4. Review 4 preset strikes: Starting price, Reach, Strong move, Long shot.
-5. Sign round registration and market creation transactions.
-6. Verify indexing status and book display in the public UI.
+5. Sign round registration and market creation transactions. If a strike fails or is skipped, retry from the launch dialog or use **Finish preset strikes** on the indexed round. The panel checks for each onchain market before requesting a signature.
+6. Verify indexing status and book display in the public UI. Transaction confirmation does not mean the indexer has caught up.
+
+### Enable an additional Base B20 asset
+
+1. Independently review the Coinbase contract address and its Chainlink B20 total-return proxy, then add the pair to the API's `B20_REVIEWED_FEEDS_JSON` map. An ordinary equity feed is not a substitute.
+2. Sign in with the asset registry owner and open **Assets**. Enter the token address and review the verified token/feed pair before signing the registry transaction.
+3. Check the registry and wait for price indexing. The asset can back markets after its market-specific settlement adapter is configured. Basket trading remains off for new assets until a reviewed route is configured in the quote planner and separately approved by the route registry owner; the panel does not approve routes.
 
 ## 5. Indexer Operations & Legacy Risk Split Switch
 

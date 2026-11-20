@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AdminMarketItem } from '@othelio/shared';
+import { AdminAssetItem, AdminMarketItem } from '@othelio/shared';
 import { CreateMarketModal } from './CreateMarketModal';
 import { seriesFactoryAbi } from '@othelio/shared';
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from 'wagmi';
@@ -9,12 +9,13 @@ import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface MarketsViewProps {
   markets: AdminMarketItem[];
+  assets: AdminAssetItem[];
   isLoading: boolean;
   onRefresh: () => void;
   isOwner: boolean;
 }
 
-export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsViewProps) {
+export function MarketsView({ markets, assets, isLoading, onRefresh, isOwner }: MarketsViewProps) {
   const { factoryAddress } = useAdminAuth();
   const { address } = useAccount();
   const publicClient = usePublicClient();
@@ -224,6 +225,7 @@ export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsV
 
       {/* Creation Modal */}
       <CreateMarketModal
+        assets={assets}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={() => {

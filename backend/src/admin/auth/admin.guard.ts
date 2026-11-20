@@ -1,5 +1,12 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, createParamDecorator, ExecutionContext, ForbiddenException, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common';
+import type { AdminCapability } from '@othelio/shared';
 import { AdminAuthService } from './admin-auth.service';
+
+const OWNER_CAPABILITY = 'admin:owner-capability';
+export const RequireAdminOwner = (capability: AdminCapability) => SetMetadata(OWNER_CAPABILITY, capability);
+export const AdminChain = createParamDecorator((_: unknown, context: ExecutionContext): number =>
+  context.switchToHttp().getRequest().adminUser.chainId,
+);
 
 @Injectable()
 export class AdminGuard implements CanActivate {
@@ -20,20 +27,19 @@ export class AdminGuard implements CanActivate {
 
     const payload = this.authService.verifySessionToken(token);
 
-    const requestedChainId = req.query?.chainId ?? req.body?.chainId;
-    if (requestedChainId !== undefined && Number(requestedChainId) !== payload.chainId) {
+    if ([req.query?.chainId, req.body?.chainId].some((id) => id !== undefined && Number(id) !== payload.chainId)) {
       throw new UnauthorizedException(
-        `Admin session is bound to chain ${payload.chainId}; requested chain ${requestedChainId}. Sign in again on the requested network.`,
+        `Admin session is bound to chain ${payload.chainId}. Sign in again on the requested network.`,
       );
     }
 
     // Recheck onchain owner authority to guard against revoked ownership
-    await this.authService.checkOnchainOwner(payload.sub, payload.chainId);
-
-    req.adminUser = {
-      address: payload.sub,
-      chainId: payload.chainId,
-    };
+    const operator = await this.authService.checkOnchainOwner(payload.sub, payload.chainId);
+    const capability: AdminCapability | undefined = Reflect.getMetadata(OWNER_CAPABILITY, context.getHandler());
+    if (capability && !operator.capabilities[capability]) {
+      throw new ForbiddenException(`Connected wallet does not own the configured ${capability} contract.`);
+    }
+    req.adminUser = operator;
 
     return true;
   }

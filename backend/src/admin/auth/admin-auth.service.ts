@@ -1,9 +1,11 @@
 import { BadRequestException, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
-import { addressSchema } from '@othelio/shared';
+import { addressSchema, type AdminCapability, type AdminOperator, type AdminVerifyResponse } from '@othelio/shared';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { createPublicClient, getAddress, http, isAddress, parseAbi } from 'viem';
+import { createPublicClient, getAddress, http, parseAbi } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
-import { seriesFactoryAbi } from '@othelio/shared';
+import { adminContracts, assertAdminChain } from '../admin-deployment';
+
+const ownerAbi = parseAbi(['function owner() view returns (address)']);
 
 interface AdminNonceEntry {
   nonce: string;
@@ -43,25 +45,12 @@ export class AdminAuthService {
     }
   }
 
-  getFactoryAddress(chainId: number): `0x${string}` {
-    const configuredChain = process.env.CHAIN_ID ? Number(process.env.CHAIN_ID) : undefined;
-    if (configuredChain !== undefined && chainId !== configuredChain) {
-      throw new ServiceUnavailableException(
-        `Risk Split factory is not configured for chain ${chainId} (backend configured for chain ${configuredChain}). Set RISK_SPLIT_FACTORY_ADDRESS.`,
-      );
-    }
-    const envAddr = process.env.RISK_SPLIT_FACTORY_ADDRESS?.trim();
-    if (envAddr && isAddress(envAddr) && !/^0x0{40}$/i.test(envAddr)) {
-      return getAddress(envAddr);
-    }
-    throw new ServiceUnavailableException(`Risk Split factory is not configured for chain ${chainId}. Set RISK_SPLIT_FACTORY_ADDRESS.`);
-  }
-
   generateChallenge(rawAddress: string, chainIdInput = 8453): { nonce: string; message: string; expiresAt: string } {
     this.cleanExpiredNonces();
 
     const address = addressSchema.parse(rawAddress).toLowerCase();
     const chainId = Number(chainIdInput);
+    assertAdminChain(chainId);
     const nonce = randomBytes(16).toString('hex');
     const expiresAtMs = Date.now() + 10 * 60 * 1000; // 10 minutes
     const issuedAt = new Date().toISOString();
@@ -98,7 +87,7 @@ export class AdminAuthService {
     message: string,
     signature: string,
     expectedChainId?: number,
-  ): Promise<{ token: string; expiresAt: string; isOwner: boolean; address: string; factoryAddress: string }> {
+  ): Promise<AdminVerifyResponse> {
     this.cleanExpiredNonces();
 
     const address = addressSchema.parse(rawAddress).toLowerCase();
@@ -188,52 +177,35 @@ export class AdminAuthService {
     this.nonces.delete(extractedNonce);
 
     // 4. Verify configured deployment and onchain owner authority
-    const factoryAddress = this.getFactoryAddress(messageChainId);
-    const isOwner = await this.isOwner(address, messageChainId);
-    if (!isOwner) {
-      throw new UnauthorizedException('Wallet address is not an authorized operator or onchain owner.');
-    }
-
-    const session = this.createSessionToken(address, messageChainId);
-
-    return {
-      token: session.token,
-      expiresAt: session.expiresAt,
-      isOwner: true,
-      address,
-      factoryAddress,
-    };
+    const operator = await this.checkOnchainOwner(address, messageChainId);
+    return { ...operator, ...this.createSessionToken(address, messageChainId) };
   }
 
-  async isOwner(address: string, chainId: number): Promise<boolean> {
-    const targetAddr = address.toLowerCase();
-    const factoryAddress = this.getFactoryAddress(chainId);
-    // The onchain owner is the sole authority; environment allowlists cannot grant it.
-    try {
-      const rpcUrl = rpcUrlForChain(chainId);
-      if (!rpcUrl) throw new Error(`No RPC configured for chain ${chainId}`);
-
-      const client = createPublicClient({ transport: http(rpcUrl) });
-      const onchainOwner = await client.readContract({
-        address: factoryAddress,
-        abi: seriesFactoryAbi,
-        functionName: 'owner',
-      });
-
-      return (onchainOwner as string).toLowerCase() === targetAddr;
-    } catch (err) {
-      this.logger.warn(`Could not verify onchain owner for ${targetAddr} on chain ${chainId} at ${factoryAddress}: ${err}`);
-      throw new ServiceUnavailableException(
-        `Cannot verify factory owner onchain on chain ${chainId} at ${factoryAddress}. Check the configured factory and RPC.`,
-      );
+  async checkOnchainOwner(address: string, chainId: number): Promise<AdminOperator> {
+    const contracts = adminContracts(chainId);
+    const configured = Object.entries(contracts).filter(([, target]) => target !== null);
+    const rpcUrl = rpcUrlForChain(chainId);
+    if (!configured.length || !rpcUrl) {
+      throw new ServiceUnavailableException('No admin contracts or RPC configured for this chain.');
     }
-  }
-
-  async checkOnchainOwner(address: string, chainId: number): Promise<void> {
-    const authorized = await this.isOwner(address, chainId);
-    if (!authorized) {
-      throw new UnauthorizedException('Operator authority revoked or wallet is not onchain owner.');
+    const client = createPublicClient({ transport: http(rpcUrl) });
+    const actualChainId = await client.getChainId().catch(() => null);
+    if (actualChainId !== chainId) {
+      throw new ServiceUnavailableException('Admin RPC could not verify the configured chain.');
     }
+    const capabilities = { assetRegistry: false, riskSplit: false, upside: false };
+    const reads = await Promise.allSettled(configured.map(async ([scope, target]) => {
+      const owner = await client.readContract({ address: target!, abi: ownerAbi, functionName: 'owner' });
+      capabilities[scope as AdminCapability] = owner.toLowerCase() === address.toLowerCase();
+    }));
+    if (!Object.values(capabilities).some(Boolean)) {
+      if (reads.some((result) => result.status === 'rejected')) {
+        this.logger.warn(`Could not verify all configured admin owners on chain ${chainId}.`);
+        throw new ServiceUnavailableException('Cannot verify onchain owner. Check admin deployment and RPC.');
+      }
+      throw new UnauthorizedException('Wallet does not own a configured admin contract.');
+    }
+    return { address: address.toLowerCase(), chainId, capabilities, contracts };
   }
 
   createSessionToken(address: string, chainId: number, ttlSeconds = 86400): { token: string; expiresAt: string } {

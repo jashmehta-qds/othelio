@@ -4,35 +4,24 @@ import {
   AdminAssetItem,
   AdminAssetsResponse,
   AdminTransactionPreview,
+  assetRegistryAbi,
+  BASE_MAINNET_CHAIN_ID,
   TOKEN_FEED_REGISTRY,
 } from '@othelio/shared';
-import { createPublicClient, getAddress, http, isAddress, parseAbi } from 'viem';
+import { createPublicClient, getAddress, http, isAddress, parseAbi, zeroAddress } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
 import { RiskSplitService } from '../../risksplit/risksplit.service';
-import { BASE_USDC_ADDRESS, getAerodromeSlipstreamRoute } from '../../dex/aerodrome-slipstream-routes';
+import { hasApprovedBasketRoute, resolveBasketRouteRegistry } from '../../dex/basket-route-readiness';
+import { CoinbaseTokenMetadataService } from '../../baskets/coinbase-token-metadata.service';
+import { reviewedB20Additions, reviewedB20FeedAdditions } from '../../config/reviewed-b20-feeds';
+import { adminTokenAbi, readAdminFeed } from '../admin-oracle';
+import { adminContracts } from '../admin-deployment';
 
-const MODULE_ROUTE_ABI = parseAbi(['function aerodromeAdapter() view returns (address)']);
-const ADAPTER_ROUTE_ABI = parseAbi(['function routeRegistry() view returns (address)']);
-const ROUTE_REGISTRY_ABI = parseAbi([
-  'function requireApprovedPool(uint256 chainId,address tokenA,address tokenB,int24 tickSpacing) view returns (address factory,address pool)',
+const b20Factory = '0xb20f000000000000000000000000000000000000';
+const b20FactoryAbi = parseAbi([
+  'function isB20(address token) view returns (bool)',
+  'function isB20Initialized(address token) view returns (bool)',
 ]);
-
-const REGISTRY_VIEW_ABI = [
-  {
-    type: 'function',
-    name: 'isSupported',
-    inputs: [{ name: 'chainId', type: 'uint256' }, { name: 'token', type: 'address' }],
-    outputs: [{ name: '', type: 'bool' }],
-    stateMutability: 'view',
-  },
-  {
-    type: 'function',
-    name: 'owner',
-    inputs: [],
-    outputs: [{ name: '', type: 'address' }],
-    stateMutability: 'view',
-  },
-] as const;
 
 const AGGREGATOR_ABI = [
   {
@@ -53,6 +42,7 @@ const AGGREGATOR_ABI = [
 @Injectable()
 export class AdminAssetsService {
   private readonly logger = new Logger(AdminAssetsService.name);
+  private readonly coinbase = new CoinbaseTokenMetadataService();
 
   constructor(
     @Optional() private readonly db?: DatabaseService,
@@ -60,10 +50,8 @@ export class AdminAssetsService {
   ) {}
 
   getRegistryAddress(chainId: number): `0x${string}` {
-    const envAddr = (process.env.ASSET_REGISTRY_ADDRESS || process.env.OTHELIO_ASSET_REGISTRY)?.trim();
-    if (envAddr && isAddress(envAddr) && !/^0x0{40}$/i.test(envAddr)) {
-      return getAddress(envAddr);
-    }
+    const address = adminContracts(chainId).assetRegistry;
+    if (address) return address;
     throw new BadRequestException(`Asset registry is not configured for chain ${chainId}. Set ASSET_REGISTRY_ADDRESS.`);
   }
 
@@ -111,24 +99,14 @@ export class AdminAssetsService {
 
     const rpcUrl = rpcUrlForChain(chainId);
     const client = rpcUrl ? createPublicClient({ transport: http(rpcUrl) }) : null;
-    const registryAddress = this.getRegistryAddress(chainId);
-    let routeRegistryAddress: `0x${string}` | null = null;
-    const moduleAddress = process.env.MODULE_ADDRESS?.trim();
-    if (client && moduleAddress && isAddress(moduleAddress)) {
-      try {
-        const adapter = await client.readContract({
-          address: getAddress(moduleAddress), abi: MODULE_ROUTE_ABI, functionName: 'aerodromeAdapter',
-        });
-        routeRegistryAddress = await client.readContract({
-          address: adapter, abi: ADAPTER_ROUTE_ABI, functionName: 'routeRegistry',
-        });
-      } catch (err) {
-        this.logger.warn(`Could not resolve the onchain Aerodrome route registry: ${err}`);
-      }
-    }
+    const registryAddress = adminContracts(chainId).assetRegistry;
+    const routeRegistryAddress = client ? await resolveBasketRouteRegistry(client) : null;
+    const additions = reviewedB20FeedAdditions(chainId).size
+      ? reviewedB20Additions(chainId, await this.coinbase.getAll()) : [];
+    const candidates = [...Object.values(TOKEN_FEED_REGISTRY), ...additions];
 
-    const assetItems: AdminAssetItem[] = await Promise.all(Object.entries(TOKEN_FEED_REGISTRY).map(async ([tokenAddr, config]) => {
-      const normAddr = tokenAddr.toLowerCase();
+    const assetItems: AdminAssetItem[] = await Promise.all(candidates.map(async (config) => {
+      const normAddr = config.tokenAddress.toLowerCase();
       const dbObs = dbObservations.get(normAddr);
 
       let priceUsdE8 = dbObs?.priceUsdE8 ?? null;
@@ -159,35 +137,24 @@ export class AdminAssetsService {
 
       // Check registry status
       let isSupportedInRegistry = false;
-      if (client) {
+      if (client && registryAddress) {
         try {
           const res = await client.readContract({
             address: registryAddress,
-            abi: REGISTRY_VIEW_ABI,
-            functionName: 'isSupported',
+            abi: assetRegistryAbi,
+            functionName: 'getAsset',
             args: [BigInt(chainId), config.tokenAddress],
           });
-          isSupportedInRegistry = Boolean(res);
+          isSupportedInRegistry = res.supported && res.isCoinbaseB20 &&
+            res.priceFeed.toLowerCase() === config.feedAddress.toLowerCase() &&
+            res.tokenDecimals === config.tokenDecimals && res.feedDecimals === config.feedDecimals;
         } catch {
           isSupportedInRegistry = false;
         }
       }
 
-      const reviewedRoute = getAerodromeSlipstreamRoute(chainId, config.tokenAddress, BASE_USDC_ADDRESS);
-      let hasRoute = false;
-      if (client && routeRegistryAddress && reviewedRoute) {
-        try {
-          await client.readContract({
-            address: routeRegistryAddress,
-            abi: ROUTE_REGISTRY_ABI,
-            functionName: 'requireApprovedPool',
-            args: [BigInt(chainId), config.tokenAddress, BASE_USDC_ADDRESS, reviewedRoute.tickSpacing],
-          });
-          hasRoute = true;
-        } catch {
-          hasRoute = false;
-        }
-      }
+      const hasRoute = Boolean(client && routeRegistryAddress &&
+        await hasApprovedBasketRoute(client, routeRegistryAddress, chainId, config.tokenAddress));
 
       const isB20 = true;
       const tradeable = isSupportedInRegistry && hasRoute && priceUsdE8 !== null && isFresh;
@@ -228,17 +195,52 @@ export class AdminAssetsService {
 
   async previewEnableAsset(assetAddress: string, chainIdInput = 8453): Promise<AdminTransactionPreview[]> {
     const chainId = Number(chainIdInput);
-    const norm = assetAddress.toLowerCase();
-    const config = Object.values(TOKEN_FEED_REGISTRY).find((c) => c.tokenAddress.toLowerCase() === norm);
-
-    if (!config) {
-      throw new BadRequestException(`Asset ${assetAddress} is not in the reviewed B20 token catalog.`);
+    if (typeof assetAddress !== 'string' || !isAddress(assetAddress) || assetAddress.toLowerCase() === zeroAddress) {
+      throw new BadRequestException('Enter a valid B20 token address.');
     }
+    const norm = assetAddress.toLowerCase();
+    const reviewed = Object.values(TOKEN_FEED_REGISTRY).find((c) => c.tokenAddress.toLowerCase() === norm);
+    const additions = reviewedB20FeedAdditions(chainId);
+    const config = reviewed ?? (additions.has(norm)
+      ? reviewedB20Additions(chainId, await this.coinbase.getAll()).find((asset) => asset.tokenAddress.toLowerCase() === norm)
+      : undefined);
+    if (!config) throw new BadRequestException('This token needs a reviewed B20 feed and a matching Coinbase catalog entry before enablement.');
 
     const registryAddress = this.getRegistryAddress(chainId);
 
     const rpcUrl = rpcUrlForChain(chainId);
     if (!rpcUrl) throw new ServiceUnavailableException(`No RPC configured for chain ${chainId}.`);
+    const client = createPublicClient({ transport: http(rpcUrl) });
+    try {
+      const block = await client.getBlock();
+      const blockNumber = block.number;
+      if (blockNumber === null) throw new Error('No confirmed block');
+      const query = { address: config.tokenAddress, abi: adminTokenAbi, blockNumber };
+      const [decimals, supply, feed, current] = await Promise.all([
+        client.readContract({ ...query, functionName: 'decimals' }),
+        client.readContract({ ...query, functionName: 'totalSupply' }),
+        readAdminFeed(client, config.feedAddress, { number: blockNumber, timestamp: block.timestamp }),
+        client.readContract({
+          address: registryAddress, abi: assetRegistryAbi, functionName: 'getAsset',
+          args: [BigInt(chainId), config.tokenAddress], blockNumber,
+        }),
+      ]);
+      if (current.supported) throw new BadRequestException('This token is already enabled; onboarding will not overwrite an active feed.');
+      if (decimals !== config.tokenDecimals || decimals > 18 || supply <= 0n || feed.decimals !== config.feedDecimals) {
+        throw new BadRequestException('Token supply or configured decimals could not be verified.');
+      }
+      if (chainId === BASE_MAINNET_CHAIN_ID) {
+        const identity = { address: b20Factory, abi: b20FactoryAbi, args: [config.tokenAddress], blockNumber } as const;
+        const [b20, initialized] = await Promise.all([
+          client.readContract({ ...identity, functionName: 'isB20' }),
+          client.readContract({ ...identity, functionName: 'isB20Initialized' }),
+        ]);
+        if (!b20 || !initialized) throw new BadRequestException('Token is not an initialized Base B20.');
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new ServiceUnavailableException('Could not verify the token, registry, and live feed at a confirmed block.');
+    }
 
     const previews: AdminTransactionPreview[] = [
       {

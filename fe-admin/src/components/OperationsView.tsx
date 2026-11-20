@@ -8,10 +8,9 @@ interface OperationsViewProps {
   operations: AdminOperationsResponse | null;
   isLoading: boolean;
   onRefresh: () => void;
-  isOwner: boolean;
 }
 
-export function OperationsView({ operations, isLoading, onRefresh, isOwner }: OperationsViewProps) {
+export function OperationsView({ operations, isLoading, onRefresh }: OperationsViewProps) {
   const { expiryQueue, settlementAuditTrail, incidentAlerts, asOfBlock, riskSplitIndexer } = operations || {
     expiryQueue: [],
     settlementAuditTrail: [],

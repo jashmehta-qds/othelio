@@ -6,7 +6,10 @@ const crcl = '0xb20000000000000000000019f6e7c675b73c2e4d';
 const tsla = '0xb2000000000000000000001e800a7f5189430cd0';
 const usdc = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 
 describe('asset catalog Coinbase enrichment', () => {
   it('adds metadata only to indexed assets without replacing their price or status', async () => {
@@ -28,5 +31,25 @@ describe('asset catalog Coinbase enrichment', () => {
     expect(data.find((asset) => asset.assetAddress === crcl)).toMatchObject({ symbol: 'CRCLc', iconUrl: 'https://metadata.coinbase.com/circle.png', priceUsdE8: null, status: 'UNAVAILABLE', tradeable: false });
     expect(data.find((asset) => asset.assetAddress === tsla)).toMatchObject({ symbol: 'TSLAc', iconUrl: 'https://metadata.coinbase.com/tesla.png', priceUsdE8: null, status: 'UNAVAILABLE', tradeable: false });
     expect(data.filter((asset) => asset.assetAddress === aapl)).toHaveLength(1);
+  });
+
+  it('lists reviewed additions before indexing and never infers tradeability from an observation alone', async () => {
+    const added = '0xb200000000000000000000000000000000000999';
+    vi.stubEnv('B20_REVIEWED_FEEDS_JSON', JSON.stringify({ [added]: '0x3333333333333333333333333333333333333333' }));
+    vi.stubEnv('MODULE_ADDRESS', undefined);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      tokens: [{ contract_address: added, symbol: 'NEWc', name: 'New Stock', decimals: 8 }],
+    }) }));
+    const db = { query: vi.fn().mockResolvedValue({ rows: [] }) };
+    const staged = await new BasketsService(db as never, {} as never, {} as never).getAssets('8453');
+    expect(staged.data.find((asset) => asset.assetAddress === added))
+      .toMatchObject({ symbol: 'NEWc', tradeable: false, priceUsdE8: null });
+    db.query.mockResolvedValue({ rows: [{
+      asset_address: added, status: 'FRESH', price_usd_e8: '50000000000',
+      block_number: 123, block_hash: `0x${'a'.repeat(64)}`, observed_at: '2026-10-16T12:01:00Z',
+    }] });
+    const indexed = await new BasketsService(db as never, {} as never, {} as never).getAssets('8453');
+    expect(indexed.data.find((asset) => asset.assetAddress === added))
+      .toMatchObject({ symbol: 'NEWc', tradeable: false, priceUsdE8: '50000000000' });
   });
 });
