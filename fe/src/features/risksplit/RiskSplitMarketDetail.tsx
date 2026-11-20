@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import StockLogo from "@/components/StockLogo";
 import { PayoffVisualizer } from "./PayoffVisualizer";
@@ -22,6 +22,7 @@ function formatExpiry(timestamp: number) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
+    year: "numeric",
     hour: "numeric",
     minute: "2-digit",
     timeZone: "UTC",
@@ -29,17 +30,7 @@ function formatExpiry(timestamp: number) {
   }).format(timestamp * 1000);
 }
 
-function formatRelativeExpiry(timestamp: number, nowSeconds: number) {
-  const diffSec = timestamp - nowSeconds;
-  if (diffSec <= 0) return "Expired";
-  const days = Math.floor(diffSec / 86400);
-  if (days > 1) return `Expires in ${days} days`;
-  const hours = Math.floor(diffSec / 3600);
-  if (hours > 1) return `Expires in ${hours} hours`;
-  return "Expires soon";
-}
-
-export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string }) {
+export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected" }: { seriesAddress: string; initialClaim?: "protected" | "upside" }) {
   const {
     activeSeries,
     underlyingDecimals,
@@ -51,17 +42,20 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
 
   const { assets } = useRiskSplitMarkets();
 
-  const [selectedClaim, setSelectedClaim] = useState<"protected" | "upside">("protected");
+  const [selectedClaim, setSelectedClaim] = useState<"protected" | "upside">(initialClaim);
   const [marketTab, setMarketTab] = useState<"overview" | "positions">("overview");
   const [walletTab, setWalletTab] = useState<"trade" | "manage">("trade");
-  const [manageTab, setManageTab] = useState<"deposit" | "claim">("deposit");
+  const [manageTab, setManageTab] = useState<"deposit" | "combine" | "redeem">("combine");
   const [ticketSide, setTicketSide] = useState<"BUY" | "SELL">("BUY");
   const [selectedOrderHash, setSelectedOrderHash] = useState<string | undefined>();
-  const [nowSeconds] = useState(() => Math.floor(Date.now() / 1000));
+  const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const timer = setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  // Fetch real order books for both Protected and Upside to display live best quotes
-  const protectedBook = useRiskSplitBook(seriesAddress, "protected");
-  const upsideBook = useRiskSplitBook(seriesAddress, "upside");
+  const protectedBook = useRiskSplitBook(seriesAddress, "protected", selectedClaim === "protected" ? "live" : "preview");
+  const upsideBook = useRiskSplitBook(seriesAddress, "upside", selectedClaim === "upside" ? "live" : "preview");
   const activeBook = selectedClaim === "protected" ? protectedBook : upsideBook;
 
   // Initialize scenario price to stock reference or mid (floor+cap)/2
@@ -84,7 +78,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
             <div className={styles.skeletonIdentity}><span className={styles.skeletonHeading} /><span className={`${styles.skeletonText} ${styles.detailSub}`} /></div>
           </div>
           <div className={styles.detailMeta}>
-            <div className={styles.detailExpiry}><span>Expiry fixing</span><strong><span className={styles.skeletonDate} /></strong></div>
+            <div className={styles.detailExpiry}><span>Ends</span><strong><span className={styles.skeletonDate} /></strong></div>
           </div>
         </header>
         <div className={styles.workGrid}>
@@ -92,7 +86,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
             <div className={styles.marketViewTabs} aria-hidden="true"><span className={styles.marketViewTabActive}>Overview</span><span>Positions</span></div>
             <div className={styles.marketTabPanel}>
               <section className={styles.claimChoiceSection}>
-                <div className={styles.claimChoiceHead}><h2>Choose a side</h2><p>Two claims on one stock token</p></div>
+                <div className={styles.claimChoiceHead}><h2>1. Choose your side</h2><p>Two parts of the same stock</p></div>
                 <div className={styles.claimSides}>
                   {(["Protected", "Upside"] as const).map((claim) => <div key={claim} className={`${styles.claimSideCard} ${styles.skeletonClaim}`}><span className={styles.claimSideName}>{claim}</span><span className={styles.skeletonText} /><div className={styles.claimSideBottom}><span className={styles.claimSideQuote}>Buy from<b><span className={styles.numberSkeleton} /></b></span><span className={styles.claimSideQuote}>Sell at<b><span className={styles.numberSkeleton} /></b></span></div></div>)}
                 </div>
@@ -211,50 +205,34 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
   return (
     <main className={`app-page-frame ${styles.page}`}>
       <Link href="/app/risk-split" className={styles.backLink}>← All markets</Link>
-
-
+      <header className={styles.detailHead}>
+        <div className={styles.detailIdentity}>
+          <StockLogo symbol={symbol} address={activeSeries.underlyingAddress} size={46} />
+          <div>
+            <h1>{symbol}<span className={styles.marketStatus}>{settledOrExpired ? "Ended" : "Open"}</span></h1>
+            <p className={styles.detailSub}>
+              {name} · Ends {formatExpiry(activeSeries.expiryTimestamp)}
+            </p>
+          </div>
+        </div>
+        <div className={styles.detailMeta}>
+          <strong className={asset?.status === "FRESH" ? styles.detailStockPrice : styles.detailStockPriceMuted}>{stockPriceFormatted}</strong>
+          <span>Underlying stock price</span>
+        </div>
+      </header>
       {/* Market information and wallet actions share one workspace. */}
-      <div className={styles.workGrid}>
+      <div className={`${styles.workGrid} ${walletTab === "manage" ? styles.manageWorkspace : ""}`}>
         <div className={`${styles.marketColumn} ${marketTab !== "overview" ? styles.marketColumnCompact : ""}`}>
-          {/* 1. Header: stock reference, expiry, series status */}
-          <header className={styles.detailHead}>
-            <div className={styles.detailIdentity}>
-              <StockLogo symbol={symbol} address={activeSeries.underlyingAddress} size={46} />
-              <div>
-                <h1>
-                  {symbol}{" "}
-                  <span className={asset?.status === "FRESH" ? styles.detailStockPrice : styles.detailStockPriceMuted}>
-                    ({stockPriceFormatted})
-                  </span>
-                </h1>
-                <p className={styles.detailSub}>
-                  {name} · {settledOrExpired ? "Expired / settled" : "Open"}
-                </p>
-              </div>
-            </div>
-
-            <div className={styles.detailMeta}>
-              <div className={styles.detailExpiry}>
-                <span>Expiry fixing</span>
-                <strong>{formatExpiry(activeSeries.expiryTimestamp)}</strong>
-                <span className={styles.expiryTag}>
-                  {formatRelativeExpiry(activeSeries.expiryTimestamp, nowSeconds)}
-                </span>
-              </div>
-            </div>
-          </header>
           <div className={styles.marketViewTabs} role="tablist" aria-label="Market view" onKeyDown={handleMarketTabKeyDown}>
             <button type="button" id="market-overview-tab" role="tab" tabIndex={marketTab === "overview" ? 0 : -1} aria-controls="market-overview-panel" aria-selected={marketTab === "overview"} className={marketTab === "overview" ? styles.marketViewTabActive : ""} onClick={() => setMarketTab("overview")}>Overview</button>
             <button type="button" id="market-positions-tab" role="tab" tabIndex={marketTab === "positions" ? 0 : -1} aria-controls="market-positions-panel" aria-selected={marketTab === "positions"} className={marketTab === "positions" ? styles.marketViewTabActive : ""} onClick={() => setMarketTab("positions")}>Positions</button>
           </div>
-          <div id="market-overview-panel" role="tabpanel" aria-labelledby="market-overview-tab" hidden={marketTab !== "overview"} className={styles.marketTabPanel}>
+          <div id="market-overview-panel" role="tabpanel" aria-labelledby="market-overview-tab" hidden={marketTab !== "overview"} className={`${styles.marketTabPanel} ${styles.overviewPanel}`}>
             <RiskSplitClaimCards
               selectedClaim={selectedClaim}
               onSelectClaim={handleSelectClaim}
               protectedBestAsk={protectedBook.bestAsk}
-              protectedBestBid={protectedBook.bestBid}
               upsideBestAsk={upsideBook.bestAsk}
-              upsideBestBid={upsideBook.bestBid}
               protectedLoading={protectedBook.isLoading}
               upsideLoading={upsideBook.isLoading}
               protectedError={protectedBook.isError}
@@ -267,30 +245,31 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
               asks={activeBook.asks}
               recentTrades={activeBook.recentTrades}
               spreadUsd={activeBook.spreadUsd}
-              selectedOrderHash={activeSelectedOrder?.orderHash}
+              selectedOrderHash={selectedOrderHash}
               onSelectOrder={handleSelectBookOrder}
               isLoading={activeBook.isLoading}
               isError={activeBook.isError}
               onRetry={() => void activeBook.refetch()}
               sequence={activeBook.sequence}
             />
+            <details className={styles.scenarioDisclosure}>
+              <summary>Payout illustration <span>If stock ${scenarioPrice.toFixed(2)} → {selectedClaim === "protected" ? "Protected" : "Upside"} ${scenarioPayoffPerClaim.toFixed(2)} <b aria-hidden="true">⌄</b></span></summary>
+              <RiskSplitScenario
+                scenarioPrice={scenarioPrice}
+                onChangeScenarioPrice={setChosenScenarioPrice}
+                selectedClaim={selectedClaim}
+                floorE8={floorE8}
+                capE8={capE8}
+                stockSymbol={symbol}
+                referencePrice={stockPriceUsd}
+                maxAxis={Math.max(1, Math.ceil(stockPriceUsd * 2), Math.ceil(cap * 2.2))}
+              />
+            </details>
           </div>
           <div id="market-positions-panel" role="tabpanel" aria-labelledby="market-positions-tab" hidden={marketTab !== "positions"} className={styles.marketTabPanel}>
             <RiskSplitActionPanel seriesAddress={seriesAddress} underlyingSymbol={symbol} view="positions" />
             <MyOrders seriesAddress={seriesAddress} claimDecimals={unitsCompatible ? underlyingDecimals : null} />
           </div>
-
-          <RiskSplitScenario
-            scenarioPrice={scenarioPrice}
-            onChangeScenarioPrice={setChosenScenarioPrice}
-            selectedClaim={selectedClaim}
-            floorE8={floorE8}
-            capE8={capE8}
-            stockSymbol={symbol}
-            stockName={name}
-            maxAxis={Math.max(1600, Math.ceil(stockPriceUsd * 2.5), Math.ceil(cap * 2.2))}
-          />
-
           {/* Disclosures: Payoff & Terms, Contract Details */}
           <section className={styles.disclosureSection} aria-label="Technical details and terms">
             <details className={styles.disclosureItem}>
@@ -333,7 +312,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
           <div className={styles.walletActionPanel}>
             <div className={styles.walletActionTabs} role="group" aria-label="Wallet action">
               <button type="button" aria-pressed={walletTab === "trade"} className={walletTab === "trade" ? styles.walletActionTabActive : ""} onClick={() => setWalletTab("trade")}>Trade</button>
-              <button type="button" aria-pressed={walletTab === "manage"} className={walletTab === "manage" ? styles.walletActionTabActive : ""} onClick={() => setWalletTab("manage")}>Manage</button>
+              <button type="button" aria-pressed={walletTab === "manage"} className={walletTab === "manage" ? styles.walletActionTabActive : ""} onClick={() => { setWalletTab("manage"); setManageTab(activeSeries.isSettled ? "redeem" : "combine"); }}>Redeem / claim</button>
             </div>
             <div className={styles.walletActionBody} hidden={walletTab !== "trade"}>
               <div className={styles.mobileClaimPick}>
@@ -341,7 +320,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
                   <button type="button" aria-pressed={selectedClaim === "protected"} className={selectedClaim === "protected" ? styles.mobileClaimActive : ""} onClick={() => handleSelectClaim("protected")}>Protected</button>
                   <button type="button" aria-pressed={selectedClaim === "upside"} className={selectedClaim === "upside" ? styles.mobileClaimActive : ""} onClick={() => handleSelectClaim("upside")}>Upside</button>
                 </div>
-                <p>{selectedClaim === "protected" ? "More stock value at lower prices. Loss is still possible." : "More stock value as the price rises."}</p>
+                <p>{selectedClaim === "protected" ? "First share at lower stock prices. You can still lose money." : "More value as the stock rises. Can finish at zero."}</p>
               </div>
               <OrderTicket
                 seriesAddress={seriesAddress}
@@ -350,6 +329,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
                 claimDecimals={unitsCompatible ? underlyingDecimals : null}
                 symbol={symbol}
                 seriesExpiryTimestamp={activeSeries.expiryTimestamp}
+                tradingClosed={settledOrExpired}
                 scenarioPrice={scenarioPrice}
                 scenarioPayoffPerClaim={scenarioPayoffPerClaim}
                 selectedOrder={activeSelectedOrder}
@@ -369,9 +349,10 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
             <div className={styles.walletActionBody} hidden={walletTab !== "manage"}>
               <div className={styles.manageActionTabs} role="group" aria-label="Manage claims">
                 <button type="button" aria-pressed={manageTab === "deposit"} className={manageTab === "deposit" ? styles.manageActionTabActive : ""} onClick={() => setManageTab("deposit")}>Deposit</button>
-                <button type="button" aria-pressed={manageTab === "claim"} className={manageTab === "claim" ? styles.manageActionTabActive : ""} onClick={() => setManageTab("claim")}>Claim</button>
+                <button type="button" aria-pressed={manageTab === "combine"} className={manageTab === "combine" ? styles.manageActionTabActive : ""} onClick={() => setManageTab("combine")}>Combine pair</button>
+                <button type="button" aria-pressed={manageTab === "redeem"} className={manageTab === "redeem" ? styles.manageActionTabActive : ""} onClick={() => setManageTab("redeem")}>Redeem claim</button>
               </div>
-              <RiskSplitActionPanel seriesAddress={seriesAddress} underlyingSymbol={symbol} view={manageTab} />
+              <RiskSplitActionPanel seriesAddress={seriesAddress} underlyingSymbol={symbol} view={manageTab === "deposit" ? "deposit" : "claim"} claimMode={manageTab === "redeem" ? "redeem" : "combine"} />
             </div>
           </div>
         </div>

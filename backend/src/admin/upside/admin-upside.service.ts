@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { UpsideService } from '../../upside/upside.service';
@@ -22,11 +23,10 @@ import {
   encodeFunctionData,
   formatUnits,
   getAddress,
-  http,
   isAddress,
   parseAbi,
 } from 'viem';
-import { rpcUrlForChain } from '../../config/network-runtime';
+import { rpcTransportForChain } from '../../config/network-runtime';
 
 const CHAINLINK_AGGREGATOR_ABI = parseAbi([
   'function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
@@ -43,30 +43,48 @@ export class AdminUpsideService {
   ) {}
 
   private createClient(chainId: number) {
-    const rpcUrl = rpcUrlForChain(chainId);
-    if (!rpcUrl) return null;
-    return createPublicClient({ transport: http(rpcUrl) });
+    const transport = rpcTransportForChain(chainId);
+    if (!transport) return null;
+    return createPublicClient({ transport });
   }
 
   getFactoryAddress(chainId: number): `0x${string}` {
-    const envAddr = process.env.UPSIDE_FACTORY_ADDRESS || process.env.NEXT_PUBLIC_UPSIDE_FACTORY_ADDRESS;
+    const envAddr = process.env.UPSIDE_FACTORY_ADDRESS?.trim();
     if (envAddr && isAddress(envAddr) && !/^0x0{40}$/i.test(envAddr)) {
       return getAddress(envAddr);
     }
-    // Fallback pinned address or standard deterministic deployment
-    return '0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9';
+    throw new ServiceUnavailableException(`Upside factory is not configured for chain ${chainId}. Deploy it and set UPSIDE_FACTORY_ADDRESS.`);
   }
 
-  getAdapterAddress(chainId: number, symbol: string): `0x${string}` {
-    const envAddr = process.env.UPSIDE_ADAPTER_ADDRESS || process.env.NEXT_PUBLIC_UPSIDE_ADAPTER_ADDRESS;
+  getAdapterAddress(chainId: number): `0x${string}` {
+    const envAddr = process.env.UPSIDE_SETTLEMENT_ADAPTER_ADDRESS?.trim();
     if (envAddr && isAddress(envAddr) && !/^0x0{40}$/i.test(envAddr)) {
       return getAddress(envAddr);
     }
-    return '0xF62849F9A0B5Bf2913b396098F7c7019b51A820a';
+    throw new ServiceUnavailableException(`Upside adapter is not configured for chain ${chainId}. Deploy it and set UPSIDE_SETTLEMENT_ADAPTER_ADDRESS.`);
   }
 
   async previewRound(dto: AdminUpsideRoundPreviewRequest): Promise<AdminUpsideRoundPreviewResponse> {
     const chainId = dto.chainId || 8453;
+    const nowSecs = Math.floor(Date.now() / 1000);
+    if (dto.expiryTimestamp <= nowSecs) {
+      throw new BadRequestException('Expiry timestamp must be strictly in the future');
+    }
+    const factoryAddress = this.getFactoryAddress(chainId);
+    const adapterAddress = this.getAdapterAddress(chainId);
+    const client = this.createClient(chainId);
+    if (!client) throw new ServiceUnavailableException(`No RPC configured for chain ${chainId}`);
+    for (const [label, address] of [['Upside factory', factoryAddress], ['Upside adapter', adapterAddress]] as const) {
+      let code: string | undefined;
+      try {
+        code = await client.getCode({ address });
+      } catch {
+        throw new ServiceUnavailableException(`Could not verify ${label} deployment on chain ${chainId}. Check the configured RPC.`);
+      }
+      if (!code || code === '0x') {
+        throw new ServiceUnavailableException(`${label} at ${address} has no contract code on chain ${chainId}. Check the configured deployment address.`);
+      }
+    }
     const underlyingNorm = dto.underlying.toLowerCase();
 
     // Verify token catalog
@@ -78,8 +96,6 @@ export class AdminUpsideService {
     const symbol = config?.symbol || 'ASSET';
     const decimals = config?.tokenDecimals || 8;
     const feedAddress = config?.feedAddress || '0x0000000000000000000000000000000000000000';
-
-    const client = this.createClient(chainId);
 
     let referenceRoundId = '100';
     let referencePriceBig = 500_00000000n; // $500 default
@@ -99,7 +115,8 @@ export class AdminUpsideService {
           referenceTime = Number(roundData[3]);
         }
       } catch (err) {
-        this.logger.warn(`Failed reading live Chainlink feed ${feedAddress}: ${err}`);
+        const reason = err instanceof Error ? err.message.replace(/https?:\/\/[^\s)\]}]+/g, '[RPC URL]').slice(0, 500) : 'Unknown RPC error';
+        this.logger.warn(`Failed reading live Chainlink feed ${feedAddress}: ${reason}`);
       }
     }
 
@@ -122,10 +139,6 @@ export class AdminUpsideService {
     }
 
     // Calendar check: Expiry must be in future
-    const nowSecs = Math.floor(Date.now() / 1000);
-    if (dto.expiryTimestamp <= nowSecs) {
-      throw new BadRequestException('Expiry timestamp must be strictly in the future');
-    }
 
     // Default expected move: 5% of reference price, rounded to 1e8 ($1.00)
     let expectedMoveBig: bigint;
@@ -179,9 +192,6 @@ export class AdminUpsideService {
       },
     ];
 
-    const factoryAddress = this.getFactoryAddress(chainId);
-    const adapterAddress = this.getAdapterAddress(chainId, symbol);
-
     const roundStart = dto.roundStart || nowSecs;
     const provenanceHash = `0x${'a'.repeat(64)}` as `0x${string}`;
 
@@ -203,7 +213,7 @@ export class AdminUpsideService {
       publicCreationEnabled: Boolean(dto.publicCreationEnabled),
     };
 
-    const registerTxData = encodeFunctionData({
+    encodeFunctionData({
       abi: upsideFactoryAbi,
       functionName: 'registerRound',
       args: [roundConfig],
@@ -215,7 +225,9 @@ export class AdminUpsideService {
         target: factoryAddress,
         chainId,
         method: 'registerRound',
-        args: [roundConfig],
+        args: [Object.fromEntries(
+          Object.entries(roundConfig).map(([key, value]) => [key, typeof value === 'bigint' ? value.toString() : value]),
+        )],
         expectedState: 'totalRounds increments by 1',
       },
     ];

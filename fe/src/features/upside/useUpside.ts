@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAccount } from 'wagmi';
 import { fetchApi } from '@/lib/api';
+import { bookPollingOptions, type BookPollingMode } from '../markets/bookPolling';
 import {
   UpsideAssetsResponse,
   UpsideMarketModel,
@@ -58,18 +59,26 @@ export function useUpsideOrderbook(
   chainId: number = 8453,
   seriesAddress?: string,
   claimType: 'UPSIDE' | 'RESIDUAL' = 'UPSIDE',
+  mode: BookPollingMode = 'live',
 ) {
-  return useQuery<UpsideOrderBookDepth>({
+  const query = useQuery<UpsideOrderBookDepth>({
     queryKey: ['upside-orderbook', chainId, seriesAddress?.toLowerCase(), claimType],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchApi<UpsideOrderBookDepth>(
         `/v1/upside/orderbook/${seriesAddress}/${claimType}?chainId=${chainId}`,
+        { signal },
       ),
     enabled: Boolean(seriesAddress),
-    staleTime: 2_000,
-    refetchInterval: 3_000,
+    ...bookPollingOptions(mode),
   });
+  return {
+    ...query,
+    // Keep the failure visible through background retries until a fetch succeeds.
+    isUnavailable: query.isError || query.errorUpdatedAt > query.dataUpdatedAt,
+  };
 }
+
+export type UpsideBookQuery = ReturnType<typeof useUpsideOrderbook>;
 
 export function useUpsideUserOrders(chainId: number = 8453, userAddress?: string) {
   return useQuery<{ data: UpsideStoredOrderModel[] }>({

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AdminUpsideService } from './admin-upside.service';
 
 describe('AdminUpsideService', () => {
@@ -6,14 +6,41 @@ describe('AdminUpsideService', () => {
   let mockDb: any;
 
   beforeEach(() => {
+    vi.stubEnv('UPSIDE_FACTORY_ADDRESS', '0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9');
+    vi.stubEnv('UPSIDE_SETTLEMENT_ADAPTER_ADDRESS', '0xF62849F9A0B5Bf2913b396098F7c7019b51A820a');
     mockDb = {
       query: vi.fn(),
     };
     service = new AdminUpsideService(mockDb);
+    vi.spyOn(service as any, 'createClient').mockReturnValue({
+      getCode: vi.fn().mockResolvedValue('0x6000'),
+      readContract: vi.fn().mockResolvedValue([100n, 500_00000000n, 0n, BigInt(Math.floor(Date.now() / 1000)), 100n]),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   describe('previewRound', () => {
     const underlying = '0xb200000000000000000000ab99cfa739e253872b'; // MSFTc
+
+    it('rejects a missing Upside deployment before returning transaction instructions', async () => {
+      vi.stubEnv('UPSIDE_FACTORY_ADDRESS', '');
+      await expect(service.previewRound({
+        underlying,
+        expiryTimestamp: Math.floor(Date.now() / 1000) + 86400,
+      })).rejects.toThrow('UPSIDE_FACTORY_ADDRESS');
+    });
+
+    it('rejects an Upside factory address with no contract code', async () => {
+      vi.mocked((service as any).createClient().getCode).mockResolvedValueOnce(undefined);
+      await expect(service.previewRound({
+        underlying,
+        expiryTimestamp: Math.floor(Date.now() / 1000) + 86400,
+      })).rejects.toThrow('no contract code');
+    });
 
     it('rejects round preview if expiry is in the past', async () => {
       const pastExpiry = Math.floor(Date.now() / 1000) - 3600;
@@ -67,6 +94,8 @@ describe('AdminUpsideService', () => {
       expect(preview.transactions.length).toBe(1);
       expect(preview.transactions[0].method).toBe('registerRound');
       expect(preview.transactions[0].target.startsWith('0x')).toBe(true);
+      expect(() => JSON.stringify(preview)).not.toThrow();
+      expect(preview.transactions[0].args[0].referencePrice).toBe('50000000000');
     });
 
     it('flags calendar warning if expiry falls on weekend', async () => {

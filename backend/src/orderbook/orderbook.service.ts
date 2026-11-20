@@ -27,6 +27,7 @@ import {
 import {
   createPublicClient,
   decodeEventLog,
+  fallback,
   formatUnits,
   getAddress,
   hashTypedData,
@@ -52,6 +53,19 @@ const ERC20_ABI = parseAbi([
   'function decimals() view returns (uint8)',
 ]);
 
+function verificationErrorReason(error: unknown): string {
+  const reasons: string[] = [];
+  let current = error;
+  for (let depth = 0; depth < 4 && current instanceof Error; depth++) {
+    const detail = current as Error & { shortMessage?: string; details?: string };
+    reasons.push(`${detail.name}: ${detail.details || detail.shortMessage || detail.name}`);
+    current = detail.cause;
+  }
+  return (reasons.join(' <- ') || 'Unknown verification error')
+    .replace(/https?:\/\/[^\s)\]}]+/g, '[RPC URL]')
+    .slice(0, 600);
+}
+
 @Injectable()
 export class OrderbookService {
   private readonly logger = new Logger(OrderbookService.name);
@@ -65,7 +79,11 @@ export class OrderbookService {
   private createVenueClient(chainId: number) {
     const rpcUrl = rpcUrlForChain(chainId);
     if (!rpcUrl) throw new ServiceUnavailableException('Chain RPC unavailable for order verification');
-    return createPublicClient({ transport: http(rpcUrl) });
+    const secondaryUrl = chainId === BASE_MAINNET_CHAIN_ID ? process.env.RPC_URL_SECONDARY : undefined;
+    const transport = secondaryUrl && secondaryUrl !== rpcUrl
+      ? fallback([http(rpcUrl), http(secondaryUrl)], { retryCount: 1 })
+      : http(rpcUrl);
+    return createPublicClient({ transport });
   }
 
   private async getClaimDecimals(chainId: number, claimToken: string): Promise<number> {
@@ -275,10 +293,9 @@ export class OrderbookService {
     }
 
     // 9. Onchain balance and allowance verification
-    const rpcUrl = rpcUrlForChain(chainId);
-    if (rpcUrl && process.env.NODE_ENV !== 'test') {
+    if (process.env.NODE_ENV !== 'test') {
       try {
-        const client = createPublicClient({ transport: http(rpcUrl) });
+        const client = this.createVenueClient(chainId);
         const [balance, allowance] = await Promise.all([
           client.readContract({
             address: getAddress(order.makerToken),
@@ -405,11 +422,14 @@ export class OrderbookService {
     const recentTrades: OrderBookTrade[] = [];
 
     if (!series.isSettled && series.expiryTimestamp > Math.floor(Date.now() / 1000)) {
+      let verificationStep = 'claim token decimals';
+      let activeOrderHash: string | undefined;
       try {
         const claimDecimals = await this.getClaimDecimals(chainId, claimToken);
         const nowSecs = Math.floor(Date.now() / 1000);
 
         // Fetch fillable orders
+        verificationStep = 'fillable orders query';
         const ordersRes = await this.db.query(
           `SELECT * FROM risk_split_orders
            WHERE chain_id = $1 AND LOWER(series_address) = $2 AND claim_type = $3
@@ -429,7 +449,9 @@ export class OrderbookService {
         const client = this.createVenueClient(chainId);
         const reservedMakerFunds = new Map<string, bigint>();
         for (const row of ordersRes.rows || []) {
+          activeOrderHash = row.order_hash;
           const order = this.orderFromRow(row);
+          verificationStep = 'onchain order status';
           const onchain = await client.readContract({
             address: ZERO_EX_EXCHANGE_PROXY_BASE,
             abi: ZERO_EX_LIMIT_ORDER_ABI,
@@ -443,6 +465,7 @@ export class OrderbookService {
           const makerKey = `${row.maker_address.toLowerCase()}:${row.maker_token.toLowerCase()}`;
           let available = reservedMakerFunds.get(makerKey);
           if (available === undefined) {
+            verificationStep = 'maker balance and allowance';
             const [balance, allowance] = await Promise.all([
               client.readContract({ address: getAddress(row.maker_token), abi: ERC20_ABI, functionName: 'balanceOf', args: [getAddress(row.maker_address)] }),
               client.readContract({ address: getAddress(row.maker_token), abi: ERC20_ABI, functionName: 'allowance', args: [getAddress(row.maker_address), ZERO_EX_EXCHANGE_PROXY_BASE] }),
@@ -510,6 +533,8 @@ export class OrderbookService {
         }
 
         // Fetch recent trades
+        activeOrderHash = undefined;
+        verificationStep = 'recent trades query';
         const tradesRes = await this.db.query(
           `SELECT * FROM risk_split_trades
            WHERE chain_id = $1 AND LOWER(series_address) = $2 AND claim_type = $3
@@ -534,7 +559,10 @@ export class OrderbookService {
           });
         }
       } catch (err) {
-        this.logger.warn(`Failed to construct orderbook: ${err}`);
+        this.logger.warn(
+          `Failed to construct orderbook chain=${chainId} series=${normSeries} claim=${claimType} step=${verificationStep}` +
+          `${activeOrderHash ? ` order=${activeOrderHash}` : ''}: ${verificationErrorReason(err)}`
+        );
         throw new ServiceUnavailableException('Could not verify executable order book');
       }
     }

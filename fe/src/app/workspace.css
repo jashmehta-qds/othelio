@@ -28,6 +28,36 @@
   background: var(--canvas);
 }
 
+/* Trading uses the same shell and design tokens as the rest of the app.
+   Only reserve space for the phone ticket and its navigation. */
+@media (max-width: 760px) {
+  .bank-app[data-layout="trading"] .bank-content { padding: 0 16px calc(520px + env(safe-area-inset-bottom)); }
+  .bank-app[data-layout="trading"] .mobile-header { padding-block: 16px; margin-bottom: 16px; }
+  .bank-app[data-layout="trading"] .mobile-nav {
+    height: calc(58px + env(safe-area-inset-bottom));
+    min-height: 0;
+    padding: 0 8px env(safe-area-inset-bottom);
+  }
+  .bank-app[data-layout="trading"] .mobile-nav :is(a, button) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    gap: 4px;
+    padding: 4px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted-ink);
+    font: inherit;
+    font-size: 10px;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .bank-app[data-layout="trading"] .mobile-nav .active { background: var(--accent-soft); color: var(--accent); }
+}
+
 .ui-dialog * {
   box-sizing: border-box;
 }
@@ -159,7 +189,16 @@
   border-radius: 8px;
 }
 
-.ui-skip-link:focus {
+.ui-skip-link:not(:focus-visible) {
+  clip-path: inset(50%);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ui-skip-link:focus-visible {
   top: 16px;
 }
 

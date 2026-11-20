@@ -16,6 +16,7 @@ import { parseUnits, formatUnits, getAddress, parseAbi, maxUint256 } from "viem"
 import { BookLevel } from "./useRiskSplitBook";
 import { computeSingleOrderTrade, formatSignedDifference } from "./tradeTicketLogic";
 import styles from "./RiskSplitMarkets.module.css";
+import { WalletConnectModal } from "@/components/WalletConnectModal";
 
 const ERC20_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
@@ -32,6 +33,7 @@ interface OrderTicketProps {
   claimDecimals: number | null;
   symbol: string;
   seriesExpiryTimestamp: number;
+  tradingClosed: boolean;
   scenarioPrice: number;
   scenarioPayoffPerClaim: number;
   selectedOrder: BookLevel | null;
@@ -49,6 +51,7 @@ export function OrderTicket({
   claimDecimals,
   symbol,
   seriesExpiryTimestamp,
+  tradingClosed,
   scenarioPrice,
   scenarioPayoffPerClaim,
   selectedOrder,
@@ -143,6 +146,14 @@ export function OrderTicket({
   const requiredUnits = isBuy ? totalUsdcUnits : claimUnits;
   const needsApproval = isConnected && userAllowance < requiredUnits && requiredUnits > BigInt(0);
 
+  const ensureTradingOpen = () => {
+    if (tradingClosed || Math.floor(Date.now() / 1000) >= seriesExpiryTimestamp) {
+      setErrorMessage("Trading has ended for this market.");
+      return false;
+    }
+    return true;
+  };
+
   const handleMax = () => {
     if (!isLimitMode && selectedOrder) {
       const availableInOrder = parseFloat(selectedOrder.amountClaim) || 0;
@@ -173,6 +184,7 @@ export function OrderTicket({
   };
 
   const handleApprove = async () => {
+    if (!ensureTradingOpen()) return;
     setErrorMessage(null);
     try {
       if (!publicClient) throw new Error("Wallet RPC is unavailable");
@@ -197,6 +209,7 @@ export function OrderTicket({
   };
 
   const handleFillOrder = async () => {
+    if (!ensureTradingOpen()) return;
     if (!address || !isConnected) {
       setErrorMessage("Please connect your wallet first.");
       return;
@@ -235,6 +248,7 @@ export function OrderTicket({
       }
 
       const fillData = await buildRes.json();
+      if (!ensureTradingOpen()) return;
       setStatusMessage("Confirming fill transaction in wallet…");
 
       const txHash = await writeContractAsync({
@@ -273,6 +287,7 @@ export function OrderTicket({
   };
 
   const handlePlaceLimitOrder = async () => {
+    if (!ensureTradingOpen()) return;
     if (!address || !isConnected) {
       setErrorMessage("Please connect your wallet first.");
       return;
@@ -335,6 +350,7 @@ export function OrderTicket({
         s: ("0x" + rawSig.slice(66, 130)) as `0x${string}`,
       };
 
+      if (!ensureTradingOpen()) return;
       setStatusMessage("Broadcasting order to order book…");
 
       const res = await fetch(`${API_BASE}/v1/orders`, {
@@ -365,10 +381,26 @@ export function OrderTicket({
     }
   };
 
+  const [showConnect, setShowConnect] = useState(false);
   const isBusy = isSigning || isTxPending || isWaitingReceipt;
 
+  if (tradingClosed) {
+    return (
+      <aside className={styles.ticketCard} aria-label="Trade ticket">
+        <h2 className={styles.ticketTitle}>Trading ended</h2>
+        <p className={styles.ticketExplain}>
+          This market is no longer open for buying or selling. You can still explore
+          payout examples, or use Manage to check settlement and claim eligibility.
+        </p>
+        <button type="button" disabled className={`ui-button ${styles.primaryActionBtn}`}>
+          Trading ended
+        </button>
+      </aside>
+    );
+  }
+
   return (
-    <aside className={styles.ticketCard} aria-label="Trade ticket">
+    <aside className={styles.ticketCard} aria-label="Trade ticket" data-order-type={isLimitMode ? "limit" : "market"}>
       {/* Side Toggle: Buy / Sell */}
       <div className={styles.ticketSideToggle} role="group" aria-label="Trade direction">
         <button
@@ -390,52 +422,18 @@ export function OrderTicket({
       </div>
 
       <h2 className={styles.ticketTitle}>
-        {claimLabel}
+        {isBuy ? "Buy" : "Sell"} {claimLabel}
       </h2>
       <div className={styles.ticketModeRow}>
-        <span>Order type</span>
         <div className={styles.ticketModeToggle} role="group" aria-label="Order type">
           <button type="button" className={!isLimitMode ? styles.ticketModeActive : ""} aria-pressed={!isLimitMode} onClick={() => { setIsLimitMode(false); setErrorMessage(null); }}>Market</button>
           <button type="button" className={isLimitMode ? styles.ticketModeActive : ""} aria-pressed={isLimitMode} onClick={() => { setIsLimitMode(true); setErrorMessage(null); }}>Limit</button>
         </div>
       </div>
-      {/* Available Balance in Wallet */}
-      <div className={styles.ticketBalanceRow}>
-        <span>In wallet:</span>
-        <b>
-          {userBalanceStr} {isBuy ? "USDC" : `${claimLabel} claims`}
-        </b>
-      </div>
-
-      {/* Selected Order Info (in fill mode) */}
-      {!isLimitMode && (
-        <div className={styles.selectedOrderBanner}>
-          {selectedOrder ? (
-            <div className={styles.selectedOrderContent}>
-              <span>
-                <b>{selectedOrder.amountClaim} claims</b> at <b>${selectedOrder.priceUsd}</b>
-              </span>
-              <span className={styles.selectedOrderTip}>Fills one order. Select another in the book.</span>
-            </div>
-          ) : isBookLoading ? (
-            <div className={styles.ticketOrderSkeleton} role="status" aria-label="Loading best available price">
-              <span className={styles.numberSkeleton} /><span className={styles.numberSkeletonShort} />
-            </div>
-          ) : (
-            <div className={styles.noOrderBanner}>
-              <span>{isBookError ? "Book offline. Market orders unavailable." : `No ${isBuy ? "offers" : "bids"}. Try a limit order.`}</span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Amount Input */}
       <div className={styles.ticketField}>
         <div className={styles.ticketFieldHeader}>
-          <label htmlFor="ticket-amount">Amount</label>
-          <button type="button" onClick={handleMax} className={styles.maxLink}>
-            Max
-          </button>
+          <label htmlFor="ticket-amount">Quantity</label>
         </div>
         <div className={styles.ticketInputWrapper}>
           <input
@@ -448,9 +446,14 @@ export function OrderTicket({
             onChange={(e) => setAmountClaimsInput(e.target.value)}
             inputMode="decimal"
           />
-          <span className={styles.ticketInputUnit}>claims</span>
+          <span className={styles.ticketInputUnit}>{claimLabel} claims</span>
+          <button type="button" onClick={handleMax} className={styles.maxLink}>
+            Max
+          </button>
         </div>
       </div>
+
+      <div className={styles.ticketBalanceRow}><span>Available: {userBalanceStr} {isBuy ? "USDC" : `${claimLabel} claims`}</span></div>
 
       {/* Capped Warning if user asks for more than selected order */}
       {!isLimitMode && fillMetrics.isCapped && (
@@ -484,18 +487,22 @@ export function OrderTicket({
         </div>
       )}
 
+      {!isLimitMode && !selectedOrder && <p className={styles.limitDisclaimer} role="status">{isBookLoading ? "Finding available prices…" : isBookError ? "Prices unavailable. Try again shortly." : `No ${isBuy ? "offers" : "bids"} yet. Choose Limit to leave an order.`}</p>}
       {/* Financial Summary */}
       <div className={styles.ticketSummary}>
-        <div className={styles.summaryRow}>
+        <div className={`${styles.summaryRow} ${styles.priceSummary}`}>
           <span>{isLimitMode ? "Limit price" : isBuy ? "Buy price" : "Sell price"}</span>
           <b>{isLimitMode ? (limitPriceNum ? `$${limitPriceNum.toFixed(2)}` : "—") : isBookLoading ? <span className={styles.numberSkeleton} role="status" aria-label="Loading price" /> : selectedOrder ? `$${fillMetrics.priceUsd}` : "—"}</b>
         </div>
-        <div className={styles.summaryRow}>
+        <div className={`${styles.summaryRow} ${styles.totalSummary}`}>
           <span>{isBuy ? "You pay" : "You receive"}</span>
           <b>{totalDisplay}</b>
         </div>
+      </div>
+      <details className={styles.ticketPayout}>
+        <summary>Trade outcome details</summary>
         <div className={`${styles.summaryRow} ${styles.summaryHighlight}`}>
-          <span>Value at ${scenarioPrice.toFixed(0)}</span>
+          <span>Value if stock ends at ${scenarioPrice.toFixed(2)}</span>
           <b>{scenarioDisplay}</b>
         </div>
         <div className={styles.summaryRow}>
@@ -510,13 +517,7 @@ export function OrderTicket({
               : "—"}
           </b>
         </div>
-      </div>
-
-      <p className={styles.ticketExplain}>
-        {isBuy
-          ? `Max loss: amount paid. Redeems in ${symbol}.`
-          : `Selling gives up this claim’s ${symbol} payout.`}
-      </p>
+      </details>
 
       {/* Messages */}
       {statusMessage && <div className={styles.statusBox}>{statusMessage}</div>}
@@ -525,7 +526,7 @@ export function OrderTicket({
       {/* Primary Action Button */}
       <div className={styles.ticketActionArea}>
         {!isConnected ? (
-          <div className={styles.disconnectedNote}>Connect wallet to trade</div>
+          <button type="button" className={`ui-button ${styles.primaryActionBtn}`} onClick={() => setShowConnect(true)}>Connect wallet</button>
         ) : needsApproval ? (
           <button
             type="button"
@@ -574,6 +575,8 @@ export function OrderTicket({
         )}
       </div>
 
+      <p className={styles.ticketExplain}>{isBuy ? "Full amount at risk" : "Selling gives up the payout"} · Pays in {symbol}, not cash</p>
+      <WalletConnectModal isOpen={showConnect} onClose={() => setShowConnect(false)} />
     </aside>
   );
 }

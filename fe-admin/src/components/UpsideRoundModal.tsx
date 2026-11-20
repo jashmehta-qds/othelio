@@ -8,13 +8,13 @@ import {
 } from '@othelio/shared';
 import { adminApi } from '../lib/api';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
+import { parseEventLogs } from 'viem';
 
 interface UpsideRoundModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   assets: AdminAssetItem[];
-  factoryAddress?: string;
   isOwner: boolean;
   chainId: number;
 }
@@ -24,7 +24,6 @@ export function UpsideRoundModal({
   onClose,
   onSuccess,
   assets,
-  factoryAddress,
   isOwner,
   chainId,
 }: UpsideRoundModalProps) {
@@ -71,6 +70,7 @@ export function UpsideRoundModal({
     let isMounted = true;
     const loadPreview = async () => {
       setIsLoadingPreview(true);
+      setPreview(null);
       setPreviewError(null);
       try {
         const expiryTimestamp = computeExpiryTimestamp(expiryDays);
@@ -108,7 +108,27 @@ export function UpsideRoundModal({
 
     try {
       const txPreview = preview.transactions[0];
-      const targetFactory = (factoryAddress || preview.factoryAddress) as `0x${string}`;
+      const targetFactory = preview.factoryAddress as `0x${string}`;
+      if (await publicClient.getChainId() !== chainId) {
+        throw new Error(`Wallet RPC is on the wrong chain. Switch to chain ${chainId}.`);
+      }
+      const factoryCode = await publicClient.getCode({ address: targetFactory });
+      if (!factoryCode || factoryCode === '0x') {
+        throw new Error(`Upside factory at ${targetFactory} has no contract code on chain ${chainId}. Configure a deployed factory before launching.`);
+      }
+      const roundConfig = txPreview.args[0];
+      const registerArgs = [{
+        ...roundConfig,
+        referenceRoundId: BigInt(roundConfig.referenceRoundId),
+        referencePrice: BigInt(roundConfig.referencePrice),
+        referenceTime: BigInt(roundConfig.referenceTime),
+        roundStart: BigInt(roundConfig.roundStart),
+        expiryTimestamp: BigInt(roundConfig.expiryTimestamp),
+        expectedMove: BigInt(roundConfig.expectedMove),
+        strikeTick: BigInt(roundConfig.strikeTick),
+        minStrike: BigInt(roundConfig.minStrike),
+        maxStrike: BigInt(roundConfig.maxStrike),
+      }] as const;
 
       // Step 1: registerRound
       setStepStatus('Sending registerRound to UpsideFactory...');
@@ -116,7 +136,7 @@ export function UpsideRoundModal({
         address: targetFactory,
         abi: upsideFactoryAbi,
         functionName: 'registerRound',
-        args: txPreview.args as any,
+        args: registerArgs,
       });
 
       setStepStatus('Waiting for registerRound confirmation...');
@@ -125,13 +145,10 @@ export function UpsideRoundModal({
         throw new Error('registerRound transaction reverted');
       }
 
-      // Read totalRounds from factory to get the newly created roundId
-      const totalRounds = await publicClient.readContract({
-        address: targetFactory,
-        abi: upsideFactoryAbi,
-        functionName: 'totalRounds',
-      });
-      const newRoundId = totalRounds;
+      const registered = parseEventLogs({ abi: upsideFactoryAbi, logs: registerReceipt.logs, eventName: 'RoundRegistered' })
+        .find((event) => event.address.toLowerCase() === targetFactory.toLowerCase());
+      if (!registered) throw new Error(`Registration transaction ${registerHash} succeeded but emitted no Upside RoundRegistered event.`);
+      const newRoundId = registered.args.roundId;
 
       // Step 2: createMarket for each of the 4 strikes
       for (let i = 0; i < preview.strikes.length; i++) {
