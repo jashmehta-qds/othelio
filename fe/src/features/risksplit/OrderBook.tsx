@@ -42,6 +42,7 @@ export function OrderBook({
 
   const claimLabel = claimType === "protected" ? "Protected" : "Upside";
   const hasMoreLevels = bids.length > initialDepth || asks.length > initialDepth;
+  const isEmpty = !isLoading && !isError && bids.length === 0 && asks.length === 0;
 
   return (
     <div className={styles.bookWrapper}>
@@ -66,8 +67,17 @@ export function OrderBook({
         </div>
       )}
 
+      {isEmpty && (
+        <div className={styles.bookEmptyState} role="status">
+          <span className={styles.bookEmptyIcon} aria-hidden="true">≡</span>
+          <strong>No orders for {claimLabel} yet</strong>
+          <p>There are no bids or asks. Choose Limit in the trade panel to set your price and wait for a match.</p>
+          <span>No market trades until a matching order is available.</span>
+        </div>
+      )}
+
       {/* Ladder Grid */}
-      {!isError && <div className={styles.bookGrid} aria-busy={isLoading}>
+      {!isError && !isEmpty && <div className={styles.bookGrid} aria-busy={isLoading}>
         {/* Buyers Side (Bids) */}
         <div className={styles.bookColumn}>
           <div className={styles.bookColumnHeader}>

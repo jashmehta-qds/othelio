@@ -353,9 +353,11 @@
   color: var(--ink);
   border-radius: 10px;
   padding: 12px 14px;
-  min-height: 108px;
+  min-height: 48px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   justify-content: space-between;
   cursor: pointer;
   transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
@@ -378,7 +380,7 @@
 }
 
 .claimSideName {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -400,7 +402,7 @@
 }
 
 .claimSideQuote {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted-ink);
   font-variant-numeric: tabular-nums;
 }
@@ -412,6 +414,32 @@
   letter-spacing: -0.02em;
   margin-top: 2px;
 }
+
+.claimTerms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 12px;
+  color: var(--muted-ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.claimTerms strong { color: var(--ink); font-weight: 600; }
+.claimRiskNote { color: var(--muted-ink); font-size: 11px; line-height: 1.5; margin: 7px 0 0; }
+
+.scenarioDisclosure {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.scenarioDisclosure > summary { padding: 14px 16px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.scenarioDisclosure > summary span { margin-left: 12px; font-size: 11px; color: var(--muted-ink); font-weight: 400; }
+.scenarioDisclosure > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.scenarioDisclosure .scenarioCard { border: 0; border-radius: 0; border-top: 1px solid var(--line); margin: 0; }
 
 .numberSkeleton,
 .numberSkeletonShort {
@@ -650,7 +678,7 @@
 
 .workGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 38%);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 34%);
   gap: 18px;
   margin-bottom: 18px;
   align-items: start;
@@ -991,8 +1019,25 @@
 .bookWrapper {
   composes: panel from "@/components/ui/primitives.module.css";
   padding: 16px;
-  min-height: 228px;
+  min-height: 330px;
 }
+
+.bookEmptyState {
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--muted-ink);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.bookEmptyState strong { color: var(--ink); font-size: 15px; }
+.bookEmptyState p { max-width: 350px; margin: 0; }
+.bookEmptyState > span:last-child { font-size: 11px; }
+.bookEmptyIcon { font-size: 28px; color: var(--accent); }
 
 .bookHeaderRow {
   display: flex;
@@ -2171,7 +2216,7 @@
     transform: none !important;
   }
 }
-/* Mobile: compact choices and preview, then trade, then the open book. */
+/* Book first: compact side selector, order book, trade, optional payout. */
 @media (max-width: 800px) {
   .page { padding-inline: 0; }
   .workGrid { gap: 14px; }
@@ -2179,9 +2224,9 @@
   .marketTabPanel { order: 2; }
   .overviewPanel:not([hidden]) { display: contents; }
   .claimChoiceSection { order: 2; margin: 0; }
-  .scenarioCard { order: 3; }
+  .scenarioDisclosure { order: 5; margin: 0; }
   .ticketColumn { order: 4; }
-  .bookWrapper { order: 5; }
+  .bookWrapper { order: 3; }
   .disclosureSection { order: 6; }
   .marketTabPanel .claimChoiceSection { display: block; }
   .mobileClaimPick { display: none; }
@@ -2189,10 +2234,10 @@
   .claimChoiceHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .claimChoiceHead h2 { font-size: 15px; margin: 0 0 10px; }
   .claimChoiceHead p { display: none; }
-  .claimSideCard { padding: 12px; }
+  .claimSideCard { padding: 10px; flex-wrap: wrap; gap: 4px 8px; }
   .claimSideDesc { font-size: 12px; line-height: 1.5; }
   .claimSideBottom { grid-template-columns: 1fr; gap: 4px; }
-  .claimSideQuote { display: flex; justify-content: space-between; gap: 4px; align-items: baseline; font-size: 11px; }
+  .claimSideQuote { font-size: 11px; }
   .claimSideQuote b { font-size: 12px; margin: 0; }
   .scenarioControls { flex-direction: row; align-items: center; gap: 8px; }
   .scenarioLabel { flex: 1; font-size: 12px; }

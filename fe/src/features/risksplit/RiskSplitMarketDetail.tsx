@@ -215,38 +215,34 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
   return (
     <main className={`app-page-frame ${styles.page}`}>
       <Link href="/app/risk-split" className={styles.backLink}>← All markets</Link>
-
-
+      <header className={styles.detailHead}>
+        <div className={styles.detailIdentity}>
+          <StockLogo symbol={symbol} address={activeSeries.underlyingAddress} size={46} />
+          <div>
+            <h1>
+              {symbol}{" "}
+              <span className={asset?.status === "FRESH" ? styles.detailStockPrice : styles.detailStockPriceMuted}>
+                ({stockPriceFormatted})
+              </span>
+            </h1>
+            <p className={styles.detailSub}>
+              {name} · {settledOrExpired ? "Expired / settled" : "Open"}
+            </p>
+          </div>
+        </div>
+        <div className={styles.detailMeta}>
+          <div className={styles.detailExpiry}>
+            <span>Ends</span>
+            <strong>{formatExpiry(activeSeries.expiryTimestamp)}</strong>
+            <span className={styles.expiryTag}>
+              {formatRelativeExpiry(activeSeries.expiryTimestamp, nowSeconds)}
+            </span>
+          </div>
+        </div>
+      </header>
       {/* Market information and wallet actions share one workspace. */}
       <div className={styles.workGrid}>
         <div className={`${styles.marketColumn} ${marketTab !== "overview" ? styles.marketColumnCompact : ""}`}>
-          {/* 1. Header: stock reference, expiry, series status */}
-          <header className={styles.detailHead}>
-            <div className={styles.detailIdentity}>
-              <StockLogo symbol={symbol} address={activeSeries.underlyingAddress} size={46} />
-              <div>
-                <h1>
-                  {symbol}{" "}
-                  <span className={asset?.status === "FRESH" ? styles.detailStockPrice : styles.detailStockPriceMuted}>
-                    ({stockPriceFormatted})
-                  </span>
-                </h1>
-                <p className={styles.detailSub}>
-                  {name} · {settledOrExpired ? "Expired / settled" : "Open"}
-                </p>
-              </div>
-            </div>
-
-            <div className={styles.detailMeta}>
-              <div className={styles.detailExpiry}>
-                <span>Ends</span>
-                <strong>{formatExpiry(activeSeries.expiryTimestamp)}</strong>
-                <span className={styles.expiryTag}>
-                  {formatRelativeExpiry(activeSeries.expiryTimestamp, nowSeconds)}
-                </span>
-              </div>
-            </div>
-          </header>
           <div className={styles.marketViewTabs} role="tablist" aria-label="Market view" onKeyDown={handleMarketTabKeyDown}>
             <button type="button" id="market-overview-tab" role="tab" tabIndex={marketTab === "overview" ? 0 : -1} aria-controls="market-overview-panel" aria-selected={marketTab === "overview"} className={marketTab === "overview" ? styles.marketViewTabActive : ""} onClick={() => setMarketTab("overview")}>Overview</button>
             <button type="button" id="market-positions-tab" role="tab" tabIndex={marketTab === "positions" ? 0 : -1} aria-controls="market-positions-panel" aria-selected={marketTab === "positions"} className={marketTab === "positions" ? styles.marketViewTabActive : ""} onClick={() => setMarketTab("positions")}>Positions</button>
@@ -256,24 +252,15 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
               selectedClaim={selectedClaim}
               onSelectClaim={handleSelectClaim}
               protectedBestAsk={protectedBook.bestAsk}
-              protectedBestBid={protectedBook.bestBid}
               upsideBestAsk={upsideBook.bestAsk}
-              upsideBestBid={upsideBook.bestBid}
               protectedLoading={protectedBook.isLoading}
               upsideLoading={upsideBook.isLoading}
               protectedError={protectedBook.isError}
               upsideError={upsideBook.isError}
               stockSymbol={symbol}
-            />
-            <RiskSplitScenario
-              scenarioPrice={scenarioPrice}
-              onChangeScenarioPrice={setChosenScenarioPrice}
-              selectedClaim={selectedClaim}
-              floorE8={floorE8}
-              capE8={capE8}
-              stockSymbol={symbol}
-              referencePrice={stockPriceUsd}
-              maxAxis={Math.max(1, Math.ceil(stockPriceUsd * 2), Math.ceil(cap * 2.2))}
+              floor={floor}
+              cap={cap}
+              referencePrice={asset?.status === "FRESH" ? stockPriceUsd : undefined}
             />
             <OrderBook
               claimType={selectedClaim}
@@ -288,6 +275,19 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
               onRetry={() => void activeBook.refetch()}
               sequence={activeBook.sequence}
             />
+            <details className={styles.scenarioDisclosure}>
+              <summary>Payout preview <span>Explore ending stock prices</span></summary>
+              <RiskSplitScenario
+                scenarioPrice={scenarioPrice}
+                onChangeScenarioPrice={setChosenScenarioPrice}
+                selectedClaim={selectedClaim}
+                floorE8={floorE8}
+                capE8={capE8}
+                stockSymbol={symbol}
+                referencePrice={stockPriceUsd}
+                maxAxis={Math.max(1, Math.ceil(stockPriceUsd * 2), Math.ceil(cap * 2.2))}
+              />
+            </details>
           </div>
           <div id="market-positions-panel" role="tabpanel" aria-labelledby="market-positions-tab" hidden={marketTab !== "positions"} className={styles.marketTabPanel}>
             <RiskSplitActionPanel seriesAddress={seriesAddress} underlyingSymbol={symbol} view="positions" />
@@ -335,7 +335,7 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
           <div className={styles.walletActionPanel}>
             <div className={styles.walletActionTabs} role="group" aria-label="Wallet action">
               <button type="button" aria-pressed={walletTab === "trade"} className={walletTab === "trade" ? styles.walletActionTabActive : ""} onClick={() => setWalletTab("trade")}>Trade</button>
-              <button type="button" aria-pressed={walletTab === "manage"} className={walletTab === "manage" ? styles.walletActionTabActive : ""} onClick={() => setWalletTab("manage")}>Manage</button>
+              <button type="button" aria-pressed={walletTab === "manage"} className={walletTab === "manage" ? styles.walletActionTabActive : ""} onClick={() => { setWalletTab("manage"); setManageTab("claim"); }}>Redeem / claim</button>
             </div>
             <div className={styles.walletActionBody} hidden={walletTab !== "trade"}>
               <div className={styles.mobileClaimPick}>

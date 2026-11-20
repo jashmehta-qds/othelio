@@ -45,7 +45,7 @@ export function RiskSplitScenario({
   return (
     <section className={styles.scenarioCard} aria-labelledby="scenario-heading">
       <div className={styles.scenarioHead}>
-        <h2 id="scenario-heading">2. Payout preview</h2>
+        <h2 id="scenario-heading">Payout preview</h2>
         <span className={styles.scenarioSubtitle}>Per claim</span>
       </div>
 

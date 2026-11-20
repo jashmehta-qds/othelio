@@ -109,6 +109,9 @@ export function UpsideMarketDetail({
     );
 
   const strike = Number(activeMarket.strikePriceFormatted);
+  const targetChange = Number(currentPrice) > 0
+    ? (strike / Number(currentPrice) - 1) * 100
+    : null;
   const scenarioPrice =
     activeMarket.isSettled && activeMarket.settledPriceFormatted !== null
       ? Number(activeMarket.settledPriceFormatted)
@@ -157,10 +160,7 @@ export function UpsideMarketDetail({
         className={styles.targetsContainer}
         aria-label="Choose target price"
       >
-        <h2 className={styles.sectionTitle}>1. Pick a target</h2>
-        <p className={styles.helperText}>
-          Upside receives only the stock’s value above this price at the end.
-        </p>
+        <h2 className={styles.sectionTitle}>Target price</h2>
         <div className={styles.targetsGrid}>
           {roundMarkets.map((m) => (
             <button
@@ -181,7 +181,6 @@ export function UpsideMarketDetail({
       <div className={styles.workGrid}>
         <div className={styles.marketColumn}>
           <section className={styles.choicePanel}>
-            <h2 className={styles.sectionTitle}>2. Choose your side</h2>
             <div
               className={styles.sideChoices}
               role="group"
@@ -192,9 +191,8 @@ export function UpsideMarketDetail({
                 aria-pressed={claimType === "UPSIDE"}
                 onClick={() => setClaimType("UPSIDE")}
               >
-                <strong>Upside ↗</strong>
-                <span>Growth above ${strike.toFixed(2)}.</span>
-                <small>At or below target: zero.</small>
+                <strong>Upside</strong>
+                <span>Above ${strike.toFixed(2)} · uncapped</span>
               </button>
               <button
                 type="button"
@@ -202,15 +200,27 @@ export function UpsideMarketDetail({
                 onClick={() => setClaimType("RESIDUAL")}
               >
                 <strong>Remaining value</strong>
-                <span>Value up to ${strike.toFixed(2)}.</span>
-                <small>Loses value if the stock falls.</small>
+                <span>Up to ${strike.toFixed(2)}</span>
               </button>
             </div>
+            <p className={styles.helperText}>
+              Upside starts above ${strike.toFixed(2)}
+              {targetChange !== null && ` (${targetChange >= 0 ? "+" : ""}${targetChange.toFixed(1)}% from stock price)`}.
+              {" "}At or below target: zero. Remaining value falls with the stock.
+            </p>
+          </section>
+          <UpsideOrderBook
+            chainId={chainId}
+            seriesAddress={activeMarket.seriesAddress}
+            claimType={claimType}
+          />
+          <details className={`${styles.advanced} ${styles.payoutDisclosure}`}>
+            <summary>Payout preview <span>Explore ending stock prices</span></summary>
             <div className={styles.scenarioBox}>
               <h3>
                 {activeMarket.isSettled
                   ? "Payout at the settled stock price"
-                  : "What could 1 claim be worth?"}
+                  : "Value per claim"}
               </h3>
               {!activeMarket.isSettled && (
                 <div
@@ -273,7 +283,7 @@ export function UpsideMarketDetail({
                   : "An illustration, not a forecast."}
               </p>
             </div>
-          </section>
+          </details>
           <details className={styles.advanced}>
             <summary>Stock price history</summary>
             <UpsideChart
@@ -284,10 +294,6 @@ export function UpsideMarketDetail({
               strikePrice={strike}
             />
           </details>
-          <UpsideOrderBook
-            chainId={chainId}
-            seriesAddress={activeMarket.seriesAddress}
-          />
           <UpsideMyOrders
             chainId={chainId}
             seriesAddress={activeMarket.seriesAddress}
@@ -312,7 +318,7 @@ export function UpsideMarketDetail({
             }}
           />
           <details className={styles.advanced}>
-            <summary>Manage stock & claims</summary>
+            <summary>Redeem & manage claims</summary>
             <UpsideVaultPanel
               seriesAddress={activeMarket.seriesAddress}
               underlyingAddress={activeMarket.underlyingAddress}

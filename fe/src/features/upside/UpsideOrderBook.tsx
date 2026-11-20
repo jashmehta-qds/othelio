@@ -1,21 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import styles from './UpsideMarkets.module.css';
 import { useUpsideOrderbook } from './useUpside';
 
 interface UpsideOrderBookProps {
   chainId: number;
   seriesAddress: string;
+  claimType: 'UPSIDE' | 'RESIDUAL';
 }
 
 export function UpsideOrderBook({
   chainId,
   seriesAddress,
+  claimType,
 }: UpsideOrderBookProps) {
-  const [activeClaimType, setActiveClaimType] = useState<'UPSIDE' | 'RESIDUAL'>('UPSIDE');
-
-  const { data: depth, isLoading } = useUpsideOrderbook(chainId, seriesAddress, activeClaimType);
+  const { data: depth, isLoading, isError, refetch } = useUpsideOrderbook(chainId, seriesAddress, claimType);
 
   const bids = depth?.bids || [];
   const asks = depth?.asks || [];
@@ -27,39 +27,29 @@ export function UpsideOrderBook({
         <div>
           <h2 className={styles.sectionTitle}>Order book</h2>
           <span className={styles.helperText}>
-            Prices per claim in USDC
+            {claimType === 'UPSIDE' ? 'Upside' : 'Remaining value'} · Prices per claim in USDC
           </span>
         </div>
 
-        {/* Claim Type Tabs */}
-        <div className={styles.bookTabs}>
-          <button
-            type="button"
-            onClick={() => setActiveClaimType('UPSIDE')}
-            className={`${styles.bookTab} ${activeClaimType === 'UPSIDE' ? styles.bookTabActive : ''}`}
-          >
-            Upside
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveClaimType('RESIDUAL')}
-            className={`${styles.bookTab} ${activeClaimType === 'RESIDUAL' ? styles.bookTabActive : ''}`}
-          >
-            Remaining value
-          </button>
-        </div>
       </div>
 
-      {isLoading && !depth ? (
+      {isError ? (
+        <div className={styles.bookEmpty} role="alert">
+          <strong>Book temporarily unavailable</strong>
+          <p>Quotes can’t be verified right now.</p>
+          <button type="button" className={styles.bookRetry} onClick={() => void refetch()}>Try again</button>
+        </div>
+      ) : isLoading ? (
         <div className="py-12 text-center text-xs font-mono text-zinc-500 animate-pulse">
           Loading order depth...
         </div>
       ) : bids.length === 0 && asks.length === 0 ? (
-        <div className={styles.bookEmpty}>
-          <strong>No offers or bids yet</strong>
+        <div className={styles.bookEmpty} role="status">
+          <strong>No orders for {claimType === 'UPSIDE' ? 'Upside' : 'Remaining value'} yet</strong>
           <p>
-            You can set your own price in the trade panel. Your order waits for a match.
+            There are no bids or asks. Choose Limit in the trade panel to set your price and wait for a match.
           </p>
+          <span>No market trades until a matching order is available.</span>
         </div>
       ) : (
         <div className={styles.bookGrid}>
@@ -110,7 +100,7 @@ export function UpsideOrderBook({
       )}
 
       {/* Recent Trades if any */}
-      {recentTrades.length > 0 && (
+      {!isError && recentTrades.length > 0 && (
         <div className="mt-6 pt-4 border-t border-[#292a27]">
           <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-500 mb-2">
             Recent Trades
