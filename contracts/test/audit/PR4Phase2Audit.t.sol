@@ -375,8 +375,12 @@ contract PR4Phase2BasketAuditTest is Test {
     Phase2Token internal usdc;
 
     function _setupModule() internal {
+        _setupModule(address(0));
+    }
+
+    function _setupModule(address sequencerUptimeFeed) internal {
         registry = new OthelioAssetRegistry(address(this));
-        oracle = new BasketOracle(address(registry), address(0));
+        oracle = new BasketOracle(address(registry), sequencerUptimeFeed);
         poolFactory = new Phase2PoolFactory();
         routeRegistry = new OthelioAerodromeRouteRegistry(address(this), address(poolFactory));
         router = new Phase2DexRouter();
@@ -472,7 +476,27 @@ contract PR4Phase2BasketAuditTest is Test {
         assertEq(token.balanceOf(address(this)), 1 ether);
     }
 
-    function test_Fix_StaleOracleAggregateCapAllowsExactlyThreePercentOracleLoss() public {
+    function test_Fix_InKindExitWorksWhileSequencerDown() public {
+        vm.warp(2 hours);
+        Phase2Feed sequencer = new Phase2Feed(1, block.timestamp - 2 hours);
+        _setupModule(address(sequencer));
+        Phase2Token token = new Phase2Token("Asset", 18);
+        feed = new Phase2Feed(100e8, block.timestamp);
+        _configureAsset(token, feed, 18);
+        token.mint(address(safe), 1 ether);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(token);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1 ether;
+        uint256 remainingNav = module.withdrawInKind(address(safe), address(this), tokens, amounts, new address[](0));
+
+        assertEq(remainingNav, 0);
+        assertEq(token.balanceOf(address(safe)), 0);
+        assertEq(token.balanceOf(address(this)), 1 ether);
+    }
+
+    function test_Fix_StaleOracleBeyondDefaultHeartbeatReverts() public {
         _setupModule();
         Phase2Token tokenIn = new Phase2Token("Input", 18);
         Phase2Token tokenOut = new Phase2Token("Output", 18);
@@ -488,13 +512,8 @@ contract PR4Phase2BasketAuditTest is Test {
 
         AerodromeRoute[] memory routes = new AerodromeRoute[](1);
         routes[0] = _route(address(tokenIn), address(tokenOut), 1 ether, 0.97 ether);
+        vm.expectRevert("STALE_PRICE");
         module.rebalanceAerodromePortfolio(address(safe), routes, block.timestamp + 1);
-
-        // The stale oracle values both legs at $100, while the modeled live market
-        // values output at $50: 0.97 * $50 / $100 = 51.5% loss.
-        uint256 realValueLossBps = 10000 - (0.97 ether * 50 * 10000 / (1 ether * 100));
-        assertGt(realValueLossBps, 300);
-        assertEq(tokenOut.balanceOf(address(safe)), 0.97 ether);
     }
 
     function test_Fix_SixteenThreePercentLegsRevertOnAggregateCap() public {
@@ -537,7 +556,7 @@ contract PR4Phase2BasketAuditTest is Test {
         assertEq(tokens[2].balanceOf(address(safe)), 0);
     }
 
-    function test_Basket_StaleOracleExternalMarketMoveStillExceedsThreePercent() public {
+    function test_Fix_StaleOracleBeyondDefaultHeartbeatBlocksLossyRebalance() public {
         _setupModule();
         Phase2Token tokenIn = new Phase2Token("Input", 18);
         Phase2Token tokenOut = new Phase2Token("Output", 18);
@@ -553,13 +572,8 @@ contract PR4Phase2BasketAuditTest is Test {
 
         AerodromeRoute[] memory routes = new AerodromeRoute[](1);
         routes[0] = _route(address(tokenIn), address(tokenOut), 1 ether, 0.97 ether);
+        vm.expectRevert("STALE_PRICE");
         module.rebalanceAerodromePortfolio(address(safe), routes, block.timestamp + 1);
-
-        // The aggregate cap sees a 3% oracle-valued loss; it cannot detect an
-        // external market price that diverged from the stale feed.
-        uint256 realValueLossBps = 10000 - (0.97 ether * 50 * 10000 / (1 ether * 100));
-        assertGt(realValueLossBps, 300);
-        assertEq(tokenOut.balanceOf(address(safe)), 0.97 ether);
     }
 
     function test_Registry_UsesConfiguredDecimalsWithoutCheckingTokenDecimals() public {

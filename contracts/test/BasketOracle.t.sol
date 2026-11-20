@@ -42,6 +42,26 @@ contract MockV3Aggregator is AggregatorV3Interface {
     }
 }
 
+contract MockSequencerUptimeFeed is AggregatorV3Interface {
+    uint8 public constant override decimals = 0;
+    int256 public answer;
+    uint256 public startedAt;
+
+    constructor(int256 answer_, uint256 startedAt_) {
+        answer = answer_;
+        startedAt = startedAt_;
+    }
+
+    function setStatus(int256 answer_, uint256 startedAt_) external {
+        answer = answer_;
+        startedAt = startedAt_;
+    }
+
+    function latestRoundData() external view override returns (uint80, int256, uint256, uint256, uint80) {
+        return (1, answer, startedAt, startedAt, 1);
+    }
+}
+
 contract BasketOracleTest is Test {
     OthelioAssetRegistry public registry;
     BasketOracle public oracle;
@@ -139,6 +159,59 @@ contract BasketOracleTest is Test {
 
         vm.expectRevert("STALE_PRICE");
         oracle.calculateNAV(tokens, balances);
+    }
+
+    function testPerAssetHeartbeatOverride() public {
+        vm.warp(4 days);
+        feedUSDC.setUpdatedAt(block.timestamp - 2 days);
+        address[] memory tokens = new address[](1);
+        tokens[0] = tokenUSDC;
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = 500 * 1e6;
+
+        assertEq(oracle.calculateNAV(tokens, balances), 500 * 1e6);
+
+        vm.prank(owner);
+        registry.setHeartbeat(block.chainid, tokenUSDC, 1 days);
+        vm.expectRevert("STALE_PRICE");
+        oracle.calculateNAV(tokens, balances);
+
+        vm.prank(owner);
+        registry.setHeartbeat(block.chainid, tokenUSDC, 2 days);
+        assertEq(oracle.calculateNAV(tokens, balances), 500 * 1e6);
+    }
+
+    function testSequencerDownReverts() public {
+        vm.warp(2 hours);
+        MockSequencerUptimeFeed sequencer = new MockSequencerUptimeFeed(1, block.timestamp - 1 hours);
+        BasketOracle sequencerOracle = new BasketOracle(address(registry), address(sequencer));
+        address[] memory tokens = new address[](0);
+        uint256[] memory balances = new uint256[](0);
+
+        vm.expectRevert(BasketOracle.SequencerDown.selector);
+        sequencerOracle.calculateNAV(tokens, balances);
+    }
+
+    function testSequencerGracePeriodReverts() public {
+        vm.warp(2 hours);
+        MockSequencerUptimeFeed sequencer = new MockSequencerUptimeFeed(0, block.timestamp - 1 hours + 1);
+        BasketOracle sequencerOracle = new BasketOracle(address(registry), address(sequencer));
+
+        vm.expectRevert(BasketOracle.GracePeriodNotOver.selector);
+        sequencerOracle.calculateNAV(new address[](0), new uint256[](0));
+    }
+
+    function testSequencerZeroStartedAtReverts() public {
+        MockSequencerUptimeFeed sequencer = new MockSequencerUptimeFeed(0, 0);
+        BasketOracle sequencerOracle = new BasketOracle(address(registry), address(sequencer));
+
+        vm.expectRevert(BasketOracle.InvalidSequencerTimestamp.selector);
+        sequencerOracle.calculateNAV(new address[](0), new uint256[](0));
+    }
+
+    function testSequencerAddressZeroDisablesCheck() public view {
+        assertEq(oracle.sequencerUptimeFeed(), address(0));
+        assertEq(oracle.calculateNAV(new address[](0), new uint256[](0)), 0);
     }
 
     function testRevertZeroAndNegativePrice() public {

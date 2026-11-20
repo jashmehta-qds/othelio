@@ -58,6 +58,28 @@ contract OthelioAssetRegistryTest is Test {
         registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 39, 8, true);
     }
 
+    function testOwnerCanSetHeartbeatAndReadIt() public {
+        vm.expectEmit(true, true, false, true);
+        emit OthelioAssetRegistry.HeartbeatUpdated(block.chainid, tokenNVDA, 1 days);
+        vm.prank(owner);
+        registry.setHeartbeat(block.chainid, tokenNVDA, 1 days);
+
+        assertEq(registry.heartbeatOf(block.chainid, tokenNVDA), 1 days);
+    }
+
+    function testHeartbeatRequiresOwnerAndBounds() public {
+        vm.prank(user);
+        vm.expectRevert();
+        registry.setHeartbeat(block.chainid, tokenNVDA, 1 days);
+
+        vm.startPrank(owner);
+        vm.expectRevert("INVALID_HEARTBEAT");
+        registry.setHeartbeat(block.chainid, tokenNVDA, 0);
+        vm.expectRevert("INVALID_HEARTBEAT");
+        registry.setHeartbeat(block.chainid, tokenNVDA, 7 days + 1);
+        vm.stopPrank();
+    }
+
     function testEnumerationAndRemovalOfSupportedTokens() public {
         address tokenAAPL = address(0x555);
         address feedAAPL = address(0x666);
