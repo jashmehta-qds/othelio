@@ -11,6 +11,8 @@ import {TokenizedAssetConstants} from "../../src/constants/TokenizedAssetConstan
 contract DeployUpside is Script {
     address private constant BASE_MAINNET_REGISTRY = 0x3DB84b8e172A2b8b1634F8C630C6e2acD07424AC;
     address private constant ZERO_EX_EXCHANGE_PROXY_BASE = 0xDef1C0ded9bec7F1a1670819833240f027b25EfF;
+    bytes32 private constant ZERO_EX_EXCHANGE_PROXY_CODE_HASH =
+        0xf61cc3ead6846d99500e226a181b4e6faf18a4879c82df5998d2387051b39ab8;
 
     function run() external returns (address factoryAddr, address adapterAddr, address routerAddr) {
         vm.startBroadcast();
@@ -30,8 +32,8 @@ contract DeployUpside is Script {
 
         // 3. Deploy UpsideBatchFillRouter wrapping 0x ExchangeProxy
         address exchangeProxy = vm.envOr("ZERO_EX_EXCHANGE_PROXY", ZERO_EX_EXCHANGE_PROXY_BASE);
-        bytes32 expectedExchangeCodeHash = vm.envBytes32("ZERO_EX_EXCHANGE_PROXY_CODE_HASH");
-        require(expectedExchangeCodeHash != bytes32(0), "ZERO_EX_EXCHANGE_PROXY_CODE_HASH_REQUIRED");
+        bytes32 expectedExchangeCodeHash =
+            vm.envOr("ZERO_EX_EXCHANGE_PROXY_CODE_HASH", ZERO_EX_EXCHANGE_PROXY_CODE_HASH);
         UpsideBatchFillRouter router = new UpsideBatchFillRouter(exchangeProxy, expectedExchangeCodeHash);
         routerAddr = address(router);
 
