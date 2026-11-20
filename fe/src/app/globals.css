@@ -386,8 +386,7 @@ body {
   letter-spacing: -.02em;
 }
 
-.wordmark,
-.concept-wordmark {
+.wordmark {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -399,8 +398,7 @@ body {
 
 .bank-wordmark:hover .brand-logo-vector,
 .quiet-wordmark:hover .brand-logo-vector,
-.wordmark:hover .brand-logo-vector,
-.concept-wordmark:hover .brand-logo-vector {
+.wordmark:hover .brand-logo-vector {
   transform: scale(1.08) rotate(6deg);
   filter: drop-shadow(0 0 10px rgba(255, 87, 41, 0.4));
   color: var(--accent);
