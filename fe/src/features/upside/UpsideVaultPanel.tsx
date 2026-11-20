@@ -158,7 +158,7 @@ export function UpsideVaultPanel({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <h2 className="text-base font-bold text-white">Manage your stock</h2>
-          <span className="text-xs font-mono text-zinc-400">
+          <span className={styles.helperText}>
             Turn stock into both claims, combine both back into stock, or collect a settled payout.
           </span>
         </div>
@@ -217,7 +217,7 @@ export function UpsideVaultPanel({
         </div>
 
         {statusMessage && (
-          <div className="p-3 rounded bg-emerald-950/40 border border-emerald-800 text-xs font-mono text-emerald-300 animate-pulse text-center">
+          <div className="p-3 rounded bg-emerald-950/40 border border-emerald-800 text-xs text-emerald-300 animate-pulse text-center">
             {statusMessage}
           </div>
         )}

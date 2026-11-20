@@ -45,7 +45,7 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
   const [selectedClaim, setSelectedClaim] = useState<"protected" | "upside">(initialClaim);
   const [marketTab, setMarketTab] = useState<"overview" | "positions">("overview");
   const [walletTab, setWalletTab] = useState<"trade" | "manage">("trade");
-  const [manageTab, setManageTab] = useState<"deposit" | "claim">("deposit");
+  const [manageTab, setManageTab] = useState<"deposit" | "combine" | "redeem">("combine");
   const [ticketSide, setTicketSide] = useState<"BUY" | "SELL">("BUY");
   const [selectedOrderHash, setSelectedOrderHash] = useState<string | undefined>();
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
@@ -313,7 +313,7 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
           <div className={styles.walletActionPanel}>
             <div className={styles.walletActionTabs} role="group" aria-label="Wallet action">
               <button type="button" aria-pressed={walletTab === "trade"} className={walletTab === "trade" ? styles.walletActionTabActive : ""} onClick={() => setWalletTab("trade")}>Trade</button>
-              <button type="button" aria-pressed={walletTab === "manage"} className={walletTab === "manage" ? styles.walletActionTabActive : ""} onClick={() => { setWalletTab("manage"); setManageTab("claim"); }}>Redeem / claim</button>
+              <button type="button" aria-pressed={walletTab === "manage"} className={walletTab === "manage" ? styles.walletActionTabActive : ""} onClick={() => { setWalletTab("manage"); setManageTab(activeSeries.isSettled ? "redeem" : "combine"); }}>Redeem / claim</button>
             </div>
             <div className={styles.walletActionBody} hidden={walletTab !== "trade"}>
               <div className={styles.mobileClaimPick}>
@@ -350,9 +350,10 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
             <div className={styles.walletActionBody} hidden={walletTab !== "manage"}>
               <div className={styles.manageActionTabs} role="group" aria-label="Manage claims">
                 <button type="button" aria-pressed={manageTab === "deposit"} className={manageTab === "deposit" ? styles.manageActionTabActive : ""} onClick={() => setManageTab("deposit")}>Deposit</button>
-                <button type="button" aria-pressed={manageTab === "claim"} className={manageTab === "claim" ? styles.manageActionTabActive : ""} onClick={() => setManageTab("claim")}>Claim</button>
+                <button type="button" aria-pressed={manageTab === "combine"} className={manageTab === "combine" ? styles.manageActionTabActive : ""} onClick={() => setManageTab("combine")}>Combine pair</button>
+                <button type="button" aria-pressed={manageTab === "redeem"} className={manageTab === "redeem" ? styles.manageActionTabActive : ""} onClick={() => setManageTab("redeem")}>Redeem claim</button>
               </div>
-              <RiskSplitActionPanel seriesAddress={seriesAddress} underlyingSymbol={symbol} view={manageTab} />
+              <RiskSplitActionPanel seriesAddress={seriesAddress} underlyingSymbol={symbol} view={manageTab === "deposit" ? "deposit" : "claim"} claimMode={manageTab === "redeem" ? "redeem" : "combine"} />
             </div>
           </div>
         </div>

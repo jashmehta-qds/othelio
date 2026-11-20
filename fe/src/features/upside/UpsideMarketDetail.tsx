@@ -275,6 +275,10 @@ export function UpsideMarketDetail({
                   ? "Uses the settled price."
                   : "An illustration, not a forecast."}
               </p>
+              <p className={styles.helperText}>
+                Both sides can lose money. Together, one of each claim represents
+                one stock token. A payout is not the same as profit.
+              </p>
             </div>
           </details>
           <details className={styles.advanced}>
@@ -331,10 +335,6 @@ export function UpsideMarketDetail({
             />
             </div>
           </div>
-          <p className={styles.helperText}>
-            Both sides can lose money. Together, one of each claim represents
-            one stock token. A payout is not the same as profit.
-          </p>
         </div>
       </div>
     </main>

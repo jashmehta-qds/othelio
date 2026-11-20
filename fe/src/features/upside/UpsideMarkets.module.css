@@ -546,9 +546,13 @@
 
 .vaultTabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 18px;
 }
+
+.vaultTabs button { min-height: 44px; font-family: inherit; }
+.vaultTabs .bookTabActive { border-color: #717c64; background: #303c25; color: var(--ink); }
 
 /* My Orders & Positions */
 .ordersPanel {

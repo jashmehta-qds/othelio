@@ -10,10 +10,12 @@ export function RiskSplitActionPanel({
   seriesAddress,
   underlyingSymbol,
   view,
+  claimMode = "combine",
 }: {
   seriesAddress: string;
   underlyingSymbol: string;
   view: "positions" | "deposit" | "claim";
+  claimMode?: "combine" | "redeem";
 }) {
   const { activeSeries, balances, onchainState, isPending, actions, unitsCompatible } = useRiskSplit(seriesAddress);
   const { address, isConnected, chainId } = useAccount();
@@ -28,7 +30,6 @@ export function RiskSplitActionPanel({
   const [combineAmount, setCombineAmount] = useState<string>("1.0");
   const [redeemAmount, setRedeemAmount] = useState<string>("1.0");
   const [redeemClaimType, setRedeemClaimType] = useState<"protected" | "upside">("protected");
-  const [claimMode, setClaimMode] = useState<"combine" | "redeem">("combine");
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -167,11 +168,6 @@ export function RiskSplitActionPanel({
           {lifecycle.guardMessage}
         </div>
       )}
-
-      {view === "claim" && <div className={styles.claimModeTabs} role="group" aria-label="Claim method">
-        <button type="button" aria-pressed={claimMode === "combine"} className={claimMode === "combine" ? styles.claimModeTabActive : ""} onClick={() => setClaimMode("combine")}>Combine pair</button>
-        <button type="button" aria-pressed={claimMode === "redeem"} className={claimMode === "redeem" ? styles.claimModeTabActive : ""} onClick={() => setClaimMode("redeem")}>Redeem claim</button>
-      </div>}
 
       {view !== "positions" && (
         <div className={styles.positionContent}>
