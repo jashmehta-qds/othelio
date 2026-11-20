@@ -30,7 +30,7 @@ button.row:hover { background: var(--panel-2); }
 .footer button { border: 0; background: none; padding: 4px 0; color: inherit; font: inherit; cursor: pointer; }
 .state { padding: 22px; }
 .trades { border-top: 1px solid var(--line); padding: 14px 22px; }
-@media (max-width: 800px) {
+@media (max-width: 760px) {
   .book { order: 3; }
   .header { padding: 16px 13px 14px; gap: 8px; }
   .header h2 { font-size: 17px; }
