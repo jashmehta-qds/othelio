@@ -3,9 +3,6 @@
 import React, { useState } from 'react';
 import { AdminMarketItem } from '@othelio/shared';
 import { CreateMarketModal } from './CreateMarketModal';
-import { seriesFactoryAbi } from '@othelio/shared';
-import { useAccount, usePublicClient, useReadContract, useWriteContract } from 'wagmi';
-import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface MarketsViewProps {
   markets: AdminMarketItem[];
@@ -15,41 +12,6 @@ interface MarketsViewProps {
 }
 
 export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsViewProps) {
-  const { factoryAddress } = useAdminAuth();
-  const { address } = useAccount();
-  const publicClient = usePublicClient();
-  const { writeContractAsync, isPending: isConfigPending } = useWriteContract();
-  const [configError, setConfigError] = useState<string | null>(null);
-  const [isWaitingConfigReceipt, setIsWaitingConfigReceipt] = useState(false);
-  const factory = factoryAddress as `0x${string}` | null;
-  const { data: publicCreationEnabled, refetch: refetchCreationFlag } = useReadContract({
-    address: factory || undefined,
-    abi: seriesFactoryAbi,
-    functionName: 'publicCreationEnabled',
-    query: { enabled: Boolean(factory) },
-  });
-  const handleTogglePublicCreation = async () => {
-    try {
-      if (!factory || !publicClient || !address) throw new Error('Factory or owner wallet RPC is unavailable.');
-      setConfigError(null);
-      const request = await publicClient.simulateContract({
-        address: factory,
-        account: address,
-        abi: seriesFactoryAbi,
-        functionName: 'setPublicCreationEnabled',
-        args: [!Boolean(publicCreationEnabled)],
-      });
-      const hash = await writeContractAsync(request.request);
-      setIsWaitingConfigReceipt(true);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== 'success') throw new Error(`Creation flag transaction ${hash} reverted.`);
-      await refetchCreationFlag();
-    } catch (error: any) {
-      setConfigError(error?.message || 'Failed to update public creation flag.');
-    } finally {
-      setIsWaitingConfigReceipt(false);
-    }
-  };
   const [filter, setFilter] = useState<'all' | 'active' | 'expired' | 'settled'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -79,26 +41,12 @@ export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsV
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
+            disabled={!isOwner}
             className="px-4 py-1.5 rounded bg-[#ff5729] hover:bg-[#ff6f47] text-black font-semibold text-xs font-mono tracking-wider uppercase transition-colors"
           >
             + Create Series
           </button>
         </div>
-      </div>
-
-      <div className="rounded-lg border border-[#292a27] bg-[#161715] p-4 text-xs font-mono text-zinc-300">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <strong>Public market creation: {publicCreationEnabled === undefined ? 'Loading' : publicCreationEnabled ? 'Enabled' : 'Disabled'}</strong>
-            <p className="mt-1 text-zinc-500">The factory owner can change this onchain. Operator creation remains available while disabled.</p>
-          </div>
-          <button type="button" onClick={handleTogglePublicCreation}
-            disabled={!isOwner || publicCreationEnabled === undefined || isConfigPending || isWaitingConfigReceipt}
-            className="rounded bg-[#292a27] px-3 py-2 text-white disabled:opacity-50">
-            {isConfigPending || isWaitingConfigReceipt ? 'Confirming…' : publicCreationEnabled ? 'Disable public creation' : 'Enable public creation'}
-          </button>
-        </div>
-        {configError && <p className="mt-2 text-red-400">{configError}</p>}
       </div>
 
       {/* Filter Tabs */}

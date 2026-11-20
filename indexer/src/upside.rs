@@ -8,9 +8,7 @@ use std::collections::{HashMap, HashSet};
 use tracing::info;
 
 pub const UPSIDE_ROUND_REGISTERED_SIGNATURE: &str =
-    "RoundRegistered(uint256,address,address,(address,address,address,uint80,uint256,uint256,uint256,uint256,uint256,bytes32,uint256,uint256,uint256,bool))";
-pub const UPSIDE_PUBLIC_CREATION_TOGGLED_SIGNATURE: &str =
-    "PublicCreationToggled(uint256,bool)";
+    "RoundRegistered(uint256,address,address,(address,address,address,uint80,uint256,uint256,uint256,uint256,uint256,bytes32,uint256,uint256,uint256))";
 pub const UPSIDE_MARKET_CREATED_SIGNATURE: &str =
     "MarketCreated(uint256,uint256,address,address,address,address)";
 pub const UPSIDE_TOKENS_INITIALIZED_SIGNATURE: &str =
@@ -34,6 +32,24 @@ fn topic(signature: &str) -> H256 {
     ethers::utils::keccak256(signature.as_bytes()).into()
 }
 
+fn round_config_type() -> ParamType {
+    ParamType::Tuple(vec![
+        ParamType::Address,        // underlying
+        ParamType::Address,        // feed
+        ParamType::Address,        // adapter
+        ParamType::Uint(80),       // referenceRoundId
+        ParamType::Uint(256),      // referencePrice
+        ParamType::Uint(256),      // referenceTime
+        ParamType::Uint(256),      // roundStart
+        ParamType::Uint(256),      // expiryTimestamp
+        ParamType::Uint(256),      // expectedMove
+        ParamType::FixedBytes(32), // provenanceHash
+        ParamType::Uint(256),      // strikeTick
+        ParamType::Uint(256),      // minStrike
+        ParamType::Uint(256),      // maxStrike
+    ])
+}
+
 fn indexed_address(raw_log: &RawLog, index: usize) -> Option<Address> {
     let value = raw_log.topics.get(index)?;
     Some(Address::from_slice(&value.as_bytes()[12..]))
@@ -50,10 +66,6 @@ fn address_token(tokens: &[Token], index: usize) -> Option<Address> {
 
 fn uint_token(tokens: &[Token], index: usize) -> Option<U256> {
     tokens.get(index)?.clone().into_uint()
-}
-
-fn bool_token(tokens: &[Token], index: usize) -> Option<bool> {
-    tokens.get(index)?.clone().into_bool()
 }
 
 fn bytes_token(tokens: &[Token], index: usize) -> Option<Vec<u8>> {
@@ -189,22 +201,7 @@ pub async fn process_upside_log(
             let underlying = fmt_addr(&indexed_address(&raw_log, 2).ok_or("missing underlying")?);
             let feed = fmt_addr(&indexed_address(&raw_log, 3).ok_or("missing feed")?);
 
-            let round_tuple = ParamType::Tuple(vec![
-                ParamType::Address,      // underlying
-                ParamType::Address,      // feed
-                ParamType::Address,      // adapter
-                ParamType::Uint(80),     // referenceRoundId
-                ParamType::Uint(256),    // referencePrice
-                ParamType::Uint(256),    // referenceTime
-                ParamType::Uint(256),    // roundStart
-                ParamType::Uint(256),    // expiryTimestamp
-                ParamType::Uint(256),    // expectedMove
-                ParamType::FixedBytes(32), // provenanceHash
-                ParamType::Uint(256),    // strikeTick
-                ParamType::Uint(256),    // minStrike
-                ParamType::Uint(256),    // maxStrike
-                ParamType::Bool,         // publicCreationEnabled
-            ]);
+            let round_tuple = round_config_type();
 
             let decoded = decode(&[round_tuple], &raw_log.data)?;
             let tuple = match decoded.first() {
@@ -223,7 +220,6 @@ pub async fn process_upside_log(
             let strike_tick = u256_to_numeric_string(uint_token(tuple, 10).ok_or("missing strikeTick")?);
             let min_strike = u256_to_numeric_string(uint_token(tuple, 11).ok_or("missing minStrike")?);
             let max_strike = u256_to_numeric_string(uint_token(tuple, 12).ok_or("missing maxStrike")?);
-            let public_enabled = bool_token(tuple, 13).ok_or("missing publicEnabled")?;
             let factory_addr = fmt_addr(&log.address);
 
             sqlx::query(
@@ -231,15 +227,14 @@ pub async fn process_upside_log(
                     chain_id, round_id, factory_address, underlying_address, feed_address, adapter_address,
                     reference_round_id, reference_price, reference_time, round_start, expiry_timestamp,
                     expected_move, provenance_hash, strike_tick, min_strike, max_strike,
-                    public_creation_enabled, created_block, created_tx
+                    created_block, created_tx
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6,
                     $7::numeric, $8::numeric, $9, $10, $11,
                     $12::numeric, $13, $14::numeric, $15::numeric, $16::numeric,
-                    $17, $18, $19
+                    $17, $18
                 )
-                ON CONFLICT (chain_id, round_id) DO UPDATE SET
-                    public_creation_enabled = EXCLUDED.public_creation_enabled",
+                ON CONFLICT (chain_id, round_id) DO NOTHING",
             )
             .bind(chain_id)
             .bind(round_id)
@@ -257,28 +252,8 @@ pub async fn process_upside_log(
             .bind(&strike_tick)
             .bind(&min_strike)
             .bind(&max_strike)
-            .bind(public_enabled)
             .bind(block_number)
             .bind(&tx_hash)
-            .execute(&mut **tx)
-            .await?;
-
-            return Ok(true);
-        }
-
-        if log_topic == topic(UPSIDE_PUBLIC_CREATION_TOGGLED_SIGNATURE) {
-            let round_id = indexed_uint(&raw_log, 1).ok_or("missing round_id")?.as_u64() as i64;
-            let decoded = decode(&[ParamType::Bool], &raw_log.data)?;
-            let enabled = bool_token(&decoded, 0).ok_or("missing enabled")?;
-
-            sqlx::query(
-                "UPDATE upside_rounds
-                 SET public_creation_enabled = $3
-                 WHERE chain_id = $1 AND round_id = $2",
-            )
-            .bind(chain_id)
-            .bind(round_id)
-            .bind(enabled)
             .execute(&mut **tx)
             .await?;
 
@@ -1165,6 +1140,33 @@ mod tests {
     }
 
     #[test]
+    fn test_round_registered_config_abi() {
+        let config_type = round_config_type();
+        assert_eq!(
+            UPSIDE_ROUND_REGISTERED_SIGNATURE,
+            format!("RoundRegistered(uint256,address,address,{})", config_type)
+        );
+        let fields = match &config_type {
+            ParamType::Tuple(fields) => fields,
+            _ => panic!("expected tuple"),
+        };
+        assert_eq!(fields.len(), 13);
+        let config: Vec<Token> = fields
+            .iter()
+            .map(|kind| match kind {
+                ParamType::Address => Token::Address(Address::from_low_u64_be(1)),
+                ParamType::Uint(_) => Token::Uint(42.into()),
+                ParamType::FixedBytes(size) => Token::FixedBytes(vec![0xAA; *size]),
+                _ => panic!("unexpected round field"),
+            })
+            .collect();
+        let token = Token::Tuple(config);
+        let encoded = ethers::abi::encode(&[token.clone()]);
+        assert_eq!(decode(&[config_type.clone()], &encoded).unwrap(), vec![token]);
+        assert!(decode(&[config_type], &[]).is_err());
+    }
+
+    #[test]
     fn test_upside_tracker_address_collection() {
         let factory = "0x1111111111111111111111111111111111111111".parse().unwrap();
         let series = "0x2222222222222222222222222222222222222222".parse().unwrap();
@@ -1246,7 +1248,6 @@ mod tests {
             Token::Uint(1_00000000u64.into()), // strikeTick = $1
             Token::Uint(400_00000000u64.into()), // minStrike = $400
             Token::Uint(600_00000000u64.into()), // maxStrike = $600
-            Token::Bool(false), // publicCreationEnabled
         ]);
         let round_data = ethers::abi::encode(&[round_tuple]);
         let log_round = make_raw_log(
@@ -1266,41 +1267,14 @@ mod tests {
         assert!(process_upside_log(&mut state, &mut tx, chain_id, &log_round).await.unwrap());
         tx.commit().await.unwrap();
 
-        let round_row: (i64, bool) = sqlx::query_as(
-            "SELECT round_id, public_creation_enabled FROM upside_rounds WHERE chain_id = $1 AND round_id = 1",
+        let round_id: i64 = sqlx::query_scalar(
+            "SELECT round_id FROM upside_rounds WHERE chain_id = $1 AND round_id = 1",
         )
         .bind(chain_id)
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(round_row.0, 1);
-        assert!(!round_row.1);
-
-        // 2. PublicCreationToggled at block 101
-        let tx2 = H256::from_low_u64_be(2);
-        let log_toggle = make_raw_log(
-            factory,
-            vec![
-                topic(UPSIDE_PUBLIC_CREATION_TOGGLED_SIGNATURE),
-                uint_to_h256(1.into()),
-            ],
-            ethers::abi::encode(&[Token::Bool(true)]),
-            101,
-            tx2,
-            0,
-        );
-        let mut tx = pool.begin().await.unwrap();
-        assert!(process_upside_log(&mut state, &mut tx, chain_id, &log_toggle).await.unwrap());
-        tx.commit().await.unwrap();
-
-        let toggled: bool = sqlx::query_scalar(
-            "SELECT public_creation_enabled FROM upside_rounds WHERE chain_id = $1 AND round_id = 1",
-        )
-        .bind(chain_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert!(toggled);
+        assert_eq!(round_id, 1);
 
         // 3. MarketCreated at block 102
         let tx3 = H256::from_low_u64_be(3);

@@ -69,13 +69,8 @@ contract UpsideFactory is IUpsideFactory, Ownable2Step {
         emit RoundRegistered(roundId, config.underlying, config.feed, config);
     }
 
-    function setPublicCreationEnabled(uint256 roundId, bool enabled) external override onlyOwner {
-        if (roundId == 0 || roundId > totalRounds) revert RoundNotFound();
-        _rounds[roundId].publicCreationEnabled = enabled;
-        emit PublicCreationToggled(roundId, enabled);
-    }
-
     function createMarket(uint256 roundId, uint256 strikePrice) external override returns (address seriesAddress) {
+        if (msg.sender != owner()) revert Unauthorized();
         _validateMarket(roundId, strikePrice);
 
         RoundConfig memory round = _rounds[roundId];
@@ -115,7 +110,6 @@ contract UpsideFactory is IUpsideFactory, Ownable2Step {
         if (roundId == 0 || roundId > totalRounds) revert RoundNotFound();
         RoundConfig memory round = _rounds[roundId];
 
-        if (!round.publicCreationEnabled && msg.sender != owner()) revert Unauthorized();
         if (block.timestamp >= round.expiryTimestamp) revert RoundExpired();
 
         if (!IOthelioAssetRegistry(assetRegistry).isSupported(block.chainid, round.underlying)) {

@@ -74,7 +74,7 @@ For example, `$100.00` is `10000000000` in feed units. The script prints a previ
 
 ## Important operational notes
 
-- Factory creation remains admin-only (`publicCreationEnabled == false`) after deployment.
+- Factory creation is owner-only after deployment.
 - Factory and adapter are non-upgradeable contracts. A future code change requires a new deployment and explicit migration/configuration.
-- A deployment does not create a series, configure the order book, or enable public creation.
+- A deployment does not create a series or configure the order book.
 - The new factory emits one rich `SeriesCreated` event. The indexer also retains decoders for earlier factory event signatures.

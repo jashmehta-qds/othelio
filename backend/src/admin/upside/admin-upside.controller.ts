@@ -13,7 +13,6 @@ import {
   AdminUpsideRoundPreviewResponse,
   AdminUpsideRoundItem,
   AdminUpsideMarketItem,
-  AdminTransactionPreview,
 } from '@othelio/shared';
 
 @Controller('v1/admin/upside')
@@ -42,12 +41,5 @@ export class AdminUpsideController {
     const roundIdNum = roundId ? parseInt(roundId, 10) : undefined;
     const data = await this.upsideService.getMarkets(chainIdNum, roundIdNum);
     return { data };
-  }
-
-  @Post('rounds/toggle-public')
-  async togglePublicCreation(
-    @Body() dto: { chainId?: number; roundId: number; enabled: boolean },
-  ): Promise<AdminTransactionPreview> {
-    return this.upsideService.togglePublicCreationTx(dto.chainId || 8453, dto.roundId, dto.enabled);
   }
 }

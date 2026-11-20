@@ -10,7 +10,6 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 contract SeriesFactory is ISeriesFactory {
     address public override owner;
     address public override pendingOwner;
-    bool public override publicCreationEnabled;
 
     address[] public override allSeries;
     mapping(address => bool) public override isSeries;
@@ -50,11 +49,6 @@ contract SeriesFactory is ISeriesFactory {
         emit OwnershipTransferred(oldOwner, msg.sender);
     }
 
-    function setPublicCreationEnabled(bool enabled) external override onlyOwner {
-        publicCreationEnabled = enabled;
-        emit PublicCreationToggled(enabled);
-    }
-
     function setApprovedExpiry(address underlying, uint256 timestamp, bool approved) external override onlyOwner {
         if (underlying == address(0)) revert ZeroAddress();
         approvedExpiry[underlying][timestamp] = approved;
@@ -71,8 +65,7 @@ contract SeriesFactory is ISeriesFactory {
         uint256 capPrice,
         uint256 expiry,
         address settlementAdapter
-    ) external override returns (address seriesAddress) {
-        if (!publicCreationEnabled && msg.sender != owner) revert Unauthorized();
+    ) external override onlyOwner returns (address seriesAddress) {
         if (underlying == address(0) || settlementAdapter == address(0)) revert ZeroAddress();
         if (floorPrice >= capPrice || floorPrice == 0) revert InvalidPriceRange();
         if (expiry <= block.timestamp) revert ExpiryInPast();

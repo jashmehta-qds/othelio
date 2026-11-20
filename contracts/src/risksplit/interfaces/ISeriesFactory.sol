@@ -20,7 +20,6 @@ interface ISeriesFactory {
     );
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-    event PublicCreationToggled(bool enabled);
     event ExpiryApprovalUpdated(address indexed underlying, uint256 indexed timestamp, bool approved);
 
     event AdapterApprovalUpdated(address indexed underlying, address indexed adapter, bool approved);
@@ -40,13 +39,11 @@ interface ISeriesFactory {
 
     function owner() external view returns (address);
     function pendingOwner() external view returns (address);
-    function publicCreationEnabled() external view returns (bool);
     function approvedExpiry(address underlying, uint256 timestamp) external view returns (bool);
     function seriesByTermKey(bytes32 termKey) external view returns (address);
 
     function transferOwnership(address newOwner) external;
     function acceptOwnership() external;
-    function setPublicCreationEnabled(bool enabled) external;
     function setApprovedExpiry(address underlying, uint256 timestamp, bool approved) external;
 
     /// @notice Creates a new series vault deterministically

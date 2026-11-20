@@ -16,7 +16,6 @@ interface IUpsideFactory {
         uint256 strikeTick;
         uint256 minStrike;
         uint256 maxStrike;
-        bool publicCreationEnabled;
     }
 
     error Unauthorized();
@@ -34,7 +33,6 @@ interface IUpsideFactory {
     event RoundRegistered(
         uint256 indexed roundId, address indexed underlying, address indexed feed, RoundConfig config
     );
-    event PublicCreationToggled(uint256 indexed roundId, bool enabled);
     event MarketCreated(
         uint256 indexed roundId,
         uint256 indexed strikePrice,
@@ -53,6 +51,5 @@ interface IUpsideFactory {
     function isMarket(address series) external view returns (bool);
 
     function registerRound(RoundConfig calldata config) external returns (uint256 roundId);
-    function setPublicCreationEnabled(uint256 roundId, bool enabled) external;
     function createMarket(uint256 roundId, uint256 strikePrice) external returns (address seriesAddress);
 }
