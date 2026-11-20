@@ -472,7 +472,7 @@ contract PR4AttackerAuditTest is Test {
         assertEq(taker.balanceOf(victim), 10_100, "victim was charged");
     }
 
-    function test_Upside_NominatedRoundWithMismatchedReturnedIdIsAccepted() public {
+    function test_Upside_NominatedRoundWithMismatchedReturnedIdIsRejected() public {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 999, 99e8, 1900, 1900, 999);
         feed.setLatestReturnedId(10);
@@ -480,14 +480,12 @@ contract PR4AttackerAuditTest is Test {
         MockUpsideSettlementTarget target = new MockUpsideSettlementTarget(address(feed), 2_000);
         vm.warp(3_000);
 
+        vm.expectRevert(IUpsideFixingAdapter.RoundNotComplete.selector);
         adapter.settleSeries(address(target), 10);
-
-        assertTrue(target.isSettled(), "settlement should have executed");
-        assertEq(target.settledRound(), 10, "adapter records requested, not returned, id");
-        assertEq(target.settledPrice(), 99e8, "mismatched feed data selected");
+        assertFalse(target.isSettled(), "malformed round must not settle");
     }
 
-    function test_RiskSplit_NominatedRoundWithMismatchedReturnedIdIsAccepted() public {
+    function test_RiskSplit_NominatedRoundWithMismatchedReturnedIdIsRejected() public {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 999, 99e8, 1900, 1900, 999);
         feed.setLatestReturnedId(10);
@@ -495,54 +493,56 @@ contract PR4AttackerAuditTest is Test {
         MockRiskSettlementTarget target = new MockRiskSettlementTarget(2_000);
         vm.warp(3_000);
 
+        vm.expectRevert(ISettlementAdapter.RoundNotComplete.selector);
         adapter.settleSeries(address(target), 10);
-
-        assertTrue(target.isSettled());
-        assertEq(target.settledRound(), 10);
-        assertEq(target.settledPrice(), 99e8);
+        assertFalse(target.isSettled());
     }
 
     function test_Upside_SuccessorWithZeroAnswerBlocksOlderFixing() public {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, 0, 1950, 1950, 11);
+        feed.setRound(12, 12, 60e8, 2100, 2100, 12);
         UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
         vm.warp(3_000);
 
-        vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
-        adapter.verifyFixingRound(2_000, 10);
+        IUpsideFixingAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
+        assertEq(fixing.roundId, 10);
     }
 
     function test_RiskSplit_SuccessorWithZeroAnswerBlocksOlderFixing() public {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, 0, 1950, 1950, 11);
+        feed.setRound(12, 12, 60e8, 2100, 2100, 12);
         SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
-        vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
-        adapter.verifyFixingRound(2_000, 10);
+        ISettlementAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
+        assertEq(fixing.roundId, 10);
     }
 
     function test_Upside_SuccessorWithZeroTimestampFallsBackToLatestAndBlocks() public {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, 60e8, 1950, 0, 11);
+        feed.setRound(12, 12, 70e8, 2100, 2100, 12);
         UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
 
-        vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
-        adapter.verifyFixingRound(2_000, 10);
+        IUpsideFixingAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
+        assertEq(fixing.roundId, 10);
     }
 
     function test_RiskSplit_SuccessorWithZeroTimestampFallsBackToLatestAndBlocks() public {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, 60e8, 1950, 0, 11);
+        feed.setRound(12, 12, 70e8, 2100, 2100, 12);
         SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
 
-        vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
-        adapter.verifyFixingRound(2_000, 10);
+        ISettlementAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
+        assertEq(fixing.roundId, 10);
     }
 
-    function test_Upside_PhaseBoundaryMissingNextPhaseFirstRoundCausesDOS() public {
+    function test_Upside_PhaseBoundaryMissingNextPhaseFirstRoundSkipsGap() public {
         RoundFeedMock feed = new RoundFeedMock();
         uint80 candidate = (uint80(1) << 64) | 100;
         uint80 laterPhaseRound = (uint80(2) << 64) | 2;
@@ -550,11 +550,11 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(laterPhaseRound, laterPhaseRound, 70e8, 2100, 2100, laterPhaseRound);
         UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
 
-        vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
-        adapter.verifyFixingRound(2_000, candidate);
+        IUpsideFixingAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, candidate);
+        assertEq(fixing.roundId, candidate);
     }
 
-    function test_RiskSplit_PhaseBoundaryMissingNextPhaseFirstRoundCausesDOS() public {
+    function test_RiskSplit_PhaseBoundaryMissingNextPhaseFirstRoundSkipsGap() public {
         RoundFeedMock feed = new RoundFeedMock();
         uint80 candidate = (uint80(1) << 64) | 100;
         uint80 laterPhaseRound = (uint80(2) << 64) | 2;
@@ -562,8 +562,52 @@ contract PR4AttackerAuditTest is Test {
         feed.setRound(laterPhaseRound, laterPhaseRound, 70e8, 2100, 2100, laterPhaseRound);
         SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
 
+        ISettlementAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, candidate);
+        assertEq(fixing.roundId, candidate);
+    }
+
+    function test_Upside_ValidPreExpiryRoundAfterBadSuccessorStillBlocksOlderCandidate() public {
+        RoundFeedMock feed = new RoundFeedMock();
+        feed.setRound(10, 10, 50e8, 1500, 1500, 10);
+        feed.setRound(11, 11, 0, 1800, 1800, 11);
+        feed.setRound(12, 12, 60e8, 1900, 1900, 12);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+
+        vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
+        adapter.verifyFixingRound(2_000, 10);
+    }
+
+    function test_RiskSplit_ValidPreExpiryRoundAfterBadSuccessorStillBlocksOlderCandidate() public {
+        RoundFeedMock feed = new RoundFeedMock();
+        feed.setRound(10, 10, 50e8, 1500, 1500, 10);
+        feed.setRound(11, 11, 0, 1800, 1800, 11);
+        feed.setRound(12, 12, 60e8, 1900, 1900, 12);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+
         vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
-        adapter.verifyFixingRound(2_000, candidate);
+        adapter.verifyFixingRound(2_000, 10);
+    }
+
+    function test_Upside_NegativeSuccessorIsSkipped() public {
+        RoundFeedMock feed = new RoundFeedMock();
+        feed.setRound(10, 10, 50e8, 1900, 1900, 10);
+        feed.setRound(11, 11, -1, 1950, 1950, 11);
+        feed.setRound(12, 12, 60e8, 2100, 2100, 12);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+
+        IUpsideFixingAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
+        assertEq(fixing.roundId, 10);
+    }
+
+    function test_RiskSplit_NegativeSuccessorIsSkipped() public {
+        RoundFeedMock feed = new RoundFeedMock();
+        feed.setRound(10, 10, 50e8, 1900, 1900, 10);
+        feed.setRound(11, 11, -1, 1950, 1950, 11);
+        feed.setRound(12, 12, 60e8, 2100, 2100, 12);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+
+        ISettlementAdapter.FixingData memory fixing = adapter.verifyFixingRound(2_000, 10);
+        assertEq(fixing.roundId, 10);
     }
 
     function test_Upside_OlderRoundCannotBeNominatedWhenLaterPreExpiryExists() public {
