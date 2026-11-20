@@ -251,7 +251,7 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
             <button type="button" id="market-overview-tab" role="tab" tabIndex={marketTab === "overview" ? 0 : -1} aria-controls="market-overview-panel" aria-selected={marketTab === "overview"} className={marketTab === "overview" ? styles.marketViewTabActive : ""} onClick={() => setMarketTab("overview")}>Overview</button>
             <button type="button" id="market-positions-tab" role="tab" tabIndex={marketTab === "positions" ? 0 : -1} aria-controls="market-positions-panel" aria-selected={marketTab === "positions"} className={marketTab === "positions" ? styles.marketViewTabActive : ""} onClick={() => setMarketTab("positions")}>Positions</button>
           </div>
-          <div id="market-overview-panel" role="tabpanel" aria-labelledby="market-overview-tab" hidden={marketTab !== "overview"} className={styles.marketTabPanel}>
+          <div id="market-overview-panel" role="tabpanel" aria-labelledby="market-overview-tab" hidden={marketTab !== "overview"} className={`${styles.marketTabPanel} ${styles.overviewPanel}`}>
             <RiskSplitClaimCards
               selectedClaim={selectedClaim}
               onSelectClaim={handleSelectClaim}
@@ -272,26 +272,22 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
               floorE8={floorE8}
               capE8={capE8}
               stockSymbol={symbol}
-              stockName={name}
               referencePrice={stockPriceUsd}
               maxAxis={Math.max(1, Math.ceil(stockPriceUsd * 2), Math.ceil(cap * 2.2))}
             />
-            <details className={styles.disclosureItem}>
-              <summary>Order book · choose a specific offer</summary>
-              <OrderBook
-                claimType={selectedClaim}
-                bids={activeBook.bids}
-                asks={activeBook.asks}
-                recentTrades={activeBook.recentTrades}
-                spreadUsd={activeBook.spreadUsd}
-                selectedOrderHash={activeSelectedOrder?.orderHash}
-                onSelectOrder={handleSelectBookOrder}
-                isLoading={activeBook.isLoading}
-                isError={activeBook.isError}
-                onRetry={() => void activeBook.refetch()}
-                sequence={activeBook.sequence}
-              />
-            </details>
+            <OrderBook
+              claimType={selectedClaim}
+              bids={activeBook.bids}
+              asks={activeBook.asks}
+              recentTrades={activeBook.recentTrades}
+              spreadUsd={activeBook.spreadUsd}
+              selectedOrderHash={activeSelectedOrder?.orderHash}
+              onSelectOrder={handleSelectBookOrder}
+              isLoading={activeBook.isLoading}
+              isError={activeBook.isError}
+              onRetry={() => void activeBook.refetch()}
+              sequence={activeBook.sequence}
+            />
           </div>
           <div id="market-positions-panel" role="tabpanel" aria-labelledby="market-positions-tab" hidden={marketTab !== "positions"} className={styles.marketTabPanel}>
             <RiskSplitActionPanel seriesAddress={seriesAddress} underlyingSymbol={symbol} view="positions" />

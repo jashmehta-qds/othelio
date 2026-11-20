@@ -35,6 +35,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   const [mounted, setMounted] = useState<boolean>(false);
+  const [showMoreNavigation, setShowMoreNavigation] = useState(false);
+  const mobileNavigation = navigation.filter((item) => !["activity", "agents", "settings"].includes(item.id));
+  const moreNavigation = navigation.filter((item) => ["activity", "agents", "settings"].includes(item.id));
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -455,13 +458,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </section>
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
-        {navigation.map((item) => (
-          <Link key={item.id} href={item.href} className={isActive(item.href) ? "active" : ""} aria-current={isActive(item.href) ? "page" : undefined}>
+        {mobileNavigation.map((item) => (
+          <Link key={item.id} href={item.href} className={isActive(item.href) ? "active" : ""} aria-label={item.label} aria-current={isActive(item.href) ? "page" : undefined}>
             <AppIcon type={item.id} />
-            <span>{item.label}</span>
+            <span>{item.id === "risk-split" ? "Protected" : item.label}</span>
           </Link>
         ))}
+        <button type="button" onClick={() => setShowMoreNavigation(true)} aria-haspopup="dialog" aria-expanded={showMoreNavigation} className={moreNavigation.some((item) => isActive(item.href)) ? "active" : ""}>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+          <span>More</span>
+        </button>
       </nav>
+      <Dialog open={showMoreNavigation} onClose={() => setShowMoreNavigation(false)} title="More">
+        <nav className="mobile-more-menu" aria-label="More navigation">
+          {moreNavigation.map((item) => (
+            <Link key={item.id} href={item.href} onClick={() => setShowMoreNavigation(false)} aria-current={isActive(item.href) ? "page" : undefined}>
+              <AppIcon type={item.id} />
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+      </Dialog>
       <WalletConnectModal isOpen={showConnectModal} onClose={() => setShowConnectModal(false)} />
     </main>
   );

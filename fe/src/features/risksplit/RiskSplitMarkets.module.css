@@ -18,10 +18,9 @@
 .simpleTerms summary { cursor: pointer; }
 .simpleFilter { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-ink); }
 .simpleFilter select { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-width: 180px; }
-.scenarioPresets { display: flex; gap: 8px; margin: 16px 0; }
-.scenarioPresets button { flex: 1; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted-ink); font-size: 11px; cursor: pointer; }
-.scenarioPresets strong { display: block; margin-top: 5px; color: var(--ink); font-size: 14px; }
-.scenarioPresets button[aria-pressed="true"] { border-color: var(--accent); }
+.scenarioPresets { display: flex; gap: 4px; margin-left: auto; }
+.scenarioPresets button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted-ink); font: inherit; font-size: 12px; cursor: pointer; }
+.scenarioPresets button[aria-pressed="true"] { background: var(--panel-2); color: var(--ink); border-color: var(--muted-ink); }
 @media (max-width: 600px) { .simpleFilter { width: 100%; } }
 
 .page {
@@ -516,8 +515,8 @@
 
 .scenarioCard {
   composes: panel from "@/components/ui/primitives.module.css";
-  margin: 26px 0;
-  padding: 22px;
+  margin: 16px 0;
+  padding: 16px;
 }
 
 .scenarioHead {
@@ -525,12 +524,12 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .scenarioHead h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.02em;
 }
@@ -588,33 +587,38 @@
 .payoutGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .payoutCard {
-  padding: 14px 16px;
-  background: var(--panel-2);
-  border: 1px solid transparent;
-  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   transition: all 0.16s ease;
 }
 
 .payoutActive {
-  border-color: var(--accent);
+  border-color: var(--muted-ink);
   background: var(--panel-2);
 }
 
 .payoutLabel {
   display: block;
   color: var(--muted-ink);
-  font-size: 11px;
-  margin-bottom: 4px;
+  font-size: 12px;
+  margin: 0;
 }
 
 .payoutAmount {
   display: block;
-  font-size: 24px;
+  font-size: 20px;
   letter-spacing: -0.04em;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -634,8 +638,6 @@
   font-size: 11px;
   line-height: 1.55;
   margin: 0;
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
 }
 
 .scenarioNote b {
@@ -700,10 +702,10 @@
 .marketViewTabs button,
 .marketViewTabs span {
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted-ink);
-  padding: 7px 2px 10px;
+  padding: 10px 14px;
   font: inherit;
   font-size: 12px;
   font-weight: 650;
@@ -719,7 +721,7 @@
 
 .marketViewTabs .marketViewTabActive {
   color: var(--ink);
-  border-bottom-color: var(--accent);
+  background: var(--panel-2);
 }
 
 .marketViewTabs button:focus-visible {
@@ -745,7 +747,7 @@
 .walletActionPanel {
   composes: panel from "@/components/ui/primitives.module.css";
   min-width: 0;
-  height: calc(100dvh - 96px);
+  height: auto;
   display: flex;
   flex-direction: column;
   padding: 16px;
@@ -753,18 +755,22 @@
 
 .walletActionTabs {
   display: flex;
-  gap: 22px;
-  border-bottom: 1px solid var(--line);
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--canvas);
   margin-bottom: 16px;
 }
 
 .walletActionTabs button,
 .walletActionTabs span {
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: 6px;
+  flex: 1;
   background: transparent;
   color: var(--muted-ink);
-  padding: 7px 2px 10px;
+  padding: 10px 14px;
   font: inherit;
   font-size: 13px;
   font-weight: 650;
@@ -780,7 +786,7 @@
 
 .walletActionTabs .walletActionTabActive {
   color: var(--ink);
-  border-bottom-color: var(--accent);
+  background: var(--panel-2);
 }
 
 .walletActionTabs button:focus-visible,
@@ -810,14 +816,13 @@
   background: transparent;
   position: static;
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .walletActionPanel .ticketActionArea {
-  margin-top: auto;
+  margin-top: 12px;
   padding-top: 10px;
-  position: sticky;
-  bottom: 0;
+  position: static;
   background: var(--panel);
   z-index: 2;
 }
@@ -1301,7 +1306,8 @@
 }
 
 .ticketModeToggle button {
-  min-width: 64px;
+  min-width: 76px;
+  min-height: 40px;
   border: 0;
   border-radius: 5px;
   padding: 6px 9px;
@@ -1315,7 +1321,15 @@
 .ticketModeToggle .ticketModeActive {
   color: var(--ink);
   background: var(--panel-2);
-  box-shadow: inset 0 -2px var(--accent);
+  box-shadow: 0 1px 3px #0002;
+}
+
+.ticketModeToggle button:focus-visible,
+.scenarioPresets button:focus-visible,
+.claimSideCard:focus-visible,
+.ticketSideBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .ticketBalanceRow {
@@ -2157,12 +2171,40 @@
     transform: none !important;
   }
 }
-/* Keep the explanation before the trade on narrow screens as well. */
+/* Mobile: compact choices and preview, then trade, then the open book. */
 @media (max-width: 800px) {
+  .page { padding-inline: 0; }
+  .workGrid { gap: 14px; }
   .marketViewTabs { order: 1; }
   .marketTabPanel { order: 2; }
-  .ticketColumn { order: 3; }
+  .overviewPanel:not([hidden]) { display: contents; }
+  .claimChoiceSection { order: 2; margin: 0; }
+  .scenarioCard { order: 3; }
+  .ticketColumn { order: 4; }
+  .bookWrapper { order: 5; }
+  .disclosureSection { order: 6; }
   .marketTabPanel .claimChoiceSection { display: block; }
   .mobileClaimPick { display: none; }
   .filters { flex-wrap: wrap; }
+  .claimChoiceHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .claimChoiceHead h2 { font-size: 15px; margin: 0 0 10px; }
+  .claimChoiceHead p { display: none; }
+  .claimSideCard { padding: 12px; }
+  .claimSideDesc { font-size: 12px; line-height: 1.5; }
+  .claimSideBottom { grid-template-columns: 1fr; gap: 4px; }
+  .claimSideQuote { display: flex; justify-content: space-between; gap: 4px; align-items: baseline; font-size: 11px; }
+  .claimSideQuote b { font-size: 12px; margin: 0; }
+  .scenarioControls { flex-direction: row; align-items: center; gap: 8px; }
+  .scenarioLabel { flex: 1; font-size: 12px; }
+  .moneyInput { padding-inline: 8px; }
+  .moneyInput input { width: 74px; min-height: 44px; font-size: 16px; }
+  .scenarioPresets { width: 100%; margin: 0; }
+  .scenarioPresets button { flex: 1; min-height: 44px; }
+  .payoutCard { padding: 8px 10px; }
+  .payoutAmount { font-size: 18px; }
+  .walletActionPanel { padding: 14px; }
+  .ticketModeToggle button, .ticketSideBtn, .marketViewTabs button, .walletActionTabs button, .bookRow { min-height: 44px; }
+  .ticketFieldHeader, .ticketSummary div, .ticketBalanceRow { font-size: 12px; }
+  .ticketInputWrapper input { min-height: 48px; font-size: 20px; }
+  .bookWrapper { padding: 14px; }
 }

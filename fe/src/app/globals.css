@@ -1136,6 +1136,30 @@ body {
   display: none;
 }
 
+.mobile-more-menu {
+  display: grid;
+  gap: 8px;
+}
+
+.mobile-more-menu a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.mobile-more-menu a:hover,
+.mobile-more-menu a[aria-current="page"] {
+  background: var(--panel-2);
+}
+
+.mobile-more-menu svg { width: 20px; height: 20px; }
+
 .crumbs button {
   border: 0;
   padding: 0;
@@ -1811,29 +1835,38 @@ input[type="number"] {
     right: 0;
     bottom: 0;
     z-index: 8;
-    height: 68px;
+    min-height: 68px;
+    padding-bottom: env(safe-area-inset-bottom);
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     background: var(--panel);
     border-top: 1px solid var(--line);
   }
 
-  .mobile-nav a {
+  .mobile-nav a,
+  .mobile-nav button {
     color: var(--muted-ink);
     text-decoration: none;
     display: grid;
     place-items: center;
     align-content: center;
     gap: 3px;
-    font-size: 9px;
+    min-height: 68px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 10px;
+    cursor: pointer;
   }
 
-  .mobile-nav a svg {
+  .mobile-nav svg {
     width: 20px;
     height: 20px;
   }
 
-  .mobile-nav a.active {
+  .mobile-nav .active {
     color: var(--accent);
   }
 

@@ -47,8 +47,8 @@ export function OrderBook({
     <div className={styles.bookWrapper}>
       <div className={styles.bookHeaderRow}>
         <div>
-          <h2 className={styles.bookTitle}>{claimLabel} orders</h2>
-          <span className={styles.bookSub}>Prices per claim · USDC</span>
+          <h2 className={styles.bookTitle}>Order book</h2>
+          <span className={styles.bookSub}>{claimLabel} · Prices per claim in USDC</span>
         </div>
       </div>
 

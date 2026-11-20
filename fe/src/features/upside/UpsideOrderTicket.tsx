@@ -452,6 +452,22 @@ export function UpsideOrderTicket({
           {Number(strikeFormatted).toFixed(2)}
         </span>
       </div>
+      <div className={styles.orderTypeRow}>
+        <span>Order type</span>
+        <div className={styles.orderTypeToggle} role="group" aria-label="Order type">
+          {([false, true] as const).map((limit) => (
+            <button
+              key={String(limit)}
+              type="button"
+              aria-pressed={isLimitMode === limit}
+              disabled={isExecuting || tradingClosed}
+              onClick={() => setIsLimitMode(limit)}
+            >
+              {limit ? "Limit" : "Market"}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className={styles.inputGroup}>
         <label htmlFor="upside-quantity">How many claims?</label>
         <div className={styles.inputWrapper}>
@@ -468,15 +484,6 @@ export function UpsideOrderTicket({
           <span className={styles.inputUnit}>claims</span>
         </div>
       </div>
-      <label className={styles.limitOption}>
-        <input
-          type="checkbox"
-          checked={isLimitMode}
-          disabled={isExecuting || tradingClosed}
-          onChange={(e) => setIsLimitMode(e.target.checked)}
-        />{" "}
-        Set my own price
-      </label>
       {isLimitMode && (
         <div className={styles.inputGroup}>
           <label htmlFor="upside-limit">Price per claim</label>

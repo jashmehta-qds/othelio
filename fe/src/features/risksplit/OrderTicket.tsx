@@ -427,8 +427,8 @@ export function OrderTicket({
       <div className={styles.ticketModeRow}>
         <span>Order type</span>
         <div className={styles.ticketModeToggle} role="group" aria-label="Order type">
-          <button type="button" className={!isLimitMode ? styles.ticketModeActive : ""} aria-pressed={!isLimitMode} onClick={() => { setIsLimitMode(false); setErrorMessage(null); }}>Trade now</button>
-          <button type="button" className={isLimitMode ? styles.ticketModeActive : ""} aria-pressed={isLimitMode} onClick={() => { setIsLimitMode(true); setErrorMessage(null); }}>Set my price</button>
+          <button type="button" className={!isLimitMode ? styles.ticketModeActive : ""} aria-pressed={!isLimitMode} onClick={() => { setIsLimitMode(false); setErrorMessage(null); }}>Market</button>
+          <button type="button" className={isLimitMode ? styles.ticketModeActive : ""} aria-pressed={isLimitMode} onClick={() => { setIsLimitMode(true); setErrorMessage(null); }}>Limit</button>
         </div>
       </div>
       {/* Available Balance in Wallet */}
@@ -494,7 +494,7 @@ export function OrderTicket({
         </div>
       )}
 
-      {!isLimitMode && !selectedOrder && <p className={styles.limitDisclaimer} role="status">{isBookLoading ? "Finding available prices…" : isBookError ? "Prices unavailable. Try again shortly." : `No ${isBuy ? "offers" : "bids"} yet. Choose Set my price to leave an order.`}</p>}
+      {!isLimitMode && !selectedOrder && <p className={styles.limitDisclaimer} role="status">{isBookLoading ? "Finding available prices…" : isBookError ? "Prices unavailable. Try again shortly." : `No ${isBuy ? "offers" : "bids"} yet. Choose Limit to leave an order.`}</p>}
       {/* Financial Summary */}
       <div className={styles.ticketSummary}>
         <div className={styles.summaryRow}>

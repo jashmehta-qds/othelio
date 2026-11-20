@@ -179,7 +179,7 @@ export function UpsideMarketDetail({
         </div>
       </section>
       <div className={styles.workGrid}>
-        <div>
+        <div className={styles.marketColumn}>
           <section className={styles.choicePanel}>
             <h2 className={styles.sectionTitle}>2. Choose your side</h2>
             <div
@@ -193,8 +193,8 @@ export function UpsideMarketDetail({
                 onClick={() => setClaimType("UPSIDE")}
               >
                 <strong>Upside ↗</strong>
-                <span>The growth above ${strike.toFixed(2)}.</span>
-                <small>At or below the target: zero.</small>
+                <span>Growth above ${strike.toFixed(2)}.</span>
+                <small>At or below target: zero.</small>
               </button>
               <button
                 type="button"
@@ -202,8 +202,8 @@ export function UpsideMarketDetail({
                 onClick={() => setClaimType("RESIDUAL")}
               >
                 <strong>Remaining value</strong>
-                <span>The stock’s value up to ${strike.toFixed(2)}.</span>
-                <small>Still loses value if the stock falls.</small>
+                <span>Value up to ${strike.toFixed(2)}.</span>
+                <small>Loses value if the stock falls.</small>
               </button>
             </div>
             <div className={styles.scenarioBox}>
@@ -257,11 +257,11 @@ export function UpsideMarketDetail({
               </label>
               <div className={styles.payoutPair} aria-live="polite">
                 <div>
-                  <span>Upside receives</span>
+                  <span>Upside</span>
                   <strong>${payout.upside.toFixed(2)}</strong>
                 </div>
                 <div>
-                  <span>Remaining value receives</span>
+                  <span>Remaining value</span>
                   <strong>${payout.residual.toFixed(2)}</strong>
                 </div>
               </div>
@@ -284,13 +284,10 @@ export function UpsideMarketDetail({
               strikePrice={strike}
             />
           </details>
-          <details className={styles.advanced}>
-            <summary>Order book · offers and bids</summary>
-            <UpsideOrderBook
-              chainId={chainId}
-              seriesAddress={activeMarket.seriesAddress}
-            />
-          </details>
+          <UpsideOrderBook
+            chainId={chainId}
+            seriesAddress={activeMarket.seriesAddress}
+          />
           <UpsideMyOrders
             chainId={chainId}
             seriesAddress={activeMarket.seriesAddress}

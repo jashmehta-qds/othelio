@@ -23,11 +23,11 @@ export function UpsideOrderBook({
 
   return (
     <div className={styles.bookPanel}>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+      <div className={styles.bookHeader}>
         <div>
-          <h2 className="text-base font-bold text-white">Order book</h2>
-          <span className="text-xs font-mono text-zinc-400">
-            Available offers and bids · prices in USDC
+          <h2 className={styles.sectionTitle}>Order book</h2>
+          <span className={styles.helperText}>
+            Prices per claim in USDC
           </span>
         </div>
 

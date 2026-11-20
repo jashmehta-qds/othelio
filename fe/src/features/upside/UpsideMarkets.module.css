@@ -322,10 +322,13 @@
 }
 
 .bookTabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 12px 0 16px;
 }
+
+.bookHeader .sectionTitle { margin-bottom: 4px; }
 
 .bookTab {
   border: 1px solid var(--line);
@@ -678,38 +681,105 @@
 .stockHeading { display: flex; align-items: center; gap: 12px; }
 .sectionTitle { font-size: 16px; font-weight: 650; letter-spacing: -.015em; margin: 0 0 14px; }
 .choicePanel { border: 1px solid var(--line); border-radius: 16px; padding: 24px; background: var(--panel); }
-.sideChoices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 24px; }
-.sideChoices button { display: flex; flex-direction: column; gap: 10px; padding: 18px; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); border-radius: 12px; cursor: pointer; text-align: left; }
+.sideChoices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.sideChoices button { display: flex; flex-direction: column; gap: 6px; padding: 14px; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; cursor: pointer; text-align: left; }
 .sideChoices button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .sideChoices strong { font-size: 15px; }
 .sideChoices span { font-size: 13px; line-height: 1.5; }
 .sideChoices small { font-size: 11px; color: var(--muted-ink); line-height: 1.5; }
-.scenarioBox { border-top: 1px solid var(--line); padding-top: 20px; }
-.scenarioBox h3 { font-size: 15px; margin: 0 0 16px; }
-.scenarioPresets { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 18px; }
+.scenarioBox { border-top: 1px solid var(--line); padding-top: 14px; }
+.scenarioBox h3 { font-size: 14px; margin: 0 0 10px; }
+.scenarioPresets { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
 .scenarioPresets button { padding: 8px 10px; background: var(--panel-2); color: var(--muted-ink); border: 1px solid var(--line); border-radius: 7px; cursor: pointer; font-size: 11px; }
 .scenarioPresets button[aria-pressed="true"] { border-color: var(--accent); color: var(--ink); }
 .scenarioInput { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; }
 .scenarioInput > span { display: flex; align-items: center; border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 10px; gap: 8px; }
 .scenarioInput input { width: 110px; background: transparent; border: none; color: var(--ink); font-size: 18px; font-weight: 700; }
-.payoutPair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
-.payoutPair > div { display: flex; flex-direction: column; gap: 7px; padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.payoutPair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.payoutPair > div { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
 .payoutPair span { color: var(--muted-ink); font-size: 11px; }
-.payoutPair strong { font-size: 25px; letter-spacing: -.03em; }
+.payoutPair strong { font-size: 20px; letter-spacing: -.03em; }
 .advanced { border: 1px solid var(--line); border-radius: 12px; margin-top: 16px; overflow: hidden; }
 .advanced > summary { padding: 16px 18px; color: var(--muted-ink); font-size: 12px; cursor: pointer; }
 .advanced > summary:hover { color: var(--ink); }
 .advanced .chartPanel, .advanced .bookPanel, .advanced .vaultPanel { border: 0; margin: 0; border-radius: 0; }
 .tradeColumn { position: sticky; top: 24px; min-width: 0; }
-.tradeIdentity { display: flex; flex-direction: column; gap: 6px; margin: 20px 0; }
+.tradeIdentity { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; }
 .tradeIdentity strong { font-size: 20px; }
 .tradeIdentity span { font-size: 12px; color: var(--muted-ink); }
-.limitOption { display: flex; align-items: center; gap: 8px; margin: 14px 0; font-size: 12px; color: var(--muted-ink); cursor: pointer; }
-.limitOption input { accent-color: var(--accent); }
+.orderTypeRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--muted-ink);
+}
+.orderTypeToggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--canvas);
+}
+.orderTypeToggle button {
+  min-width: 76px;
+  min-height: 40px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.orderTypeToggle button[aria-pressed="true"] {
+  background: var(--panel-2);
+  color: var(--ink);
+  box-shadow: 0 1px 3px #0002;
+}
+.orderTypeToggle button:disabled { opacity: .5; cursor: not-allowed; }
+.orderTypeToggle button:focus-visible,
+.sideChoices button:focus-visible,
+.scenarioPresets button:focus-visible,
+.ticketTypeTab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 .ticketPanel .actionButton { margin-top: 12px; }
 .ticketTypeTabs { grid-template-columns: 1fr 1fr; }
 .targetsGrid { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); margin-top: 14px; }
 .summaryRow { gap: 12px; }
 .summaryRow strong { white-space: nowrap; }
-@media (max-width: 900px) { .tradeColumn { position: static; } }
-@media (max-width: 600px) { .choicePanel, .ticketPanel { padding: 20px 16px; } .sideChoices { gap: 8px; } .sideChoices button { padding: 14px 12px; } .payoutPair strong { font-size: 22px; } .tileSpotPrice { font-size: 16px; } .stockHeading h1 { font-size: 26px; } }
+@media (max-width: 900px) {
+  .marketColumn { display: contents; }
+  .choicePanel { order: 1; }
+  .tradeColumn { order: 2; position: static; }
+  .marketColumn > .bookPanel { order: 3; margin: 0; }
+  .marketColumn > .advanced { order: 4; margin: 0; }
+  .marketColumn > .ordersPanel { order: 5; }
+}
+@media (max-width: 600px) {
+  .page { padding-inline: 0; }
+  .workGrid { gap: 14px; }
+  .choicePanel, .ticketPanel, .bookPanel { padding: 16px; }
+  .sideChoices { gap: 8px; }
+  .sideChoices button { padding: 12px; }
+  .sideChoices span { font-size: 12px; }
+  .sideChoices small { font-size: 11px; }
+  .scenarioPresets { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .scenarioPresets button, .orderTypeToggle button, .ticketTypeTab, .bookTab, .targetChip { min-height: 44px; }
+  .scenarioPresets button { padding: 6px; }
+  .scenarioInput input, .inputWrapper input { font-size: 16px; min-height: 44px; }
+  .scenarioInput > span { padding: 0 8px; }
+  .scenarioInput input { width: 82px; }
+  .payoutPair strong { font-size: 18px; }
+  .bookGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .bookColumnTitle { font-size: 10px; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .tileSpotPrice { font-size: 16px; }
+  .stockHeading h1 { font-size: 24px; }
+}
