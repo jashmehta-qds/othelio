@@ -224,116 +224,6 @@
   color: var(--acid);
 }
 
-.holdings {
-  position: relative;
-  border-top: 1px solid #5b6450;
-  border-bottom: 1px solid #5b6450;
-}
-
-.holdings::before {
-  content: "";
-  position: absolute;
-  width: 360px;
-  height: 360px;
-  top: 50%;
-  left: 50%;
-  z-index: 0;
-  transform: translate(-50%, -50%);
-  border: 1px solid #282e23;
-  border-radius: 50%;
-  box-shadow: 0 0 0 90px rgba(40, 46, 35, .22);
-  pointer-events: none;
-}
-
-.holdingsHeader,
-.holding,
-.holdingsFoot {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-}
-
-.holdingsHeader {
-  gap: 16px;
-  min-height: 92px;
-  border-bottom: 1px solid #33382f;
-}
-
-.holdingsMark {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border: 1px solid #49513f;
-  border-radius: 50%;
-  color: var(--paper);
-}
-
-.holdingsHeader div:nth-child(2) {
-  display: grid;
-  gap: 4px;
-}
-
-.holdingsHeader div:nth-child(2) span,
-.holdingsFoot {
-  color: #8e9885;
-  font-size: 10px;
-  letter-spacing: .14em;
-}
-
-.holdingsHeader strong {
-  font-size: 15px;
-  font-weight: 500;
-}
-
-.holdingsTotal {
-  margin-left: auto;
-  font: 500 21px/1 var(--font-heading), sans-serif;
-}
-
-.holding {
-  min-height: 81px;
-  gap: 18px;
-  border-bottom: 1px solid #33382f;
-}
-
-.holdingIndex {
-  color: #66705f;
-  font-size: 10px;
-  letter-spacing: .1em;
-}
-
-.holdingIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-}
-
-.holdingSymbol {
-  color: var(--paper);
-  font: 700 18px/1 var(--font-heading), sans-serif;
-  letter-spacing: -.01em;
-}
-
-.holding strong {
-  margin-left: auto;
-  font: 500 28px/1 var(--font-heading), sans-serif;
-  letter-spacing: -.03em;
-}
-
-.holdingsFoot {
-  justify-content: space-between;
-  min-height: 70px;
-}
-
-.holdingsFoot span:last-child {
-  color: var(--acid);
-  font-size: 20px;
-}
-
 .closing {
   position: relative;
   z-index: 2;
@@ -450,19 +340,6 @@
 
   .insideCopy h2 {
     font-size: clamp(40px, 10vw, 55px);
-  }
-
-  .holding {
-    gap: 12px;
-    min-height: 73px;
-  }
-
-  .holdingSymbol {
-    font-size: 16px;
-  }
-
-  .holding strong {
-    font-size: 23px;
   }
 
   .closing {

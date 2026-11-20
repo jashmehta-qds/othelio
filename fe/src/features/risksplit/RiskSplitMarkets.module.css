@@ -8,23 +8,7 @@
 }
 
 .heading {
-  border-bottom: 1px solid var(--line);
-  padding: 0 0 24px;
-}
-
-.heading h1 {
-  font-size: 34px;
-  letter-spacing: -0.035em;
-  line-height: 1.15;
-  font-weight: 600;
-  margin: 0 0 9px;
-}
-
-.heading p {
-  max-width: 66ch;
-  color: var(--muted-ink);
-  line-height: 1.5;
-  margin: 0;
+  composes: marketHeading from "@/components/ui/primitives.module.css";
 }
 
 .marketsSection {
@@ -73,14 +57,8 @@
 }
 
 .search {
+  composes: marketSearch from "@/components/ui/primitives.module.css";
   display: block;
-  max-width: 350px;
-  width: 100%;
-}
-
-.search input {
-  width: 100%;
-  min-height: 40px;
 }
 
 .state {
@@ -227,16 +205,8 @@
 }
 
 .backLink {
-  display: inline-block;
-  color: var(--muted-ink);
-  font-size: 13px;
-  text-decoration: none;
+  composes: backLink from "@/components/ui/primitives.module.css";
   margin-bottom: 14px;
-  transition: color 0.15s ease;
-}
-
-.backLink:hover {
-  color: var(--ink);
 }
 
 /* Detail Header */
@@ -353,12 +323,11 @@
 }
 
 .claimSideCard {
+  composes: panel from "@/components/ui/primitives.module.css";
   min-width: 0;
   appearance: none;
   text-align: left;
   color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--line);
   border-radius: 10px;
   padding: 12px 14px;
   min-height: 108px;
@@ -522,11 +491,9 @@
    ========================================================================== */
 
 .scenarioCard {
+  composes: panel from "@/components/ui/primitives.module.css";
   margin: 26px 0;
   padding: 22px;
-  border-radius: 14px;
-  background: var(--panel);
-  border: 1px solid var(--line);
 }
 
 .scenarioHead {
@@ -752,13 +719,11 @@
 }
 
 .walletActionPanel {
+  composes: panel from "@/components/ui/primitives.module.css";
   min-width: 0;
   height: calc(100dvh - 96px);
   display: flex;
   flex-direction: column;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
   padding: 16px;
 }
 
@@ -995,9 +960,7 @@
    ========================================================================== */
 
 .bookWrapper {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  composes: panel from "@/components/ui/primitives.module.css";
   padding: 16px;
   min-height: 228px;
 }
@@ -1252,9 +1215,7 @@
    ========================================================================== */
 
 .ticketCard {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  composes: panel from "@/components/ui/primitives.module.css";
   padding: 16px;
   position: sticky;
   top: 24px;
@@ -1546,9 +1507,7 @@
    ========================================================================== */
 
 .myOrdersWrapper {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  composes: panel from "@/components/ui/primitives.module.css";
   padding: 16px;
   flex: 1;
   min-height: 0;
@@ -1742,36 +1701,11 @@
 }
 
 .positionCard {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  composes: panel from "@/components/ui/primitives.module.css";
   padding: 20px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-}
-
-.positionCardTabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
-.positionTabBtn {
-  border: 1px solid var(--line);
-  background: var(--panel-2);
-  color: var(--muted-ink);
-  padding: 7px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.positionTabBtnActive {
-  border-color: var(--accent);
-  color: var(--ink);
-  background: var(--panel);
 }
 
 .positionCardHead {

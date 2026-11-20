@@ -45,10 +45,7 @@
   margin: 0 0 12px;
 }
 .form {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  min-width: 0;
+  composes: formReset from "@/components/ui/primitives.module.css";
 }
 .mode h3,
 .assets h3,
@@ -58,6 +55,7 @@
   font-weight: 600;
 }
 .modeOptions {
+  composes: checkControls from "@/components/ui/primitives.module.css";
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
@@ -74,13 +72,6 @@
 .modeOptions label:has(input:checked) {
   border-color: var(--accent);
   background: var(--accent-soft);
-}
-.modeOptions input,
-.check input {
-  accent-color: var(--accent);
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
 }
 .modeOptions strong,
 .modeOptions small {
@@ -132,6 +123,7 @@
   margin: 30px 0;
 }
 .choices {
+  composes: choiceGroup from "@/components/ui/primitives.module.css";
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -146,11 +138,6 @@
   font-size: 14px;
   border-radius: 9px;
   cursor: pointer;
-}
-.choices button[aria-pressed="true"] {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: var(--accent);
 }
 .choices button:hover {
   color: var(--ink);
@@ -179,6 +166,9 @@
   gap: 10px;
   font-size: 14px;
   color: var(--muted-ink);
+}
+.check {
+  composes: checkControls from "@/components/ui/primitives.module.css";
 }
 .advanced .check {
   grid-column: 1/-1;

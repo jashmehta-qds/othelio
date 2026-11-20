@@ -62,11 +62,6 @@
 .allocation-slider { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin-top: 1px; height: 4px; }
 .allocation-row > button { min-height: 30px; padding: 4px 8px; font-size: 12px; }
 
-.transaction-amount { font-size: 26px !important; font-variant-numeric: tabular-nums; }
-.transaction-percent { display: flex; gap: 6px; margin: 8px 0 18px; }
-.transaction-percent button { flex: 1; min-height: 32px; font-size: 12px; }
-.transaction-modes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
-
 @media (max-width: 600px) {
   .transaction-identity { grid-template-columns: 1fr; gap: 10px; }
   .allocation-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
@@ -81,7 +76,7 @@
    Drawers (Side Component / Sheets) Specific Styles
    ========================================================================== */
 .transaction-drawer-content section { padding: 18px 0; border-top: 1px solid var(--line); }
-.transaction-drawer-content .safety-note small, .transaction-drawer-content .review-note small { font-size: 12px; line-height: 1.5; }
+.transaction-drawer-content .review-note small { font-size: 12px; line-height: 1.5; }
 .transaction-drawer-content .quote-summary { font-size: 13px; }
 .transaction-drawer-content .shield { display: none; }
 
