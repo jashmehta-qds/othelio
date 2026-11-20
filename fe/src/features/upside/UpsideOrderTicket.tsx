@@ -75,8 +75,12 @@ export function UpsideOrderTicket({
   const { writeContractAsync } = useWriteContract();
   const { signTypedDataAsync } = useSignTypedData();
   const { sendTransactionAsync } = useSendTransaction();
-  const { errorUpdatedAt: bookFailureRevision, isUnavailable: bookUnavailable } =
+  const { data: book, errorUpdatedAt: bookFailureRevision, isUnavailable: bookUnavailable } =
     useUpsideOrderbook(chainId, seriesAddress, claimType);
+  const matchingLevels = ticketMode === "BUY" ? book?.asks : book?.bids;
+  const hasMatchingLiquidity = !!matchingLevels?.length;
+  // Refresh when the executable side changes, not on every identical book poll.
+  const liquidityKey = JSON.stringify(matchingLevels ?? null);
 
   const activeClaimToken =
     claimType === "UPSIDE" ? upsideTokenAddress : residualTokenAddress;
@@ -94,16 +98,20 @@ export function UpsideOrderTicket({
     quoteRevision,
     bookFailureRevision,
     bookUnavailable,
+    liquidityKey,
   ].join(":");
   const sweepQuote =
-    quoteState?.key === quoteKey ? quoteState.quote : undefined;
+    hasMatchingLiquidity && quoteState?.key === quoteKey ? quoteState.quote : undefined;
   const quoteError = bookUnavailable
     ? "Order book unavailable. Retry the book to refresh your price."
-    : quoteState?.key === quoteKey ? quoteState.error : undefined;
+    : book && !hasMatchingLiquidity
+      ? `No ${ticketMode === "BUY" ? "offers" : "bids"} yet. Choose Limit to leave an order.`
+      : quoteState?.key === quoteKey ? quoteState.error : undefined;
   const isQuoting =
     !isLimitMode &&
     !tradingClosed &&
     !bookUnavailable &&
+    (!book || hasMatchingLiquidity) &&
     quantityValid &&
     quoteState?.key !== quoteKey;
   const claimLabel = claimType === "UPSIDE" ? "Upside" : "Remaining value";
@@ -124,7 +132,7 @@ export function UpsideOrderTicket({
   const scenarioValue = scenarioPayout * (quantityValid ? Number(quantity) : 0);
 
   useEffect(() => {
-    if (isLimitMode || tradingClosed || !quantityValid || bookUnavailable) return;
+    if (isLimitMode || tradingClosed || !quantityValid || bookUnavailable || !hasMatchingLiquidity) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -160,6 +168,7 @@ export function UpsideOrderTicket({
     tradingClosed,
     quantityValid,
     bookUnavailable,
+    hasMatchingLiquidity,
     quoteKey,
   ]);
 
