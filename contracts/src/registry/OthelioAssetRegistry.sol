@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 interface IFeedDecimals {
     function decimals() external view returns (uint8);
@@ -13,6 +14,10 @@ interface IB20Factory {
 }
 
 contract OthelioAssetRegistry is Ownable2Step {
+    error TokenDecimalsReadFailed(address token);
+    error TokenDecimalsMismatch(address token, uint8 expected, uint8 actual);
+    error TokenDecimalsTooLarge(uint8 tokenDecimals);
+
     /// @dev Base's singleton B20 factory precompile. It is intentionally not
     /// code-length checked: precompiles do not have conventional EVM bytecode.
     address private constant BASE_B20_FACTORY = 0xB20f000000000000000000000000000000000000;
@@ -62,7 +67,13 @@ contract OthelioAssetRegistry is Ownable2Step {
     ) public onlyOwner {
         require(token != address(0), "ZERO_TOKEN");
         require(!supported || priceFeed != address(0), "ZERO_FEED");
-        require(tokenDecimals <= 38 && feedDecimals <= 38, "DECIMALS_TOO_LARGE");
+        if (tokenDecimals > 18) revert TokenDecimalsTooLarge(tokenDecimals);
+        require(feedDecimals <= 38, "DECIMALS_TOO_LARGE");
+        try IERC20Metadata(token).decimals() returns (uint8 actualDecimals) {
+            if (actualDecimals != tokenDecimals) revert TokenDecimalsMismatch(token, tokenDecimals, actualDecimals);
+        } catch {
+            revert TokenDecimalsReadFailed(token);
+        }
         if (supported && priceFeed.code.length > 0) {
             try IFeedDecimals(priceFeed).decimals() returns (uint8 actualDecimals) {
                 require(actualDecimals == feedDecimals, "FEED_DECIMALS_MISMATCH");

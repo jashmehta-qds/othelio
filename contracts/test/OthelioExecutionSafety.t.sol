@@ -144,6 +144,7 @@ contract OthelioExecutionSafetyTest is Test {
         OthelioBasketAccount basket = OthelioBasketAccount(payable(basketAddress));
         address nativeB20 = 0xB200000000000000000000000000000000000000;
         assertEq(nativeB20.code.length, 0);
+        vm.mockCall(nativeB20, abi.encodeWithSignature("decimals()"), abi.encode(uint8(18)));
 
         registry.configure(block.chainid, nativeB20, address(0x1234), true, 18, 8, true);
         registry.configure(block.chainid, nativeB20, address(0x1234), false, 18, 8, true);

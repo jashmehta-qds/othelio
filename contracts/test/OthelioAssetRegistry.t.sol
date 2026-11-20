@@ -4,16 +4,22 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {OthelioAssetRegistry} from "../src/registry/OthelioAssetRegistry.sol";
 
+contract RegistryMetadataToken {
+    uint8 public immutable decimals;
+    constructor(uint8 decimals_) { decimals = decimals_; }
+}
+
 contract OthelioAssetRegistryTest is Test {
     OthelioAssetRegistry public registry;
 
     address public owner = address(0x111);
     address public user = address(0x222);
-    address public tokenNVDA = address(0x333);
+    address public tokenNVDA;
     address public feedNVDA = address(0x444);
 
     function setUp() public {
         registry = new OthelioAssetRegistry(owner);
+        tokenNVDA = address(new RegistryMetadataToken(18));
     }
 
     function testConfigureAssetByOwner() public {
@@ -54,7 +60,7 @@ contract OthelioAssetRegistryTest is Test {
 
     function testRejectDecimalsThatWouldOverflowOracleScaling() public {
         vm.prank(owner);
-        vm.expectRevert("DECIMALS_TOO_LARGE");
+        vm.expectRevert(abi.encodeWithSelector(OthelioAssetRegistry.TokenDecimalsTooLarge.selector, 39));
         registry.configure(block.chainid, tokenNVDA, feedNVDA, true, 39, 8, true);
     }
 
@@ -81,9 +87,9 @@ contract OthelioAssetRegistryTest is Test {
     }
 
     function testEnumerationAndRemovalOfSupportedTokens() public {
-        address tokenAAPL = address(0x555);
+        address tokenAAPL = address(new RegistryMetadataToken(18));
         address feedAAPL = address(0x666);
-        address tokenUSDC = address(0x777);
+        address tokenUSDC = address(new RegistryMetadataToken(6));
         address feedUSDC = address(0x888);
 
         vm.startPrank(owner);

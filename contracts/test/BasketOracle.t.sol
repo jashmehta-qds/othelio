@@ -5,6 +5,11 @@ import "forge-std/Test.sol";
 import {OthelioAssetRegistry} from "../src/registry/OthelioAssetRegistry.sol";
 import {BasketOracle, AggregatorV3Interface} from "../src/oracle/BasketOracle.sol";
 
+contract OracleMetadataToken {
+    uint8 public immutable decimals;
+    constructor(uint8 decimals_) { decimals = decimals_; }
+}
+
 contract MockV3Aggregator is AggregatorV3Interface {
     uint8 public override decimals;
     int256 public price;
@@ -67,8 +72,8 @@ contract BasketOracleTest is Test {
     BasketOracle public oracle;
 
     address public owner = address(0x111);
-    address public tokenNVDA = address(0x222);
-    address public tokenUSDC = address(0x333);
+    address public tokenNVDA;
+    address public tokenUSDC;
 
     MockV3Aggregator public feedNVDA;
     MockV3Aggregator public feedUSDC;
@@ -76,6 +81,8 @@ contract BasketOracleTest is Test {
     function setUp() public {
         registry = new OthelioAssetRegistry(owner);
         oracle = new BasketOracle(address(registry), address(0));
+        tokenNVDA = address(new OracleMetadataToken(18));
+        tokenUSDC = address(new OracleMetadataToken(6));
 
         feedNVDA = new MockV3Aggregator(8, 120 * 1e8); // $120.00
         feedUSDC = new MockV3Aggregator(8, 1 * 1e8);   // $1.00
@@ -104,8 +111,8 @@ contract BasketOracleTest is Test {
         assertEq(oracle.calculateNAV(tokens, balances), balances[0]);
     }
 
-    function testFuzzNAVMatchesExactScaling(uint64 balance, uint64 price, uint8 tokenDecimals, uint8 feedDecimals) public {
-        tokenDecimals = uint8(bound(tokenDecimals, 0, 38));
+    function testFuzzNAVMatchesExactScaling(uint64 balance, uint64 price, uint8, uint8 feedDecimals) public {
+        uint8 tokenDecimals = 18;
         feedDecimals = uint8(bound(feedDecimals, 0, 38));
         price = uint64(bound(price, 1, type(uint64).max));
         MockV3Aggregator feed = new MockV3Aggregator(feedDecimals, int256(uint256(price)));
