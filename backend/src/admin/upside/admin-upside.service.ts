@@ -18,6 +18,7 @@ import { createPublicClient, encodeFunctionData, getAddress, http, isAddress, ma
 import { rpcUrlForChain } from '../../config/network-runtime';
 import { adminContracts, settlementAdapterForFeed } from '../admin-deployment';
 import { adminTokenAbi, readAdminFeed } from '../admin-oracle';
+import { getIndexedSeriesMetrics } from '../admin-product-metrics';
 import { validateWeeklyUpsideExpiry } from '../markets/calendar.util';
 
 function positiveAmount(value: string | undefined, fallback: bigint): bigint {
@@ -163,81 +164,48 @@ export class AdminUpsideService {
     };
   }
 
-  async getRounds(chainIdInput = 8453): Promise<AdminUpsideRoundItem[]> {
-    const chainId = Number(chainIdInput);
-    const nowSecs = Math.floor(Date.now() / 1000);
-
-    if (this.db) {
-      try {
-        const query = `
-          SELECT r.*,
-                 COUNT(m.series_address)::int as markets_count
-          FROM upside_rounds r
-          LEFT JOIN upside_markets m ON r.chain_id = m.chain_id AND r.round_id = m.round_id
-          WHERE r.chain_id = $1
-          GROUP BY r.chain_id, r.round_id
-          ORDER BY r.round_id DESC
-        `;
-        const res = await this.db.query(query, [chainId]);
-        if (res?.rows) {
-          const items: AdminUpsideRoundItem[] = [];
-          for (const row of res.rows) {
-            const underlyingAddr = (row.underlying_address || '').toLowerCase();
-            const config = Object.values(TOKEN_FEED_REGISTRY).find(
-              (c) => c.tokenAddress.toLowerCase() === underlyingAddr,
-            );
-            const symbol = config?.symbol || 'ASSET';
-            const decimals = config?.tokenDecimals || 8;
-            const expiry = Number(row.expiry_timestamp);
-
-            const marketsRes = await this.db.query(
-              `SELECT * FROM upside_markets WHERE chain_id = $1 AND round_id = $2 ORDER BY strike_price ASC`,
-              [chainId, row.round_id],
-            );
-
-            const markets: AdminUpsideMarketItem[] = (marketsRes.rows || []).map((m: any) => ({
-              seriesAddress: m.series_address,
-              roundId: Number(m.round_id),
-              strikePrice: m.strike_price.toString(),
-              strikePriceFormatted: (Number(m.strike_price) / 1e8).toFixed(2),
-              expiryTimestamp: expiry,
-              expiryIso: new Date(expiry * 1000).toISOString(),
-              isSettled: Boolean(m.is_settled),
-              settledPriceFormatted: m.settled_price ? (Number(m.settled_price) / 1e8).toFixed(2) : null,
-              upsideTokenAddress: m.upside_token_address,
-              residualTokenAddress: m.residual_token_address,
-              creatorAddress: m.creator_address,
-              createdAt: new Date(m.created_at).toISOString(),
-            }));
-
-            items.push({
-              roundId: Number(row.round_id),
-              chainId,
-              factoryAddress: row.factory_address,
-              underlying: {
-                address: row.underlying_address,
-                symbol,
-                decimals,
-              },
-              referencePriceFormatted: (Number(row.reference_price) / 1e8).toFixed(2),
-              expectedMoveFormatted: (Number(row.expected_move) / 1e8).toFixed(2),
-              expiryTimestamp: expiry,
-              expiryIso: new Date(expiry * 1000).toISOString(),
-              isExpired: nowSecs >= expiry,
-              isSettled: Boolean(row.is_settled),
-              marketsCount: Number(row.markets_count || 0),
-              markets,
-              createdAt: new Date(row.created_at).toISOString(),
-            });
-          }
-          return items;
-        }
-      } catch (err) {
-        this.logger.warn(`Failed DB query for admin upside rounds: ${err}`);
+  async getRounds(chainId = 8453): Promise<AdminUpsideRoundItem[]> {
+    if (!this.db) return [];
+    try {
+      const [rounds, markets] = await Promise.all([
+        this.db.query('SELECT * FROM upside_rounds WHERE chain_id = $1 ORDER BY expiry_timestamp DESC, round_id DESC', [chainId]),
+        this.getMarkets(chainId),
+      ]);
+      const byRound = new Map<number, AdminUpsideMarketItem[]>();
+      for (const market of markets) {
+        const group = byRound.get(market.roundId);
+        if (group) group.push(market);
+        else byRound.set(market.roundId, [market]);
       }
+      const now = Math.floor(Date.now() / 1000);
+      return rounds.rows.map((row) => {
+        const asset = Object.values(TOKEN_FEED_REGISTRY).find((item) =>
+          item.tokenAddress.toLowerCase() === row.underlying_address.toLowerCase());
+        const expiry = Number(row.expiry_timestamp);
+        const roundMarkets = byRound.get(Number(row.round_id)) ?? [];
+        return {
+          roundId: Number(row.round_id),
+          chainId,
+          factoryAddress: row.factory_address,
+          underlying: { address: row.underlying_address, symbol: asset?.symbol ?? row.underlying_address, decimals: asset?.tokenDecimals ?? 8 },
+          referenceRoundId: row.reference_round_id.toString(),
+          referenceFeed: row.feed_address,
+          createdBlock: Number(row.created_block),
+          referencePriceFormatted: (Number(row.reference_price) / 1e8).toFixed(2),
+          expectedMoveFormatted: (Number(row.expected_move) / 1e8).toFixed(2),
+          expiryTimestamp: expiry,
+          expiryIso: new Date(expiry * 1000).toISOString(),
+          isExpired: now >= expiry,
+          isSettled: roundMarkets.length > 0 && roundMarkets.every((market) => market.isSettled),
+          marketsCount: roundMarkets.length,
+          markets: roundMarkets,
+          createdAt: new Date(row.created_at).toISOString(),
+        };
+      });
+    } catch (err) {
+      this.logger.warn(`Failed DB query for admin upside rounds: ${err}`);
+      throw new ServiceUnavailableException('Upside round history is unavailable.');
     }
-
-    return [];
   }
 
   async getMarkets(chainIdInput = 8453, roundId?: number): Promise<AdminUpsideMarketItem[]> {
@@ -253,10 +221,14 @@ export class AdminUpsideService {
         }
         query += ` ORDER BY round_id DESC, strike_price ASC`;
 
-        const res = await this.db.query(query, params);
+        const [res, metrics] = await Promise.all([
+          this.db.query(query, params), getIndexedSeriesMetrics(this.db, chainId, 'Upside').catch(() => null),
+        ]);
         if (res?.rows) {
           return res.rows.map((m: any) => ({
             seriesAddress: m.series_address,
+            metrics: metrics?.get(m.series_address) ?? null,
+            settledRoundId: m.settled_round_id?.toString() ?? null,
             roundId: Number(m.round_id),
             strikePrice: m.strike_price.toString(),
             strikePriceFormatted: (Number(m.strike_price) / 1e8).toFixed(2),
@@ -272,6 +244,7 @@ export class AdminUpsideService {
         }
       } catch (err) {
         this.logger.warn(`Failed DB query for admin upside markets: ${err}`);
+        throw new ServiceUnavailableException('Upside market history is unavailable.');
       }
     }
 

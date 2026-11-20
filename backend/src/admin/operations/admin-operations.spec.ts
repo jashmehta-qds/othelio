@@ -1,13 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AdminOperationsService } from './admin-operations.service';
 
+const adapter = '0x3333333333333333333333333333333333333333';
+let settled = false;
+let noRound = false;
+
 vi.mock('viem', async (importOriginal) => {
   const actual = await importOriginal<typeof import('viem')>();
   return {
     ...actual,
     createPublicClient: () => ({
+      getBlock: async () => ({ number: 22n, timestamp: BigInt(Math.floor(Date.now() / 1000)) }),
       readContract: async ({ functionName, args }: { functionName: string; args?: bigint[] }) => {
+        if (functionName === 'isSettled') return settled;
+        if (functionName === 'expiry') return BigInt(Math.floor(Date.now() / 1000) - 3600);
+        if (functionName === 'settlementAdapter') return adapter;
         if (functionName === 'getFixingRound') {
+          if (noRound) throw new Error('No round');
           return {
             roundId: 123n, price: 50000000000n,
             updatedAt: args![0] - 30n,
@@ -135,6 +144,29 @@ describe('AdminOperationsService', () => {
     } as any);
     const { expiryQueue: [item] } = await service.getOperations(8453);
     expect(item.settlementReady).toBe(ready);
+    expect(item.settlementBlocker).toEqual(ready ? null : expect.stringContaining('do not match'));
     expect(item.settlementPreviewTx?.args ?? null).toEqual(ready ? [series, '123'] : null);
+  });
+
+  it('rechecks an unavailable fixing and stops offering retries once settled onchain', async () => {
+    const expiry = Math.floor(Date.now() / 1000) - 3600;
+    const service = new AdminOperationsService({
+      query: vi.fn().mockResolvedValue({ rows: [{
+        series_address: '0x1111111111111111111111111111111111111111',
+        underlying_address: '0xb200000000000000000000ab99cfa739e253872b',
+        expiry_timestamp: expiry, settlement_adapter_address: adapter, is_settled: false,
+      }] }),
+    } as any);
+    try {
+      noRound = true;
+      expect((await service.getOperations()).expiryQueue[0]).toMatchObject({ settlementReady: false, settlementBlocker: expect.stringContaining('Recheck') });
+      noRound = false;
+      expect((await service.getOperations()).expiryQueue[0].settlementReady).toBe(true);
+      settled = true;
+      expect((await service.getOperations()).expiryQueue[0]).toMatchObject({ isSettled: true, settlementReady: false, settlementPreviewTx: null });
+    } finally {
+      noRound = false;
+      settled = false;
+    }
   });
 });

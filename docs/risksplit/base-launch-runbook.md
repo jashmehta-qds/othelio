@@ -56,6 +56,12 @@ The manifest records exact receipt blocks when Foundry provides them. If `factor
 
 ## 5. Create the first series separately
 
+**Admin panel:** Point the backend at the owner-only factory and the reviewed asset registry (`ASSET_REGISTRY_ADDRESS`). For multiple feeds, configure `RISK_SPLIT_SETTLEMENT_ADAPTERS_JSON` as a feed-address-to-adapter-address map. In **Risk Split → Create Series**, select an enabled B20 asset and an exact expiry. The factory owner can approve or revoke each setting independently. Series creation requires both approvals, a matching live oracle feed, and unused terms. The panel confirms the series address from the receipt; history and collateral show up once the indexer catches up.
+
+Use **Operations** to recheck the settlement queue and sign a verified fixing. The panel checks chain state before allowing a retry, even if the indexer has not recorded a confirmed settlement yet. **Overview** shows indexed wallet counts and USD TVL; stale or incomplete quotes and event coverage are marked unavailable rather than counted as zero.
+
+**Script alternative:**
+
 Choose floor/cap in USD with 8 decimals, based on the current MSFT/USD feed. Choose an expiry at exactly 4:00 PM New York time on a full NYSE trading day. The script rejects weekends, standard NYSE holidays, common early-close dates, past timestamps, stale reference data, and prices that do not bracket the live reference price.
 
 Example command shape (replace all three values deliberately):

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { AdminGuard, RequireAdminOwner } from './admin.guard';
+import { AdminMarketsController } from '../markets/admin-markets.controller';
 
-function contextFor(request: Record<string, unknown>, handler = () => {}) {
+function contextFor(request: Record<string, unknown>, handler: (...args: never[]) => unknown = () => {}) {
   return {
     getHandler: () => handler,
     switchToHttp: () => ({ getRequest: () => request }),
@@ -53,5 +54,12 @@ describe('AdminGuard', () => {
     await expect(guard.canActivate(contextFor({
       headers: { authorization: 'Bearer token' }, query: { chainId: '8453' }, body: { chainId: 31337 },
     }))).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it.each(['previewMarket', 'previewSetup'] as const)('restricts %s to the Risk Split factory owner', async (method) => {
+    const guard = new AdminGuard(authService as any);
+    await expect(guard.canActivate(contextFor({
+      headers: { authorization: 'Bearer token' }, body: {},
+    }, AdminMarketsController.prototype[method]))).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

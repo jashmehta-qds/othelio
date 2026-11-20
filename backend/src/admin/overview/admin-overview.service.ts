@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RiskSplitService } from '../../risksplit/risksplit.service';
 import { adminContracts } from '../admin-deployment';
+import { getIndexedProductMetrics } from '../admin-product-metrics';
 import { AdminOverviewResponse, TOKEN_FEED_REGISTRY } from '@othelio/shared';
 import { createPublicClient, http } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
@@ -18,6 +19,7 @@ export class AdminOverviewService {
 
   async getOverview(chainIdInput = 8453): Promise<AdminOverviewResponse> {
     const chainId = Number(chainIdInput);
+    const productMetrics = getIndexedProductMetrics(this.db, chainId);
 
     // 1. Freshness / Block Progress
     let indexerHealth: {
@@ -194,6 +196,7 @@ export class AdminOverviewService {
       activeWallets,
       basketsCount,
       supportedAssetsCount,
+      products: await productMetrics,
       riskSplit,
       governedContracts: {
         factory: {

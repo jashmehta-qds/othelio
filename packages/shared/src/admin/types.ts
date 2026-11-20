@@ -33,6 +33,22 @@ export interface AdminVerifyResponse extends AdminOperator {
   expiresAt: string;
 }
 
+export interface AdminProductMetric {
+  product: 'Baskets' | 'Risk Split' | 'Upside';
+  indexedWallets: number | null;
+  tvlUsd: string | null;
+  valuationIssue: string | null;
+}
+
+export interface AdminSeriesMetric {
+  holderWallets: number;
+  firstClaimBalanceRaw: string;
+  secondClaimBalanceRaw: string;
+  collateralRaw: string | null;
+  tvlUsd: string | null;
+  valuationIssue: string | null;
+}
+
 export interface AdminOverviewResponse {
   asOfBlock: number;
   indexerHealth: {
@@ -50,6 +66,7 @@ export interface AdminOverviewResponse {
   };
   basketsCount: number;
   supportedAssetsCount: number;
+  products: AdminProductMetric[];
   riskSplit: {
     totalSeries: number;
     openSeries: number;
@@ -117,6 +134,7 @@ export interface AdminTransactionPreview {
 }
 
 export interface AdminMarketItem {
+  metrics: AdminSeriesMetric | null;
   seriesAddress: string;
   underlying: {
     address: string;
@@ -140,8 +158,6 @@ export interface AdminMarketItem {
   settledFeedUpdatedAt: string | null;
   protectedTokenAddress: string | null;
   upsideTokenAddress: string | null;
-  collateralTotal: string;
-  openInterest: string;
   operationsAuditStatus: string;
   operationsAuditNote: string | null;
   lastIndexedBlock: number;
@@ -162,6 +178,21 @@ export interface AdminMarketPreviewRequest {
   settlementAdapter?: string;
   factoryAddress?: string;
   chainId?: number;
+}
+
+export interface AdminRiskSplitSetupRequest {
+  underlying: string;
+  expiryTimestamp: number;
+  chainId?: number;
+}
+
+export interface AdminRiskSplitSetupResponse {
+  adapterAddress: string | null;
+  adapterApproved: boolean;
+  expiryApproved: boolean;
+  adapterBlocker: string | null;
+  expiryBlocker: string | null;
+  transactions: AdminTransactionPreview[];
 }
 
 export interface PayoffScenario {
@@ -198,6 +229,7 @@ export interface AdminMarketPreviewResponse {
     note?: string;
   };
   expiryAlreadyApproved: boolean;
+  adapterAlreadyApproved: boolean;
   duplicateTermsDetected: boolean;
   payoffScenarios: PayoffScenario[];
   transactions: AdminTransactionPreview[];
@@ -220,6 +252,7 @@ export interface AdminOperationQueueItem {
     isFresh: boolean;
   } | null;
   settlementReady: boolean;
+  settlementBlocker: string | null;
   settlementPreviewTx?: AdminTransactionPreview | null;
   auditStatus: string;
 }
@@ -300,6 +333,8 @@ export interface AdminUpsideRoundPreviewResponse {
 }
 
 export interface AdminUpsideMarketItem {
+  metrics?: AdminSeriesMetric | null;
+  settledRoundId?: string | null;
   seriesAddress: string;
   roundId: number;
   strikePrice: string;
@@ -316,6 +351,9 @@ export interface AdminUpsideMarketItem {
 }
 
 export interface AdminUpsideRoundItem {
+  referenceRoundId: string;
+  referenceFeed: string;
+  createdBlock: number;
   roundId: number;
   chainId: number;
   factoryAddress: string;

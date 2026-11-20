@@ -73,6 +73,28 @@ describe('AdminUpsideService', () => {
     expect(config.referenceRoundId).toBe(5n);
     expect(config.referenceTime).toBe(updatedAt);
     expect(config.feed).toBe(feed);
+    expect(config).not.toHaveProperty('publicCreationEnabled');
+  });
+
+  it('groups indexed strikes by historical round and settles a round only when every strike settles', async () => {
+    const rounds = [1, 2, 3].map((id) => ({
+      round_id: id, factory_address: factory, underlying_address: underlying, feed_address: feed,
+      expiry_timestamp: now - 1, reference_round_id: '18446744073709551617', reference_price: '50000000000',
+      expected_move: '2000000000', created_at: new Date((now - 200) * 1000), created_block: '998',
+    }));
+    const markets = [1, 2, 2].map((id, index) => ({
+      series_address: `0x${String(index + 1).repeat(40)}`, round_id: id, strike_price: '50000000000',
+      expiry_timestamp: now - 1, is_settled: index < 2, settled_round_id: index < 2 ? '123' : null,
+      settled_price: index < 2 ? '50500000000' : null, created_at: new Date((now - 150) * 1000),
+    }));
+    const db = { query: vi.fn().mockImplementation(async (sql: string) => ({ rows: sql.startsWith('SELECT * FROM upside_rounds') ? rounds
+      : sql.startsWith('SELECT * FROM upside_markets') ? markets : [] })) };
+    const history = await new AdminUpsideService(db as any).getRounds();
+    expect(history.map(({ marketsCount, isSettled, isExpired }) => [marketsCount, isSettled, isExpired]))
+      .toEqual([[1, true, true], [2, false, true], [0, false, true]]);
+    expect(history[0]).toMatchObject({ referenceRoundId: '18446744073709551617', referenceFeed: feed, createdBlock: 998,
+      markets: [{ settledRoundId: '123', settledPriceFormatted: '505.00' }] });
+    expect(db.query.mock.calls.filter(([sql]) => sql.startsWith('SELECT * FROM upside_markets'))).toHaveLength(1);
   });
 
   it('rejects stale, incomplete, and unavailable feeds instead of preparing placeholder calldata', async () => {

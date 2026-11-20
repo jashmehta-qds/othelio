@@ -7,6 +7,8 @@ import {
   AdminMarketsResponse,
   AdminMarketPreviewRequest,
   AdminMarketPreviewResponse,
+  AdminRiskSplitSetupRequest,
+  AdminRiskSplitSetupResponse,
   AdminOperationsResponse,
   AdminTransactionPreview,
   AdminUpsideRoundItem,
@@ -118,6 +120,13 @@ class AdminApiClient {
 
   async previewMarket(params: AdminMarketPreviewRequest): Promise<AdminMarketPreviewResponse> {
     return this.fetchJson<AdminMarketPreviewResponse>('/v1/admin/markets/preview', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+  async previewRiskSplitSetup(params: AdminRiskSplitSetupRequest) {
+    return this.fetchJson<AdminRiskSplitSetupResponse>('/v1/admin/markets/setup', {
       method: 'POST',
       body: JSON.stringify(params),
     });

@@ -166,6 +166,27 @@ export function OverviewView({ overview, isLoading, onRefresh }: OverviewViewPro
         </div>
       </div>
 
+      <section className="rounded-lg border border-[#292a27] bg-[#161715] p-5">
+        <h2 className="mb-2 text-sm font-semibold text-zinc-200">Indexed product activity and TVL</h2>
+        <p className="mb-3 text-xs text-zinc-500">All-time indexed wallets, not unique people. TVL is an estimate from indexed collateral or basket NAV.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs font-mono">
+            <thead className="text-zinc-500"><tr><th>Product</th><th>Wallets</th><th>TVL (USD)</th></tr></thead>
+            <tbody className="divide-y divide-[#292a27] text-zinc-300">
+              {overview?.products?.map((metric) => (
+                <tr key={metric.product}>
+                  <td className="py-2">{metric.product}</td>
+                  <td>{metric.indexedWallets?.toLocaleString() ?? 'Unavailable'}</td>
+                  <td>{metric.tvlUsd === null ? 'Unavailable' : Number(metric.tvlUsd).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                    {metric.valuationIssue && <div className="text-amber-400">{metric.valuationIssue}</div>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {/* Governed Contracts Section */}
       <div className="bg-[#161715] border border-[#292a27] rounded-lg p-6">
         <h2 className="text-sm font-semibold tracking-wider uppercase font-mono text-zinc-300 mb-4">

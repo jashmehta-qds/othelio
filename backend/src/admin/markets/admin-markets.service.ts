@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RiskSplitService } from '../../risksplit/risksplit.service';
 import { describeReviewedB20, reviewedB20FeedAdditions } from '../../config/reviewed-b20-feeds';
@@ -8,31 +8,21 @@ import {
   AdminMarketPreviewResponse,
   AdminMarketsResponse,
   AdminTransactionPreview,
+  AdminRiskSplitSetupRequest,
+  AdminRiskSplitSetupResponse,
+  assetRegistryAbi,
   PayoffScenario,
   settlementAdapterAbi,
   seriesFactoryAbi,
   TOKEN_FEED_REGISTRY,
 } from '@othelio/shared';
-import { createPublicClient, encodeAbiParameters, getAddress, http, isAddress, keccak256, parseAbiParameters } from 'viem';
+import { createPublicClient, encodeAbiParameters, getAddress, http, isAddress, keccak256, parseAbiParameters, zeroAddress, encodeFunctionData } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
 import { validateExpiryCalendar } from './calendar.util';
 import { adminContracts, settlementAdapterForFeed } from '../admin-deployment';
 
-const AGGREGATOR_ABI = [
-  {
-    type: 'function',
-    name: 'latestRoundData',
-    inputs: [],
-    outputs: [
-      { name: 'roundId', type: 'uint80' },
-      { name: 'answer', type: 'int256' },
-      { name: 'startedAt', type: 'uint256' },
-      { name: 'updatedAt', type: 'uint256' },
-      { name: 'answeredInRound', type: 'uint80' },
-    ],
-    stateMutability: 'view',
-  },
-] as const;
+import { readAdminFeed } from '../admin-oracle';
+import { getIndexedSeriesMetrics } from '../admin-product-metrics';
 
 @Injectable()
 export class AdminMarketsService {
@@ -60,10 +50,10 @@ export class AdminMarketsService {
 
     if (this.db) {
       try {
-        const res = await this.db.query(
+        const [res, metrics] = await Promise.all([this.db.query(
           `SELECT * FROM risk_split_series WHERE chain_id = $1 ORDER BY expiry_timestamp DESC`,
           [chainId]
-        );
+        ), getIndexedSeriesMetrics(this.db, chainId, 'Risk Split').catch(() => null)]);
 
         const nowSecs = Math.floor(Date.now() / 1000);
 
@@ -74,17 +64,19 @@ export class AdminMarketsService {
           );
 
           const decimals = config?.tokenDecimals ?? 8;
-          const symbol = config?.symbol ?? 'UNKNOWN';
+          const symbol = config?.symbol ?? underlyingAddr;
 
           const floorPriceBig = BigInt(row.floor_price || '0');
           const capPriceBig = BigInt(row.cap_price || '0');
-          const refPriceBig = row.creation_reference_price ? BigInt(row.creation_reference_price) : null;
+          const refPriceBig = row.creation_reference_price_usd_e8 ? BigInt(row.creation_reference_price_usd_e8) : null;
           const settledPriceBig = row.settled_price ? BigInt(row.settled_price) : null;
 
           const expiryTs = Number(row.expiry_timestamp);
           const isExpired = nowSecs >= expiryTs;
 
+          const marketMetrics = metrics?.get(row.series_address) ?? null;
           items.push({
+            metrics: marketMetrics,
             seriesAddress: row.series_address,
             underlying: {
               address: row.underlying_address,
@@ -99,8 +91,8 @@ export class AdminMarketsService {
             expiryIso: new Date(expiryTs * 1000).toISOString(),
             isExpired,
             referencePrice: refPriceBig ? refPriceBig.toString() : null,
-            referenceRoundId: row.creation_reference_round_id ? row.creation_reference_round_id.toString() : null,
-            referenceFeed: row.creation_reference_feed || null,
+            referenceRoundId: row.creation_feed_round_id?.toString() ?? null,
+            referenceFeed: row.creation_feed_address ?? null,
             referenceBlock: row.creation_reference_block ? Number(row.creation_reference_block) : null,
             isSettled: Boolean(row.is_settled),
             settledPrice: settledPriceBig ? settledPriceBig.toString() : null,
@@ -108,15 +100,14 @@ export class AdminMarketsService {
             settledFeedUpdatedAt: row.settled_feed_updated_at ? new Date(row.settled_feed_updated_at).toISOString() : null,
             protectedTokenAddress: row.protected_token_address || null,
             upsideTokenAddress: row.upside_token_address || null,
-            collateralTotal: '0',
-            openInterest: '0',
             operationsAuditStatus: row.operations_audit_status || 'NORMAL',
             operationsAuditNote: row.operations_audit_note || null,
-            lastIndexedBlock: row.last_indexed_block ? Number(row.last_indexed_block) : 0,
+            lastIndexedBlock: Math.max(Number(row.last_indexed_block ?? 0), Number(row.created_block ?? 0)),
           });
         }
       } catch (err) {
         this.logger.warn(`Failed to fetch markets from db: ${err}`);
+        throw new ServiceUnavailableException('Risk Split series history is unavailable.');
       }
     }
 
@@ -126,100 +117,137 @@ export class AdminMarketsService {
     };
   }
 
-  async previewMarket(params: AdminMarketPreviewRequest): Promise<AdminMarketPreviewResponse> {
-    const chainId = params.chainId ? Number(params.chainId) : 8453;
-    if (typeof params.underlying !== 'string' || !isAddress(params.underlying)) {
+  private async marketContext(params: AdminRiskSplitSetupRequest) {
+    const chainId = params.chainId ?? 8453;
+    if (typeof params.underlying !== 'string' || !isAddress(params.underlying) || params.underlying.toLowerCase() === zeroAddress) {
       throw new BadRequestException('Select a valid underlying address.');
     }
-    const underlyingNorm = params.underlying.toLowerCase();
-
-    const { riskSplit: factoryAddress, assetRegistry } = adminContracts(chainId);
-    if (!factoryAddress) {
-      throw new BadRequestException('Risk Split factory is not deployed/configured. Set RISK_SPLIT_FACTORY_ADDRESS.');
+    if (!Number.isSafeInteger(params.expiryTimestamp) || params.expiryTimestamp <= 0 || params.expiryTimestamp > 253402300799) {
+      throw new BadRequestException('Enter a valid expiry timestamp.');
     }
+    const underlying = getAddress(params.underlying);
+    const { riskSplit: factoryAddress, assetRegistry } = adminContracts(chainId);
+    if (!factoryAddress) throw new BadRequestException('Risk Split factory is not configured.');
+    const rpcUrl = rpcUrlForChain(chainId);
+    if (!rpcUrl) throw new BadRequestException('Risk Split RPC is not configured.');
+    const client = createPublicClient({ transport: http(rpcUrl) });
+    const builtIn = Object.values(TOKEN_FEED_REGISTRY).find((item) => item.tokenAddress.toLowerCase() === underlying.toLowerCase());
+    const feed = builtIn?.feedAddress ?? reviewedB20FeedAdditions(chainId).get(underlying.toLowerCase());
+    if (!feed) throw new BadRequestException('Asset has no reviewed feed.');
+    const adapter = settlementAdapterForFeed(feed, 'RISK_SPLIT_SETTLEMENT_ADAPTERS_JSON',
+      'RISK_SPLIT_SETTLEMENT_ADAPTER', 'RISK_SPLIT_SETTLEMENT_ADAPTER_ADDRESS');
+    try {
+      const block = await client.getBlock();
+      if (block.number === null) throw new Error('No confirmed block');
+      const code = await client.getBytecode({ address: factoryAddress, blockNumber: block.number });
+      if (!code || code === '0x') {
+        throw new Error('No factory bytecode or block');
+      }
+      return { chainId, underlying, factoryAddress, assetRegistry, client, builtIn, feed, adapter,
+        block: { number: block.number, timestamp: block.timestamp }, expiry: BigInt(params.expiryTimestamp) };
+    } catch {
+      throw new BadRequestException('Cannot verify the Risk Split factory onchain.');
+    }
+  }
+
+  private async verifyRegistry(context: Awaited<ReturnType<AdminMarketsService['marketContext']>>) {
+    const { client, assetRegistry, chainId, underlying, feed, block } = context;
+    const asset = assetRegistry ? await client.readContract({ address: assetRegistry, abi: assetRegistryAbi,
+      functionName: 'getAsset', args: [BigInt(chainId), underlying], blockNumber: block.number }).catch(() => null) : null;
+    if (!asset?.supported || !asset.isCoinbaseB20 || asset.priceFeed.toLowerCase() !== feed.toLowerCase() ||
+        asset.feedDecimals !== 8 || asset.tokenDecimals < 1 || asset.tokenDecimals > 18) {
+      throw new BadRequestException('Asset must have a matching reviewed, registry-enabled B20 feed.');
+    }
+    return asset;
+  }
+
+  private async verifyAdapter(context: Awaited<ReturnType<AdminMarketsService['marketContext']>>) {
+    const { client, adapter, feed, block } = context;
+    if (!adapter) throw new BadRequestException('No Risk Split settlement adapter is configured for this feed.');
+    const query = { address: adapter, blockNumber: block.number };
+    const [code, adapterFeed, decimals, maxAge] = await Promise.all([
+      client.getBytecode(query),
+      client.readContract({ ...query, abi: settlementAdapterAbi, functionName: 'priceFeed' }),
+      client.readContract({ ...query, abi: settlementAdapterAbi, functionName: 'decimals' }),
+      client.readContract({ ...query, abi: settlementAdapterAbi, functionName: 'maxStaleness' }),
+    ]).catch(() => [null, null, null, null] as const);
+    if (!code || code === '0x' || !adapterFeed || !maxAge) throw new BadRequestException('Settlement adapter is unavailable or invalid.');
+    if (adapterFeed.toLowerCase() !== feed.toLowerCase() || decimals !== 8) {
+      throw new BadRequestException('Settlement adapter feed or decimals do not match the reviewed asset feed.');
+    }
+    return { adapter, maxAge };
+  }
+
+  async previewSetup(params: AdminRiskSplitSetupRequest): Promise<AdminRiskSplitSetupResponse> {
+    const context = await this.marketContext(params);
+    const { client, adapter, chainId, underlying, factoryAddress, expiry, block } = context;
+    const query = { address: factoryAddress, abi: seriesFactoryAbi, blockNumber: block.number };
+    const [adapterApproved, expiryApproved] = await Promise.all([
+      adapter ? client.readContract({ ...query, functionName: 'approvedAdapter', args: [underlying, adapter] }) : false,
+      client.readContract({ ...query, functionName: 'approvedExpiry', args: [underlying, expiry] }),
+    ]).catch(() => { throw new BadRequestException('Cannot read approvals on the owner-only Risk Split factory.'); });
+    const registryError = await this.verifyRegistry(context).then(() => null, (error: Error) => error.message);
+    const adapterError = await this.verifyAdapter(context).then(() => null, (error: Error) => error.message);
+    const calendar = validateExpiryCalendar(params.expiryTimestamp, Number(block.timestamp));
+    const adapterBlocker = registryError ?? adapterError;
+    const expiryBlocker = registryError ?? (calendar.valid ? null : calendar.error ?? 'Invalid expiry.');
+    const transactions: AdminTransactionPreview[] = [];
+    if (adapter && (adapterApproved || !adapterBlocker)) {
+      const args = [underlying, adapter, !adapterApproved] as const;
+      transactions.push({
+        description: adapterApproved ? 'Revoke settlement adapter' : 'Approve settlement adapter',
+        target: factoryAddress, chainId, method: 'setApprovedAdapter', args: [...args],
+        data: encodeFunctionData({ abi: seriesFactoryAbi, functionName: 'setApprovedAdapter', args }),
+        expectedState: adapterApproved ? 'Adapter revoked' : 'Adapter approved',
+      });
+    }
+    if (expiryApproved || !expiryBlocker) {
+      transactions.push({
+        description: expiryApproved ? 'Revoke exact expiry' : 'Approve exact expiry',
+        target: factoryAddress, chainId, method: 'setApprovedExpiry', args: [underlying, params.expiryTimestamp, !expiryApproved],
+        data: encodeFunctionData({ abi: seriesFactoryAbi, functionName: 'setApprovedExpiry', args: [underlying, expiry, !expiryApproved] }),
+        expectedState: expiryApproved ? 'Expiry revoked' : 'Expiry approved',
+      });
+    }
+    return { adapterAddress: adapter, adapterApproved, expiryApproved, adapterBlocker, expiryBlocker, transactions };
+  }
+
+  async previewMarket(params: AdminMarketPreviewRequest): Promise<AdminMarketPreviewResponse> {
+    const context = await this.marketContext(params);
+    const { chainId, client, factoryAddress, underlying, feed, block, expiry, builtIn, assetRegistry } = context;
     if (params.factoryAddress && params.factoryAddress.toLowerCase() !== factoryAddress.toLowerCase()) {
       throw new BadRequestException('Requested factory does not match the configured deployment.');
     }
-
-    // 1. Identify underlying asset and feed
-    const rpcUrl = rpcUrlForChain(chainId);
-    if (!rpcUrl) throw new BadRequestException(`No RPC configured for chain ${chainId}.`);
-    const client = createPublicClient({ transport: http(rpcUrl) });
-    const builtIn = Object.values(TOKEN_FEED_REGISTRY).find(
-      (c) => c.tokenAddress.toLowerCase() === underlyingNorm
-    );
-    const reviewedFeed = builtIn ? undefined : reviewedB20FeedAdditions(chainId).get(underlyingNorm);
-    const config = builtIn ?? (reviewedFeed
-      ? await describeReviewedB20(chainId, getAddress(params.underlying), reviewedFeed, client, assetRegistry)
-      : null);
-    if (!config) {
-      throw new BadRequestException(`Underlying asset ${params.underlying} has no reviewed, registry-enabled feed.`);
-    }
-    const settlementAdapter = settlementAdapterForFeed(config.feedAddress, 'RISK_SPLIT_SETTLEMENT_ADAPTERS_JSON',
-      'RISK_SPLIT_SETTLEMENT_ADAPTER', 'RISK_SPLIT_SETTLEMENT_ADAPTER_ADDRESS');
-    if (!settlementAdapter) {
-      throw new BadRequestException('Risk Split settlement adapter is not configured for this asset.');
-    }
+    const asset = await this.verifyRegistry(context);
+    const { adapter: settlementAdapter, maxAge } = await this.verifyAdapter(context);
     if (params.settlementAdapter && params.settlementAdapter.toLowerCase() !== settlementAdapter.toLowerCase()) {
       throw new BadRequestException('Requested adapter does not match the configured deployment.');
     }
-
-    // 2. Calendar and publication window validation
-    const calendarCheck = validateExpiryCalendar(params.expiryTimestamp);
-    if (!calendarCheck.valid) {
-      throw new BadRequestException(calendarCheck.error || 'Invalid expiry calendar specification.');
-    }
-
-    // 3. Fetch current live reference round from feed
-    let refPriceBig: bigint;
-    let refRoundIdStr: string;
-    let refUpdatedAtIso: string;
-
-    {
-      try {
-        const [factoryCode, adapterCode, adapterFeed, headBlock] = await Promise.all([
-          client.getBytecode({ address: factoryAddress }),
-          client.getBytecode({ address: settlementAdapter }),
-          client.readContract({ address: settlementAdapter, abi: settlementAdapterAbi, functionName: 'priceFeed' }),
-          client.getBlock({ blockTag: 'latest' }),
-        ]);
-        if (!factoryCode || factoryCode === '0x' || !adapterCode || adapterCode === '0x') {
-          throw new Error('Factory or settlement adapter has no deployed bytecode');
-        }
-        if (adapterFeed.toLowerCase() !== config.feedAddress.toLowerCase()) {
-          throw new BadRequestException(`Settlement adapter feed ${adapterFeed} does not match ${config.symbol} feed ${config.feedAddress}.`);
-        }
-        const roundData = await client.readContract({
-          address: config.feedAddress,
-          abi: AGGREGATOR_ABI,
-          functionName: 'latestRoundData',
-        });
-        if (!roundData || roundData[1] <= 0n || roundData[3] === 0n) throw new Error('Feed has no valid positive round');
-        const chainNow = Number(headBlock.timestamp);
-        if (Number(roundData[3]) > chainNow || chainNow - Number(roundData[3]) > 86400) {
-          throw new Error('Feed round is stale or in the future');
-        }
-        refRoundIdStr = roundData[0].toString();
-        refPriceBig = BigInt(roundData[1]);
-        refUpdatedAtIso = new Date(Number(roundData[3]) * 1000).toISOString();
-      } catch (err) {
-        if (err instanceof BadRequestException) throw err;
-        this.logger.warn(`Failed to query feed ${config.feedAddress} onchain: ${err}`);
-        throw new BadRequestException(`Factory, adapter, or live reference feed unavailable for ${config.symbol}; market preview cannot be signed.`);
-      }
-    }
+    const calendarCheck = validateExpiryCalendar(params.expiryTimestamp, Number(block.timestamp));
+    if (!calendarCheck.valid) throw new BadRequestException(calendarCheck.error || 'Invalid expiry calendar specification.');
+    const reference = await readAdminFeed(client, feed, block, maxAge < 86400n ? maxAge : 86400n).catch((err) => {
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException('Live reference feed is unavailable.');
+    });
+    const refPriceBig = reference.price;
+    const refRoundIdStr = reference.roundId.toString();
+    const refUpdatedAtIso = new Date(Number(reference.updatedAt) * 1000).toISOString();
+    const reviewed = builtIn ?? await describeReviewedB20(chainId, underlying, feed, client, assetRegistry);
+    const config = { tokenAddress: underlying, tokenDecimals: asset.tokenDecimals, symbol: reviewed?.symbol ?? underlying };
 
     // 4. Compute / Validate Floor and Cap Prices
     let floorPriceBig: bigint;
     let capPriceBig: bigint;
 
     if (params.floorPercent !== undefined && params.capPercent !== undefined) {
-      if (params.floorPercent <= 0 || params.capPercent <= params.floorPercent) {
+      if (!Number.isFinite(params.floorPercent) || !Number.isFinite(params.capPercent) ||
+          !Number.isSafeInteger(Math.round(params.capPercent * 100)) || params.floorPercent <= 0 || params.capPercent <= params.floorPercent) {
         throw new BadRequestException('Floor percent must be positive and strictly less than cap percent.');
       }
       floorPriceBig = (refPriceBig * BigInt(Math.round(params.floorPercent * 100))) / 10000n;
       capPriceBig = (refPriceBig * BigInt(Math.round(params.capPercent * 100))) / 10000n;
-    } else if (params.floorPrice && params.capPrice) {
+    } else if (typeof params.floorPrice === 'string' && typeof params.capPrice === 'string' &&
+        /^\d{1,78}$/.test(params.floorPrice) && /^\d{1,78}$/.test(params.capPrice)) {
       floorPriceBig = BigInt(params.floorPrice);
       capPriceBig = BigInt(params.capPrice);
     } else {
@@ -229,58 +257,19 @@ export class AdminMarketsService {
     if (floorPriceBig <= 0n) {
       throw new BadRequestException('Floor price must be greater than zero.');
     }
+    if (capPriceBig >= 2n ** 256n) throw new BadRequestException('Cap price exceeds uint256.');
     if (floorPriceBig >= capPriceBig) {
       throw new BadRequestException('Floor price must be strictly less than cap price.');
     }
 
-    // 5. Duplicate terms check
-    let duplicateTermsDetected = false;
-    const termKey = keccak256(
-      encodeAbiParameters(parseAbiParameters('address, uint256, uint256, uint256, address'), [
-        config.tokenAddress,
-        floorPriceBig,
-        capPriceBig,
-        BigInt(params.expiryTimestamp),
-        settlementAdapter,
-      ])
-    );
-
-    if (this.db) {
-      try {
-        const dupRes = await this.db.query(
-          `SELECT 1 FROM risk_split_series
-           WHERE chain_id = $1 AND LOWER(underlying_address) = $2
-             AND floor_price = $3 AND cap_price = $4 AND expiry_timestamp = $5 LIMIT 1`,
-          [chainId, config.tokenAddress.toLowerCase(), floorPriceBig.toString(), capPriceBig.toString(), params.expiryTimestamp]
-        );
-        if (dupRes.rows && dupRes.rows.length > 0) {
-          duplicateTermsDetected = true;
-        }
-      } catch (err) {
-        this.logger.warn(`Failed DB duplicate terms check: ${err}`);
-      }
-    }
-
-    if (duplicateTermsDetected) {
-      throw new BadRequestException('Duplicate series terms: a series with these exact terms already exists.');
-    }
-
-    // 6. Check if expiry is already approved on factory
-    let expiryAlreadyApproved = false;
-    if (rpcUrl) {
-      try {
-        const client = createPublicClient({ transport: http(rpcUrl) });
-        const isApproved = await client.readContract({
-          address: factoryAddress,
-          abi: seriesFactoryAbi,
-          functionName: 'approvedExpiry',
-          args: [config.tokenAddress, BigInt(params.expiryTimestamp)],
-        });
-        expiryAlreadyApproved = Boolean(isApproved);
-      } catch (err) {
-        this.logger.warn(`Failed to check approvedExpiry onchain: ${err}`);
-      }
-    }
+    const termKey = keccak256(encodeAbiParameters(parseAbiParameters('address, uint256, uint256, uint256, address'),
+      [underlying, floorPriceBig, capPriceBig, expiry, settlementAdapter]));
+    const query = { address: factoryAddress, abi: seriesFactoryAbi, blockNumber: block.number };
+    const [existing, expiryAlreadyApproved, adapterAlreadyApproved] = await Promise.all([
+      client.readContract({ ...query, functionName: 'seriesByTermKey', args: [termKey] }),
+      client.readContract({ ...query, functionName: 'approvedExpiry', args: [underlying, expiry] }),
+      client.readContract({ ...query, functionName: 'approvedAdapter', args: [underlying, settlementAdapter] }),
+    ]).catch(() => { throw new BadRequestException('Cannot verify terms and approvals on the owner-only Risk Split factory.'); });
 
     // 7. Payoff simulation across 5 price regimes
     const WAD = 1000000000000000000n;
@@ -323,42 +312,18 @@ export class AdminMarketsService {
       };
     });
 
-    // 8. Signable Transactions Preview
+    const duplicateTermsDetected = existing !== zeroAddress;
     const transactions: AdminTransactionPreview[] = [];
-
-    if (!expiryAlreadyApproved) {
+    if (expiryAlreadyApproved && adapterAlreadyApproved && !duplicateTermsDetected) {
       transactions.push({
-        description: `Approve Expiry Timestamp on SeriesFactory for ${config.symbol}`,
+        description: `Create Risk Split Series for ${config.symbol}`,
         target: factoryAddress,
         chainId,
-        method: 'setApprovedExpiry',
-        args: [config.tokenAddress, params.expiryTimestamp, true],
-        expectedState: `approvedExpiry[${config.symbol}][${params.expiryTimestamp}] == true`,
-        simulationResult: {
-          success: true,
-          message: 'Valid owner transaction prepared to authorize exact expiry schedule.',
-        },
+        method: 'createSeries',
+        args: [underlying, floorPriceBig.toString(), capPriceBig.toString(), params.expiryTimestamp, settlementAdapter],
+        expectedState: 'SeriesCreated emitted with the assigned series address',
       });
     }
-
-    transactions.push({
-      description: `Create Risk Split Series for ${config.symbol}`,
-      target: factoryAddress,
-      chainId,
-      method: 'createSeries',
-      args: [
-        config.tokenAddress,
-        floorPriceBig.toString(),
-        capPriceBig.toString(),
-        params.expiryTimestamp,
-        settlementAdapter,
-      ],
-      expectedState: 'New RiskSplitSeries deployed with initialized ClaimTokens',
-      simulationResult: {
-        success: true,
-        message: 'Series parameters validated against live feed reference and calendar.',
-      },
-    });
 
     return {
       underlying: {
@@ -380,7 +345,8 @@ export class AdminMarketsService {
       expiryIso: new Date(params.expiryTimestamp * 1000).toISOString(),
       calendarCheck,
       expiryAlreadyApproved,
-      duplicateTermsDetected: false,
+      adapterAlreadyApproved,
+      duplicateTermsDetected,
       payoffScenarios,
       transactions,
     };

@@ -10,6 +10,8 @@ export const seriesFactoryAbi = [
   { type: "function", name: "isSeries", inputs: [{ name: "", type: "address" }], outputs: [{ name: "", type: "bool" }], stateMutability: "view" },
   { type: "function", name: "seriesByTermKey", inputs: [{ name: "", type: "bytes32" }], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
   { type: "function", name: "approvedExpiry", inputs: [{ name: "", type: "address" }, { name: "", type: "uint256" }], outputs: [{ name: "", type: "bool" }], stateMutability: "view" },
+  { type: "function", name: "approvedAdapter", inputs: [{ name: "underlying", type: "address" }, { name: "adapter", type: "address" }], outputs: [{ name: "", type: "bool" }], stateMutability: "view" },
+  { type: "function", name: "setApprovedAdapter", inputs: [{ name: "underlying", type: "address" }, { name: "adapter", type: "address" }, { name: "approved", type: "bool" }], outputs: [], stateMutability: "nonpayable" },
   { type: "function", name: "setApprovedExpiry", inputs: [{ name: "underlying", type: "address" }, { name: "timestamp", type: "uint256" }, { name: "approved", type: "bool" }], outputs: [], stateMutability: "nonpayable" },
   { type: "function", name: "transferOwnership", inputs: [{ name: "newOwner", type: "address" }], outputs: [], stateMutability: "nonpayable" },
   { type: "function", name: "acceptOwnership", inputs: [], outputs: [], stateMutability: "nonpayable" },

@@ -5,6 +5,8 @@ import {
   AdminMarketPreviewRequest,
   AdminMarketPreviewResponse,
   AdminMarketsResponse,
+  AdminRiskSplitSetupRequest,
+  AdminRiskSplitSetupResponse,
 } from '@othelio/shared';
 
 @Controller('v1/admin/markets')
@@ -21,5 +23,11 @@ export class AdminMarketsController {
   @RequireAdminOwner('riskSplit')
   async previewMarket(@Body() body: AdminMarketPreviewRequest, @AdminChain() chainId: number): Promise<AdminMarketPreviewResponse> {
     return this.marketsService.previewMarket({ ...body, chainId });
+  }
+
+  @Post('setup')
+  @RequireAdminOwner('riskSplit')
+  async previewSetup(@Body() body: AdminRiskSplitSetupRequest, @AdminChain() chainId: number): Promise<AdminRiskSplitSetupResponse> {
+    return this.marketsService.previewSetup({ ...body, chainId });
   }
 }

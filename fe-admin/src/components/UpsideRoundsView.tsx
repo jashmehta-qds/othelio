@@ -9,6 +9,7 @@ import { UpsideRoundModal } from './UpsideRoundModal';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 import { deployPresetStrikes } from '../lib/upside-launch';
 import { useAdminAuth } from '../context/AdminAuthContext';
+import { SeriesMetrics } from './SeriesMetrics';
 
 interface UpsideRoundsViewProps {
   rounds: AdminUpsideRoundItem[];
@@ -111,7 +112,15 @@ export function UpsideRoundsView({
                       <div className="font-semibold text-white">{round.underlying.symbol}</div>
                       <div className="text-[10px] text-zinc-500">{round.underlying.address.slice(0, 8)}...</div>
                     </td>
-                    <td className="py-3.5 px-4 font-semibold text-white">${round.referencePriceFormatted}</td>
+                    <td className="py-3.5 px-4 font-semibold text-white">
+                      ${round.referencePriceFormatted}
+                      <details className="mt-1 max-w-64 break-all text-xs font-normal text-zinc-400">
+                        <summary className="cursor-pointer">Reference details</summary>
+                        <div>Oracle round #{round.referenceRoundId}</div>
+                        <div>Feed: {round.referenceFeed}</div>
+                        <div>Created on block #{round.createdBlock} at {round.createdAt}</div>
+                      </details>
+                    </td>
                     <td className="py-3.5 px-4 text-emerald-400 font-semibold">${round.expectedMoveFormatted}</td>
                     <td className="py-3.5 px-4 text-zinc-300">
                       <div>{new Date(round.expiryTimestamp * 1000).toISOString().slice(0, 10)}</div>
@@ -123,6 +132,21 @@ export function UpsideRoundsView({
                       <span className="px-2 py-0.5 rounded bg-[#292a27] text-white font-semibold">
                         {round.marketsCount} strikes
                       </span>
+                      {round.markets.length > 0 && (
+                        <details className="mt-2 min-w-48 max-w-sm break-all text-xs text-zinc-400">
+                          <summary className="cursor-pointer">Market history and metrics</summary>
+                          {round.markets.map((market) => (
+                            <div key={market.seriesAddress} className="space-y-1 border-b border-[#292a27] py-2 last:border-0">
+                              <div className="text-zinc-200">${market.strikePriceFormatted} strike — {market.isSettled ? 'Settled' : round.isExpired ? 'Awaiting settlement' : 'Active'}</div>
+                              <div>Series: {market.seriesAddress}</div>
+                              <div>Upside token: {market.upsideTokenAddress ?? 'Unavailable'}</div>
+                              <div>Residual token: {market.residualTokenAddress ?? 'Unavailable'}</div>
+                              {market.isSettled && <div>Fixing: {market.settledPriceFormatted ? `$${market.settledPriceFormatted}` : 'Unavailable'}; oracle round #{market.settledRoundId ?? 'unavailable'}</div>}
+                              <SeriesMetrics metrics={market.metrics} claims={['Upside', 'Residual']} />
+                            </div>
+                          ))}
+                        </details>
+                      )}
                       {isOwner && !round.isExpired && contracts?.upside?.toLowerCase() === round.factoryAddress.toLowerCase() && (
                         <button type="button" onClick={() => void resume(round)} disabled={resuming !== null}
                           className="block mt-2 text-[10px] text-[#ff5729] disabled:opacity-50">
@@ -134,7 +158,9 @@ export function UpsideRoundsView({
                       <span className="text-zinc-500">Owner only</span>
                     </td>
                     <td className="py-3.5 px-4">
-                      {round.isSettled ? (
+                      {round.marketsCount === 0 ? (
+                        <span className="text-zinc-400">{round.isExpired ? 'Expired — no strikes' : 'Registered — no strikes'}</span>
+                      ) : round.isSettled ? (
                         <span className="px-2 py-0.5 rounded text-[10px] bg-purple-950/40 text-purple-300 border border-purple-800">
                           Settled
                         </span>
