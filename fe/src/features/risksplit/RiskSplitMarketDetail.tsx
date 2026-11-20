@@ -54,9 +54,8 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch real order books for both Protected and Upside to display live best quotes
-  const protectedBook = useRiskSplitBook(seriesAddress, "protected");
-  const upsideBook = useRiskSplitBook(seriesAddress, "upside");
+  const protectedBook = useRiskSplitBook(seriesAddress, "protected", selectedClaim === "protected" ? "live" : "preview");
+  const upsideBook = useRiskSplitBook(seriesAddress, "upside", selectedClaim === "upside" ? "live" : "preview");
   const activeBook = selectedClaim === "protected" ? protectedBook : upsideBook;
 
   // Initialize scenario price to stock reference or mid (floor+cap)/2

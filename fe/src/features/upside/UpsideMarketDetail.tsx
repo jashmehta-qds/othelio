@@ -50,8 +50,9 @@ export function UpsideMarketDetail({
   const activeRound = roundsQuery.data?.data.find(
     (r) => r.roundId === activeMarket?.roundId,
   );
-  const upsideBook = useUpsideOrderbook(chainId, activeMarket?.seriesAddress, "UPSIDE");
-  const remainingBook = useUpsideOrderbook(chainId, activeMarket?.seriesAddress, "RESIDUAL");
+  const upsideBook = useUpsideOrderbook(chainId, activeMarket?.seriesAddress, "UPSIDE", claimType === "UPSIDE" ? "live" : "preview");
+  const remainingBook = useUpsideOrderbook(chainId, activeMarket?.seriesAddress, "RESIDUAL", claimType === "RESIDUAL" ? "live" : "preview");
+  const selectedBook = claimType === "UPSIDE" ? upsideBook : remainingBook;
   const asset = assetsQuery.data?.assets.find(
     (a) =>
       a.tokenAddress.toLowerCase() ===
@@ -203,8 +204,7 @@ export function UpsideMarketDetail({
             </div>
           </section>
           <UpsideOrderBook
-            chainId={chainId}
-            seriesAddress={activeMarket.seriesAddress}
+            bookQuery={selectedBook}
             claimType={claimType}
           />
           <details className={`${styles.advanced} ${styles.payoutDisclosure}`}>
@@ -304,6 +304,7 @@ export function UpsideMarketDetail({
             </div>
             <div className={styles.tradeBody} hidden={walletAction !== "trade"}>
           <UpsideOrderTicket
+            bookQuery={selectedBook}
             key={`${chainId}-${activeMarket.seriesAddress}`}
             chainId={chainId}
             seriesAddress={activeMarket.seriesAddress}

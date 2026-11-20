@@ -3,16 +3,15 @@
 import { useState } from "react";
 import styles from "./UpsideMarkets.module.css";
 import bookStyles from "../risksplit/TradingBook.module.css";
-import { useUpsideOrderbook } from "./useUpside";
+import type { UpsideBookQuery } from "./useUpside";
 
 interface UpsideOrderBookProps {
-  chainId: number;
-  seriesAddress: string;
+  bookQuery: UpsideBookQuery;
   claimType: "UPSIDE" | "RESIDUAL";
 }
 
-export function UpsideOrderBook({ chainId, seriesAddress, claimType }: UpsideOrderBookProps) {
-  const { data: depth, isLoading, isUnavailable: isError, refetch } = useUpsideOrderbook(chainId, seriesAddress, claimType);
+export function UpsideOrderBook({ bookQuery, claimType }: UpsideOrderBookProps) {
+  const { data: depth, isLoading, isUnavailable: isError, refetch } = bookQuery;
   const [showFullBook, setShowFullBook] = useState(false);
   const bids = depth?.bids ?? [];
   const asks = depth?.asks ?? [];
