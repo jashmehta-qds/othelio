@@ -117,4 +117,24 @@ describe('AdminOperationsService', () => {
     expect(result.expiryQueue[0].settlementPreviewTx?.target).toBe(adapter);
     expect(result.expiryQueue[0].settlementPreviewTx?.args).toEqual([series, '123']);
   });
+
+  it.each([
+    ['0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c', true],
+    ['0x4444444444444444444444444444444444444444', false],
+  ])('checks the indexed creation feed %s for an additional asset', async (creationFeed, ready) => {
+    const series = '0x1111111111111111111111111111111111111111';
+    const service = new AdminOperationsService({
+      query: vi.fn().mockResolvedValue({ rows: [{
+        series_address: series,
+        underlying_address: '0xb200000000000000000000000000000000000999',
+        creation_feed_address: creationFeed,
+        settlement_adapter_address: '0x3333333333333333333333333333333333333333',
+        expiry_timestamp: Math.floor(Date.now() / 1000) - 3600,
+        is_settled: false,
+      }] }),
+    } as any);
+    const { expiryQueue: [item] } = await service.getOperations(8453);
+    expect(item.settlementReady).toBe(ready);
+    expect(item.settlementPreviewTx?.args ?? null).toEqual(ready ? [series, '123'] : null);
+  });
 });

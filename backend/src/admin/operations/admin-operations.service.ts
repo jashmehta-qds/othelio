@@ -7,7 +7,7 @@ import {
   settlementAdapterAbi,
   TOKEN_FEED_REGISTRY,
 } from '@othelio/shared';
-import { createPublicClient, http } from 'viem';
+import { createPublicClient, http, isAddress, zeroAddress } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
 
 @Injectable()
@@ -110,7 +110,8 @@ export class AdminOperationsService {
           const config = Object.values(TOKEN_FEED_REGISTRY).find(
             (c) => c.tokenAddress.toLowerCase() === underlyingAddr
           );
-          const symbol = config?.symbol ?? 'UNKNOWN';
+          const expectedFeed = row.creation_feed_address?.trim().toLowerCase() ?? config?.feedAddress.toLowerCase();
+          const symbol = config?.symbol ?? underlyingAddr;
           const expiryTs = Number(row.expiry_timestamp);
           const isExpired = nowSecs >= expiryTs;
           const isSettled = Boolean(row.is_settled);
@@ -128,7 +129,8 @@ export class AdminOperationsService {
             let candidateFixingRound: AdminOperationQueueItem['candidateFixingRound'] = null;
             let settlementReady = false;
 
-            if (isExpired && client && config?.feedAddress && row.settlement_adapter_address) {
+            if (isExpired && client && expectedFeed && isAddress(expectedFeed) &&
+                expectedFeed !== zeroAddress && row.settlement_adapter_address) {
               try {
                 const fixing = await client.readContract({
                   address: row.settlement_adapter_address,
@@ -136,7 +138,7 @@ export class AdminOperationsService {
                   functionName: 'getFixingRound',
                   args: [BigInt(expiryTs)],
                 });
-                if (fixing && fixing.feed.toLowerCase() === config.feedAddress.toLowerCase()) {
+                if (fixing && fixing.feed.toLowerCase() === expectedFeed && fixing.decimals === 8) {
                   const updatedAt = Number(fixing.updatedAt);
                   candidateFixingRound = {
                     roundId: fixing.roundId.toString(),
