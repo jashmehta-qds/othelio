@@ -3,7 +3,7 @@
 .pageHeading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
 .pageHeading h1 { margin: 0; }
 .pageHeading > span, .label { color: var(--muted-ink); font-size: 12px; }
-.actionCenter { display: grid; grid-template-columns: 1.5fr 1fr; gap: 28px; padding: 24px; margin-bottom: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.actionCenter { composes: panel from "@/components/ui/primitives.module.css"; display: grid; grid-template-columns: 1.5fr 1fr; gap: 28px; padding: 24px; margin-bottom: 24px; border-radius: 12px; }
 .actionIntro { display: grid; grid-template-rows: 24px 1fr auto; gap: 8px; }
 .actionCenter p { margin: 0; font-size: 13px; color: var(--muted-ink); }
 .actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -27,7 +27,7 @@
 .fundPicker { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13px; }
 .fundPicker select { max-width: 100%; min-height: 40px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); color: var(--ink); padding: 8px 12px; font-family: inherit; font-size: 14px; }
 .notice { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; color: var(--muted-ink); font-size: 13px; margin: -8px 0 18px; }
-.performance { padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); margin-bottom: 28px; }
+.performance { composes: panel from "@/components/ui/primitives.module.css"; padding: 24px; border-radius: 12px; margin-bottom: 28px; }
 .tradingStrip { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 24px; padding-bottom: 22px; margin: 0; border-bottom: 1px solid var(--line); }
 .tradingStrip > div { min-width: 0; }
 .tradingStrip > div + div { border-left: 1px solid var(--line); padding-left: 24px; }

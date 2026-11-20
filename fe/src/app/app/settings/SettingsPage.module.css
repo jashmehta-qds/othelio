@@ -35,10 +35,7 @@
   min-width: 0;
 }
 .form {
-  padding: 0;
-  margin: 0;
-  border: 0;
-  min-width: 0;
+  composes: formReset from "@/components/ui/primitives.module.css";
 }
 .section {
   padding: 0 0 32px;
@@ -59,6 +56,7 @@
   margin: 0 0 24px;
 }
 .choices {
+  composes: choiceGroup from "@/components/ui/primitives.module.css";
   display: flex;
   gap: 8px;
   margin-bottom: 20px;
@@ -72,11 +70,6 @@
   background: var(--panel);
   cursor: pointer;
 }
-.choices button[aria-pressed="true"] {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
 .field {
   display: grid;
   gap: 9px;
@@ -85,6 +78,7 @@
   font-size: 14px;
 }
 .options {
+  composes: checkControls from "@/components/ui/primitives.module.css";
   display: grid;
   gap: 0;
 }
@@ -98,12 +92,6 @@
 }
 .options label:last-child {
   border: 0;
-}
-.options input {
-  accent-color: var(--accent);
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
 }
 .options strong,
 .options small {

@@ -5,23 +5,7 @@
 }
 
 .heading {
-  border-bottom: 1px solid var(--line);
-  padding: 0 0 24px;
-}
-
-.heading h1 {
-  font-size: 34px;
-  letter-spacing: -0.035em;
-  line-height: 1.15;
-  font-weight: 600;
-  margin: 0 0 9px;
-}
-
-.heading p {
-  max-width: 66ch;
-  color: var(--muted-ink);
-  line-height: 1.5;
-  margin: 0;
+  composes: marketHeading from "@/components/ui/primitives.module.css";
 }
 
 .filters {
@@ -34,13 +18,10 @@
 }
 
 .search {
-  max-width: 350px;
-  width: 100%;
+  composes: marketSearch from "@/components/ui/primitives.module.css";
 }
 
 .search input {
-  width: 100%;
-  min-height: 40px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -92,9 +73,7 @@
 }
 
 .tileCard {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  composes: panel from "@/components/ui/primitives.module.css";
   padding: 22px;
   display: flex;
   flex-direction: column;
@@ -184,16 +163,8 @@
 
 /* Detail Page Layout */
 .backLink {
-  display: inline-block;
-  color: var(--muted-ink);
-  font-size: 13px;
-  text-decoration: none;
+  composes: backLink from "@/components/ui/primitives.module.css";
   margin-bottom: 20px;
-  transition: color 0.15s ease;
-}
-
-.backLink:hover {
-  color: var(--ink);
 }
 
 .detailHead {
@@ -270,8 +241,7 @@
 }
 
 .targetChip {
-  background: var(--panel);
-  border: 1px solid var(--line);
+  composes: panel from "@/components/ui/primitives.module.css";
   border-radius: 12px;
   padding: 14px 16px;
   text-align: left;
@@ -320,9 +290,7 @@
 
 /* Chart Panel */
 .chartPanel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  composes: panel from "@/components/ui/primitives.module.css";
   padding: 20px;
   margin-bottom: 24px;
 }
@@ -348,9 +316,7 @@
 
 /* Order Book Depth */
 .bookPanel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  composes: panel from "@/components/ui/primitives.module.css";
   padding: 22px;
   margin-bottom: 24px;
 }
@@ -428,9 +394,7 @@
 
 /* Ticket Panel */
 .ticketPanel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  composes: panel from "@/components/ui/primitives.module.css";
   padding: 24px;
 }
 
@@ -567,9 +531,7 @@
 
 /* Vault Actions (Mint / Combine / Redeem) */
 .vaultPanel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  composes: panel from "@/components/ui/primitives.module.css";
   padding: 22px;
   margin-top: 24px;
 }
@@ -582,9 +544,7 @@
 
 /* My Orders & Positions */
 .ordersPanel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  composes: panel from "@/components/ui/primitives.module.css";
   padding: 22px;
   margin-top: 24px;
 }

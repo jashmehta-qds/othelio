@@ -62,15 +62,9 @@
   font-size: 1.25rem;
 }
 
-.priceLine small,
-.priceNote {
+.priceLine small {
   color: #898b84;
   font-size: .65rem;
-}
-
-.priceNote {
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  letter-spacing: .16em;
 }
 
 @keyframes emblemArrive {

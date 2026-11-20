@@ -623,18 +623,6 @@ select.ui-field {
   font-weight: 500;
 }
 
-.bank-app .holdings-table th {
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--muted-ink);
-}
-
-.bank-app .holdings-table :is(td, th) {
-  padding-top: 18px;
-  padding-bottom: 18px;
-}
-
 .bank-app .activity-page>header {
   margin-bottom: 28px;
 }
@@ -651,36 +639,6 @@ select.ui-field {
 
 .bank-app .activity-page-list {
   border-top: 1px solid var(--line);
-}
-
-.ui-filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 24px;
-}
-
-.ui-filter-bar button {
-  padding: 8px 16px;
-  min-height: 40px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--muted-ink);
-  cursor: pointer;
-  font: inherit;
-}
-
-.ui-filter-bar button[aria-pressed="true"] {
-  border-color: #444540;
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.ui-filter-bar button:hover {
-  color: var(--ink);
-  background: var(--panel-2);
 }
 
 .ui-search {

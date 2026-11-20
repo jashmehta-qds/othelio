@@ -1,0 +1,67 @@
+.marketHeading {
+  border-bottom: 1px solid var(--line);
+  padding: 0 0 24px;
+}
+
+.marketHeading h1 {
+  font-size: 34px;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  font-weight: 600;
+  margin: 0 0 9px;
+}
+
+.marketHeading p {
+  max-width: 66ch;
+  color: var(--muted-ink);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.marketSearch {
+  max-width: 350px;
+  width: 100%;
+}
+
+.marketSearch input {
+  width: 100%;
+  min-height: 40px;
+}
+
+.backLink {
+  display: inline-block;
+  color: var(--muted-ink);
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.backLink:hover {
+  color: var(--ink);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.formReset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.choiceGroup button[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.checkControls input {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
