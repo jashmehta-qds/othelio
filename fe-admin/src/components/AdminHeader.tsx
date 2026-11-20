@@ -21,7 +21,7 @@ export function AdminHeader({
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
-  const { isAuthenticated, isOwner, login, logout, isLoggingIn, error, chainId } = useAdminAuth();
+  const { isAuthenticated, login, logout, isLoggingIn, error, chainId } = useAdminAuth();
   const targetChainId = process.env.NEXT_PUBLIC_CHAIN_ID ? Number(process.env.NEXT_PUBLIC_CHAIN_ID) : 31337;
   const isWrongNetwork = isConnected && chainId !== targetChainId;
   const hasIndexerStatus = lastIndexedBlock !== undefined;
@@ -109,12 +109,12 @@ export function AdminHeader({
               {/* Role Badge */}
               <div
                 className={`text-xs px-2.5 py-1 rounded font-mono border ${
-                  isOwner
+                  isAuthenticated
                     ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
                     : 'bg-zinc-900 text-zinc-400 border-[#292a27]'
                 }`}
               >
-                {isOwner ? 'DEPLOYER OWNER' : 'NON-OWNER'}
+                {isAuthenticated ? 'CONTRACT OWNER' : 'NOT SIGNED IN'}
               </div>
 
               {/* Wallet Address */}

@@ -17,7 +17,6 @@ export interface UpsideRoundModel {
   strikeTick: string;
   minStrike: string;
   maxStrike: string;
-  publicCreationEnabled: boolean;
   createdBlock: number;
   createdTx: string;
   createdAt: string;

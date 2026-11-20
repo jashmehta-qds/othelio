@@ -6,14 +6,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { AdminGuard } from '../auth/admin.guard';
+import { AdminChain, AdminGuard, RequireAdminOwner } from '../auth/admin.guard';
 import { AdminUpsideService } from './admin-upside.service';
 import {
   AdminUpsideRoundPreviewRequest,
   AdminUpsideRoundPreviewResponse,
   AdminUpsideRoundItem,
   AdminUpsideMarketItem,
-  AdminTransactionPreview,
 } from '@othelio/shared';
 
 @Controller('v1/admin/upside')
@@ -22,32 +21,24 @@ export class AdminUpsideController {
   constructor(private readonly upsideService: AdminUpsideService) {}
 
   @Post('rounds/preview')
-  async previewRound(@Body() dto: AdminUpsideRoundPreviewRequest): Promise<AdminUpsideRoundPreviewResponse> {
-    return this.upsideService.previewRound(dto);
+  @RequireAdminOwner('upside')
+  async previewRound(@Body() dto: AdminUpsideRoundPreviewRequest, @AdminChain() chainId: number): Promise<AdminUpsideRoundPreviewResponse> {
+    return this.upsideService.previewRound({ ...dto, chainId });
   }
 
   @Get('rounds')
-  async getRounds(@Query('chainId') chainId?: string): Promise<{ data: AdminUpsideRoundItem[] }> {
-    const chainIdNum = chainId ? parseInt(chainId, 10) : 8453;
-    const data = await this.upsideService.getRounds(chainIdNum);
+  async getRounds(@AdminChain() chainId: number): Promise<{ data: AdminUpsideRoundItem[] }> {
+    const data = await this.upsideService.getRounds(chainId);
     return { data };
   }
 
   @Get('markets')
   async getMarkets(
-    @Query('chainId') chainId?: string,
+    @AdminChain() chainId: number,
     @Query('roundId') roundId?: string,
   ): Promise<{ data: AdminUpsideMarketItem[] }> {
-    const chainIdNum = chainId ? parseInt(chainId, 10) : 8453;
     const roundIdNum = roundId ? parseInt(roundId, 10) : undefined;
-    const data = await this.upsideService.getMarkets(chainIdNum, roundIdNum);
+    const data = await this.upsideService.getMarkets(chainId, roundIdNum);
     return { data };
-  }
-
-  @Post('rounds/toggle-public')
-  async togglePublicCreation(
-    @Body() dto: { chainId?: number; roundId: number; enabled: boolean },
-  ): Promise<AdminTransactionPreview> {
-    return this.upsideService.togglePublicCreationTx(dto.chainId || 8453, dto.roundId, dto.enabled);
   }
 }

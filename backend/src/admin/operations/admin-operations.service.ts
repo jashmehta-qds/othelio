@@ -5,9 +5,10 @@ import {
   AdminOperationQueueItem,
   AdminOperationsResponse,
   settlementAdapterAbi,
+  riskSplitSeriesAbi,
   TOKEN_FEED_REGISTRY,
 } from '@othelio/shared';
-import { createPublicClient, http } from 'viem';
+import { createPublicClient, http, isAddress, zeroAddress } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
 
 @Injectable()
@@ -105,14 +106,17 @@ export class AdminOperationsService {
         const rpcUrl = rpcUrlForChain(chainId);
         const client = rpcUrl ? createPublicClient({ transport: http(rpcUrl) }) : null;
 
+        const head = await client?.getBlock().catch(() => null);
+
         for (const row of res.rows || []) {
           const underlyingAddr = (row.underlying_address || '').toLowerCase();
           const config = Object.values(TOKEN_FEED_REGISTRY).find(
             (c) => c.tokenAddress.toLowerCase() === underlyingAddr
           );
-          const symbol = config?.symbol ?? 'UNKNOWN';
+          const expectedFeed = row.creation_feed_address?.trim().toLowerCase() ?? config?.feedAddress.toLowerCase();
+          const symbol = config?.symbol ?? underlyingAddr;
           const expiryTs = Number(row.expiry_timestamp);
-          const isExpired = nowSecs >= expiryTs;
+          const isExpired = Number(head?.timestamp ?? nowSecs) > expiryTs;
           const isSettled = Boolean(row.is_settled);
 
           if (isSettled) {
@@ -126,35 +130,56 @@ export class AdminOperationsService {
           } else {
             // Queue item
             let candidateFixingRound: AdminOperationQueueItem['candidateFixingRound'] = null;
-            let settlementReady = false;
-
-            if (isExpired && client && config?.feedAddress && row.settlement_adapter_address) {
-              try {
-                const fixing = await client.readContract({
-                  address: row.settlement_adapter_address,
-                  abi: settlementAdapterAbi,
-                  functionName: 'getFixingRound',
-                  args: [BigInt(expiryTs)],
-                });
-                if (fixing && fixing.feed.toLowerCase() === config.feedAddress.toLowerCase()) {
-                  const updatedAt = Number(fixing.updatedAt);
-                  candidateFixingRound = {
-                    roundId: fixing.roundId.toString(),
-                    price: fixing.price.toString(),
-                    formattedPrice: `$${(Number(fixing.price) / 1e8).toFixed(2)}`,
-                    updatedAt: new Date(updatedAt * 1000).toISOString(),
-                    isPreExpiry: true,
-                    isFresh: true,
-                  };
-                  settlementReady = isIndexerFresh && fixing.price > 0n;
+            let settlementBlocker: string | null = 'Expiry has not passed onchain.';
+            let settledOnchain = false;
+            const adapter = row.settlement_adapter_address;
+            if (isExpired) {
+              settlementBlocker = 'Chain RPC is unavailable.';
+              if (client && head && head.number !== null) {
+                settlementBlocker = 'Missing indexed adapter, series address, or reviewed creation feed.';
+                if (isAddress(row.series_address) && typeof adapter === 'string' && isAddress(adapter) &&
+                    adapter !== zeroAddress && expectedFeed && isAddress(expectedFeed) && expectedFeed !== zeroAddress) {
+                  try {
+                    const series = { address: row.series_address, abi: riskSplitSeriesAbi, blockNumber: head.number } as const;
+                    const [isSettledNow, onchainAdapter, onchainExpiry] = await Promise.all([
+                      client.readContract({ ...series, functionName: 'isSettled' }),
+                      client.readContract({ ...series, functionName: 'settlementAdapter' }),
+                      client.readContract({ ...series, functionName: 'expiry' }),
+                    ]);
+                    settledOnchain = isSettledNow;
+                    if (settledOnchain) {
+                      settlementBlocker = 'Settled onchain; waiting for the indexer.';
+                    } else if (onchainAdapter.toLowerCase() !== adapter.toLowerCase() || onchainExpiry !== BigInt(expiryTs)) {
+                      settlementBlocker = 'Indexed adapter or expiry does not match the series contract.';
+                    } else {
+                      const fixing = await client.readContract({
+                        address: adapter, abi: settlementAdapterAbi, functionName: 'getFixingRound',
+                        args: [onchainExpiry], blockNumber: head.number,
+                      });
+                      if (fixing.feed.toLowerCase() !== expectedFeed || fixing.decimals !== 8) {
+                        settlementBlocker = 'Fixing feed or decimals do not match the reviewed creation feed.';
+                      } else if (fixing.roundId === 0n || fixing.price <= 0n || fixing.updatedAt <= 0n || fixing.updatedAt > onchainExpiry) {
+                        settlementBlocker = 'No valid pre-expiry fixing round was returned.';
+                      } else {
+                        candidateFixingRound = {
+                          roundId: fixing.roundId.toString(), price: fixing.price.toString(),
+                          formattedPrice: `$${(Number(fixing.price) / 1e8).toFixed(2)}`,
+                          updatedAt: new Date(Number(fixing.updatedAt) * 1000).toISOString(),
+                          isPreExpiry: true, isFresh: true,
+                        };
+                        settlementBlocker = null;
+                      }
+                    }
+                  } catch {
+                    settlementBlocker = 'Could not verify series state or find an eligible fixing round. Recheck after the feed advances.';
+                  }
                 }
-              } catch (err) {
-                this.logger.warn(`Failed to inspect fixing candidate round for ${row.series_address}: ${err}`);
               }
             }
+            const settlementReady = settlementBlocker === null;
 
             // If expired more than 2 hours without settlement, raise alert
-            if (isExpired && nowSecs - expiryTs > 7200) {
+            if (isExpired && !settledOnchain && nowSecs - expiryTs > 7200) {
               incidentAlerts.push({
                 severity: 'WARN',
                 message: `Series ${row.series_address} (${symbol}) expired over 2 hours ago and remains unsettled.`,
@@ -183,9 +208,10 @@ export class AdminOperationsService {
               expiryTimestamp: expiryTs,
               expiryIso: new Date(expiryTs * 1000).toISOString(),
               isExpired,
-              isSettled,
+              isSettled: settledOnchain,
               candidateFixingRound,
               settlementReady,
+              settlementBlocker,
               settlementPreviewTx,
               auditStatus: row.operations_audit_status || 'NORMAL',
             });

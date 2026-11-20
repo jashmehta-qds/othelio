@@ -13,7 +13,7 @@
 ## Global constraints
 
 - Keep this standalone from baskets. Admin overview may read basket metrics.
-- Deployer wallet is the initial owner. No Safe deployment in this release. Factory public creation defaults disabled; two-step ownership transfer permits migration later.
+- Deployer wallet is the initial owner. No Safe deployment in this release. Factory creation is owner-only; two-step ownership transfer permits migration later.
 - No private keys in browser, source, logs, CLI arguments or backend environment. Browser requests a wallet transaction; onchain checks are authoritative.
 - No placeholder series, bids, asks, fills, volume or arbitrage in live UI.
 - No raw admin contract-call endpoint, no collateral withdrawal, and no unverified B20/feed/route approval.
@@ -68,9 +68,9 @@
 
 **Files:** Modify `contracts/src/risksplit/{SeriesFactory,RiskSplitSeries,ClaimToken}.sol` and interfaces; expand `contracts/test/risksplit/{RiskSplitSeriesTest,RiskSplitSecurityTest,RiskSplitInvariantTest}.t.sol`; add deployment/fork scripts under `contracts/script/risksplit/`.
 
-**Interfaces:** `SeriesFactory` exposes `owner`, `pendingOwner`, `publicCreationEnabled=false`, `setPublicCreationEnabled(bool)`, owner-managed `approvedExpiry(underlying, timestamp)` and `createSeries(...)` with creation metadata from Task 2. Emit versioned creation/reference events. Existing vault mint/combine/redeem interfaces remain usable; new series use the hardened constructor/initialization path.
+**Interfaces:** `SeriesFactory` exposes `owner`, `pendingOwner`, owner-managed `approvedExpiry(underlying, timestamp)` and `createSeries(...)` with creation metadata from Task 2. Emit versioned creation/reference events. Existing vault mint/combine/redeem interfaces remain usable; new series use the hardened constructor/initialization path.
 
-- [x] Write failing tests: non-owner creation reverts by default; owner creates only at an owner-approved exact expiry timestamp for the underlying; owner toggles public creation; non-owner cannot toggle or approve dates; ownership transfers in two steps; zero/wrong underlying and feed, unsupported token, duplicate terms, invalid floor/cap/expiry and mismatched decimals revert. Test the actual Base B20 token without a bytecode-length assumption.
+- [x] Write failing tests: non-owner creation always reverts; owner creates only at an owner-approved exact expiry timestamp for the underlying; non-owner cannot approve dates; ownership transfers in two steps; zero/wrong underlying and feed, unsupported token, duplicate terms, invalid floor/cap/expiry and mismatched decimals revert. Test the actual Base B20 token without a bytecode-length assumption.
 - [x] Bind claim initialization to the creating factory and validate claim identities exactly once; validate adapter/feed identity and price units at creation. Store verifiable reference feed/round/block/price and formula version so profile labels cannot drift.
 - [x] Define zero-price allocation and rounding dust behavior, then write supply/collateral invariants over mint, transfers, pair redemption, settlement and arbitrary single-side redemption order. Include 6/8/18-decimal tokens, tiny amounts, max permitted prices and fee/rebase/reentrant token mocks.
 - [x] Implement bounds and safe arithmetic, exact in/out transfer checks, checks/effects/interactions and nonReentrant entry points. Keep backing inaccessible to owner and emergency controls unable to block already-matured redemptions.
@@ -151,7 +151,7 @@
 **Files:** `contracts/script/risksplit/`, deployment manifest under `packages/shared`, environment/deploy configuration, `docs/risksplit/base-launch-runbook.md`. Prepare exact owner transactions and verification; broadcast only when the user authorizes deployment.
 
 - [x] Pin token, B20 identity, feed and quote token; verify registry owner addresses, route and venue compatibility at a pinned Base block. Complete fork dress rehearsal from deploy to expiry with accelerated time and a real feed fixture.
-- [x] Deploy/verify the new factory and adapter, set deployer owner/public creation disabled, configure backend/indexer from verified deployment receipts, backfill and compare onchain versus DB. Use one small, clearly marked live series and documented cap on pilot exposure.
+- [x] Deploy/verify the new factory and adapter, set deployer as the sole creation authority, configure backend/indexer from verified deployment receipts, backfill and compare onchain versus DB. Use one small, clearly marked live series and documented cap on pilot exposure.
 - [x] From admin UI create series; from two distinct wallets mint pair, post both books, partially fill, fully fill and cancel orders; inspect balances, logs, book and admin counts. After real expiry, verify the selected oracle round and redeem both claims. Do not claim full live completion before this expiry test succeeds.
 - [x] Exercise stop/restart, orderbook/indexer outage and read-only fallback. Archive addresses, block numbers, tx hashes, code hashes, test output, audit sign-off and recovery instructions.
 

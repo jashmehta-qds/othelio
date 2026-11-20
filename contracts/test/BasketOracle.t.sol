@@ -66,6 +66,46 @@ contract BasketOracleTest is Test {
         vm.stopPrank();
     }
 
+    function testConfigureRejectsFeedDecimalsMismatch() public {
+        vm.startPrank(owner);
+        vm.expectRevert("FEED_DECIMALS_MISMATCH");
+        registry.configure(block.chainid, tokenNVDA, address(feedNVDA), true, 18, 6, false);
+        vm.expectRevert("FEED_DECIMALS_MISMATCH");
+        registry.configure(block.chainid, tokenNVDA, address(oracle), true, 18, 8, false);
+        registry.configure(block.chainid, tokenNVDA, address(feedNVDA), false, 18, 6, false);
+        vm.stopPrank();
+    }
+
+    function testLargeBalanceDoesNotOverflowIntermediateProduct() public view {
+        address[] memory tokens = new address[](1);
+        tokens[0] = tokenUSDC;
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = type(uint256).max / 1e8;
+        assertEq(oracle.calculateNAV(tokens, balances), balances[0]);
+    }
+
+    function testFuzzNAVMatchesExactScaling(uint64 balance, uint64 price, uint8 tokenDecimals, uint8 feedDecimals) public {
+        tokenDecimals = uint8(bound(tokenDecimals, 0, 38));
+        feedDecimals = uint8(bound(feedDecimals, 0, 38));
+        price = uint64(bound(price, 1, type(uint64).max));
+        MockV3Aggregator feed = new MockV3Aggregator(feedDecimals, int256(uint256(price)));
+        vm.prank(owner);
+        registry.configure(block.chainid, tokenNVDA, address(feed), true, tokenDecimals, feedDecimals, false);
+        address[] memory tokens = new address[](1);
+        tokens[0] = tokenNVDA;
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = balance;
+        uint256 expected = uint256(balance) * price * 1e6 / (10 ** uint256(tokenDecimals) * 10 ** uint256(feedDecimals));
+        assertEq(oracle.calculateNAV(tokens, balances), expected);
+    }
+
+    function testEmptyAndZeroBalances() public view {
+        assertEq(oracle.calculateNAV(new address[](0), new uint256[](0)), 0);
+        address[] memory tokens = new address[](1);
+        tokens[0] = tokenUSDC;
+        assertEq(oracle.calculateNAV(tokens, new uint256[](1)), 0);
+    }
+
     function testCalculateNAV() public view {
         address[] memory tokens = new address[](2);
         tokens[0] = tokenNVDA;

@@ -5,6 +5,7 @@ import { AdminAssetItem, AdminTransactionPreview } from '@othelio/shared';
 import { adminApi } from '../lib/api';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 import { getAddress, parseAbi } from 'viem';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 const assetRegistryAbi = parseAbi([
   'function owner() view returns (address)',
@@ -19,23 +20,27 @@ interface AssetsViewProps {
 }
 
 export function AssetsView({ assets, isLoading, onRefresh, isOwner }: AssetsViewProps) {
-  const [selectedAsset, setSelectedAsset] = useState<AdminAssetItem | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+  const [tokenAddress, setTokenAddress] = useState('');
   const [previews, setPreviews] = useState<AdminTransactionPreview[] | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const { chainId, contracts } = useAdminAuth();
   const { address } = useAccount();
-  const publicClient = usePublicClient();
-  const { writeContractAsync, isPending } = useWriteContract();
+  const publicClient = usePublicClient({ chainId });
+  const { writeContractAsync } = useWriteContract();
 
-  const handlePreviewEnable = async (asset: AdminAssetItem) => {
+  const handlePreviewEnable = async (asset: string) => {
+    if (!isOwner) return;
     setSelectedAsset(asset);
     setIsPreviewLoading(true);
     setPreviewError(null);
     setPreviews(null);
 
     try {
-      const txs = await adminApi.previewEnableAsset(asset.address);
+      const txs = await adminApi.previewEnableAsset(asset, chainId);
       setPreviews(txs);
     } catch (err: any) {
       setPreviewError(err?.message || 'Failed to preview asset enablement');
@@ -45,9 +50,13 @@ export function AssetsView({ assets, isLoading, onRefresh, isOwner }: AssetsView
   };
 
   const handleExecuteTx = async (tx: AdminTransactionPreview) => {
+    setIsSubmitting(true);
+    setPreviewError(null);
     try {
       if (!address || !publicClient) throw new Error('Connect the registry owner wallet first.');
-      if (tx.method !== 'configure') throw new Error('Unsupported asset configuration action.');
+      if (tx.method !== 'configure' || tx.chainId !== chainId || tx.target !== contracts?.assetRegistry) {
+        throw new Error('Transaction does not match the configured asset registry.');
+      }
       const registryOwner = await publicClient.readContract({
         address: tx.target, abi: assetRegistryAbi, functionName: 'owner',
       });
@@ -67,9 +76,12 @@ export function AssetsView({ assets, isLoading, onRefresh, isOwner }: AssetsView
       if (receipt.status !== 'success') throw new Error(`Registry transaction ${hash} reverted.`);
       setSelectedAsset(null);
       setPreviews(null);
+      setTokenAddress('');
       onRefresh();
-    } catch (err: any) {
-      alert(`Transaction failed: ${err?.message}`);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Asset registry transaction failed.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -90,6 +102,23 @@ export function AssetsView({ assets, isLoading, onRefresh, isOwner }: AssetsView
           ↻ Refresh
         </button>
       </div>
+
+      {isOwner && (
+        <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => {
+          event.preventDefault();
+          void handlePreviewEnable(tokenAddress.trim());
+        }}>
+          <label className="flex flex-col gap-1 text-xs font-mono text-zinc-300">
+            Onboard a reviewed Base B20 token
+            <input required placeholder="0x…" value={tokenAddress} onChange={(event) => setTokenAddress(event.target.value)}
+              className="w-96 max-w-full px-3 py-2 rounded border border-[#292a27] bg-[#161715] text-white" />
+          </label>
+          <button type="submit" disabled={isPreviewLoading || isSubmitting}
+            className="px-3 py-2 rounded bg-[#292a27] text-xs font-mono text-white disabled:opacity-50">
+            Verify and preview
+          </button>
+        </form>
+      )}
 
       {/* Asset Table */}
       <div className="bg-[#161715] border border-[#292a27] rounded-lg overflow-hidden">
@@ -167,9 +196,9 @@ export function AssetsView({ assets, isLoading, onRefresh, isOwner }: AssetsView
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      {!asset.registryStatus.isSupported && (
+                      {isOwner && !asset.registryStatus.isSupported && (
                         <button
-                          onClick={() => handlePreviewEnable(asset)}
+                          onClick={() => handlePreviewEnable(asset.address)}
                           className="px-3 py-1 rounded bg-[#292a27] hover:bg-[#3f413c] text-white text-xs font-mono transition-colors"
                         >
                           Enable Asset
@@ -192,10 +221,12 @@ export function AssetsView({ assets, isLoading, onRefresh, isOwner }: AssetsView
               <div>
                 <h3 className="text-base font-bold text-white">Enable Asset in Registry</h3>
                 <p className="text-xs text-zinc-400 font-mono mt-1">
-                  Preview transaction for {selectedAsset.symbol} ({selectedAsset.name})
+                  {selectedAsset}
                 </p>
+                <p className="text-xs text-zinc-400 mt-2">Registry enablement does not approve a basket trading route.</p>
               </div>
               <button
+                disabled={isSubmitting || isPreviewLoading}
                 onClick={() => {
                   setSelectedAsset(null);
                   setPreviews(null);
@@ -225,15 +256,16 @@ export function AssetsView({ assets, isLoading, onRefresh, isOwner }: AssetsView
                     <div className="text-zinc-300 font-semibold">{tx.description}</div>
                     <div className="text-zinc-500">Target: <span className="text-zinc-400">{tx.target}</span></div>
                     <div className="text-zinc-500">Method: <span className="text-zinc-400">{tx.method}</span></div>
+                    <div className="text-zinc-500 break-all">Feed: <span className="text-zinc-400">{tx.args[2]}</span></div>
                     <div className="text-zinc-500">Expected State: <span className="text-emerald-400">{tx.expectedState}</span></div>
 
                     <div className="pt-2">
                       <button
                         onClick={() => handleExecuteTx(tx)}
-                        disabled={isPending || !isOwner}
+                        disabled={isSubmitting || !isOwner}
                         className="w-full py-2 rounded bg-[#ff5729] hover:bg-[#ff6f47] disabled:opacity-50 text-black font-semibold text-xs tracking-wider uppercase transition-colors"
                       >
-                        {isPending ? 'Confirming...' : isOwner ? 'Sign & Execute with Connected Wallet' : 'Requires Registry Owner'}
+                        {isSubmitting ? 'Confirming...' : isOwner ? 'Sign & Execute with Connected Wallet' : 'Requires Registry Owner'}
                       </button>
                     </div>
                   </div>

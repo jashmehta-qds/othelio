@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {UpsideFixingAdapter} from "../../src/upside/UpsideFixingAdapter.sol";
 import {IUpsideFixingAdapter, AggregatorV3Interface} from "../../src/upside/interfaces/IUpsideFixingAdapter.sol";
 import {UpsideSeries} from "../../src/upside/UpsideSeries.sol";
+import {IUpsideSeries} from "../../src/upside/interfaces/IUpsideSeries.sol";
 import {UpsideClaimToken} from "../../src/upside/UpsideClaimToken.sol";
 import {MockUnderlyingToken, MockAssetRegistry} from "./UpsidePayoff.t.sol";
 
@@ -101,6 +102,17 @@ contract UpsideFixingTest is Test {
         UpsideClaimToken up = new UpsideClaimToken("Upside", "UP", address(series), 18);
         UpsideClaimToken res = new UpsideClaimToken("Residual", "RES", address(series), 18);
         series.initializeTokens(address(up), address(res));
+    }
+
+    function test_Fixing_ExactlyExpiryReverts() public {
+        vm.warp(expiry);
+        vm.expectRevert(IUpsideFixingAdapter.ExpiryNotReached.selector);
+        adapter.settleSeries(address(series), 10);
+        vm.expectRevert(IUpsideFixingAdapter.ExpiryNotReached.selector);
+        adapter.settleSeries(address(series));
+        vm.prank(address(adapter));
+        vm.expectRevert(IUpsideSeries.ExpiryNotReached.selector);
+        series.settleWithFixing(200e8, 10, expiry);
     }
 
     function test_Fixing_PreExpiryCallReverts() public {

@@ -122,6 +122,7 @@ contract RiskSplitInvariantTest is Test {
 
         uint256 expiry = block.timestamp + 7 days;
         factory.setApprovedExpiry(address(stock), expiry, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
 
         address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
 

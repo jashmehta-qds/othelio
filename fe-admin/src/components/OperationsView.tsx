@@ -3,15 +3,16 @@
 import React from 'react';
 import { AdminOperationsResponse, AdminOperationQueueItem, settlementAdapterAbi } from '@othelio/shared';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
+import { BaseError } from 'viem';
+import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface OperationsViewProps {
   operations: AdminOperationsResponse | null;
   isLoading: boolean;
   onRefresh: () => void;
-  isOwner: boolean;
 }
 
-export function OperationsView({ operations, isLoading, onRefresh, isOwner }: OperationsViewProps) {
+export function OperationsView({ operations, isLoading, onRefresh }: OperationsViewProps) {
   const { expiryQueue, settlementAuditTrail, incidentAlerts, asOfBlock, riskSplitIndexer } = operations || {
     expiryQueue: [],
     settlementAuditTrail: [],
@@ -22,17 +23,18 @@ export function OperationsView({ operations, isLoading, onRefresh, isOwner }: Op
 
   const { writeContractAsync, isPending } = useWriteContract();
   const { address } = useAccount();
-  const publicClient = usePublicClient();
+  const { chainId } = useAdminAuth();
+  const publicClient = usePublicClient({ chainId });
   const [isWaitingReceipt, setIsWaitingReceipt] = React.useState(false);
+  const [attempt, setAttempt] = React.useState<{ series: string; message: string; confirmed: boolean } | null>(null);
 
   const handleSettle = async (item: AdminOperationQueueItem) => {
-    if (!item.settlementReady || !item.settlementPreviewTx) {
-      alert('No adapter-verified pre-expiry fixing round is ready for settlement.');
-      return;
-    }
+    if (!item.settlementReady || !item.settlementPreviewTx || isWaitingReceipt || isPending) return;
 
+    setIsWaitingReceipt(true);
+    setAttempt(null);
     try {
-      if (!publicClient || !address) throw new Error('Connect a wallet with a working RPC first.');
+      if (!publicClient || !address || item.settlementPreviewTx.chainId !== chainId) throw new Error('Connect a wallet on the authenticated chain first.');
       const tx = item.settlementPreviewTx;
       const request = await publicClient.simulateContract({
         account: address,
@@ -42,14 +44,15 @@ export function OperationsView({ operations, isLoading, onRefresh, isOwner }: Op
         args: [item.seriesAddress as `0x${string}`, BigInt(item.candidateFixingRound!.roundId)],
       });
       const hash = await writeContractAsync(request.request);
-      setIsWaitingReceipt(true);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') throw new Error(`Settlement transaction ${hash} reverted.`);
-      onRefresh();
-    } catch (err: any) {
-      alert(`Settlement failed: ${err?.message}`);
+      setAttempt({ series: item.seriesAddress, message: 'Settlement confirmed onchain.', confirmed: true });
+    } catch (error) {
+      const message = error instanceof BaseError ? error.shortMessage : error instanceof Error ? error.message : 'Settlement failed.';
+      setAttempt({ series: item.seriesAddress, message: message.replace(/\s+/g, ' ').trim().slice(0, 240) || 'Settlement failed.', confirmed: false });
     } finally {
       setIsWaitingReceipt(false);
+      onRefresh();
     }
   };
 
@@ -215,15 +218,17 @@ export function OperationsView({ operations, isLoading, onRefresh, isOwner }: Op
                       )}
                     </td>
                     <td className="py-3 text-right">
-                      {item.isExpired && item.settlementReady && (
+                      {item.isExpired && item.settlementReady && !(attempt?.confirmed && attempt.series === item.seriesAddress) && (
                         <button
                           onClick={() => handleSettle(item)}
                           disabled={isPending || isWaitingReceipt}
                           className="px-3 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs transition-colors disabled:opacity-50"
                         >
-                          {isPending || isWaitingReceipt ? 'Settling...' : 'Settle Series'}
+                          {isPending || isWaitingReceipt ? 'Settling...' : attempt?.series === item.seriesAddress ? 'Retry Settlement' : 'Settle Series'}
                         </button>
                       )}
+                      {item.settlementBlocker && <div className="max-w-60 ml-auto text-zinc-400">{item.settlementBlocker}</div>}
+                      {attempt?.series === item.seriesAddress && <div role="status" className="max-w-60 ml-auto break-words">{attempt.message}</div>}
                     </td>
                   </tr>
                 ))

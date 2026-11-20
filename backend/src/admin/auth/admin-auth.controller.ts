@@ -19,14 +19,7 @@ export class AdminAuthController {
 
   @Get('me')
   @UseGuards(AdminGuard)
-  async getMe(@Req() req: any) {
-    const isOwner = await this.authService.isOwner(req.adminUser.address, req.adminUser.chainId);
-    const factoryAddress = this.authService.getFactoryAddress(req.adminUser.chainId);
-    return {
-      address: req.adminUser.address,
-      chainId: req.adminUser.chainId,
-      isOwner,
-      factoryAddress,
-    };
+  getMe(@Req() req: any) {
+    return req.adminUser;
   }
 }

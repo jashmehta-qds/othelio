@@ -1,11 +1,14 @@
 import {
   AdminChallengeResponse,
+  AdminOperator,
   AdminVerifyResponse,
   AdminOverviewResponse,
   AdminAssetsResponse,
   AdminMarketsResponse,
   AdminMarketPreviewRequest,
   AdminMarketPreviewResponse,
+  AdminRiskSplitSetupRequest,
+  AdminRiskSplitSetupResponse,
   AdminOperationsResponse,
   AdminTransactionPreview,
   AdminUpsideRoundItem,
@@ -89,7 +92,7 @@ class AdminApiClient {
     return res;
   }
 
-  async getMe(): Promise<{ address: string; chainId: number; isOwner: boolean; factoryAddress: string }> {
+  async getMe(): Promise<AdminOperator> {
     return this.fetchJson('/v1/admin/auth/me');
   }
 
@@ -122,6 +125,13 @@ class AdminApiClient {
     });
   }
 
+  async previewRiskSplitSetup(params: AdminRiskSplitSetupRequest) {
+    return this.fetchJson<AdminRiskSplitSetupResponse>('/v1/admin/markets/setup', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
   async getOperations(chainId?: number): Promise<AdminOperationsResponse> {
     const q = chainId ? `?chainId=${chainId}` : '';
     return this.fetchJson<AdminOperationsResponse>(`/v1/admin/operations${q}`);
@@ -145,13 +155,6 @@ class AdminApiClient {
     if (roundId !== undefined) params.append('roundId', roundId.toString());
     const q = params.toString() ? `?${params.toString()}` : '';
     return this.fetchJson<{ data: AdminUpsideMarketItem[] }>(`/v1/admin/upside/markets${q}`);
-  }
-
-  async togglePublicCreation(params: { chainId?: number; roundId: number; enabled: boolean }): Promise<AdminTransactionPreview> {
-    return this.fetchJson<AdminTransactionPreview>('/v1/admin/upside/rounds/toggle-public', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
   }
 }
 

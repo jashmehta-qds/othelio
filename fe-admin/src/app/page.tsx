@@ -20,7 +20,7 @@ import { useAdminAuth } from '../context/AdminAuthContext';
 export default function AdminPage() {
   const [currentTab, setCurrentTab] = useState<'overview' | 'assets' | 'rounds' | 'markets' | 'operations'>('overview');
 
-  const { isOwner, isAuthenticated, chainId } = useAdminAuth();
+  const { capabilities, isAuthenticated, chainId } = useAdminAuth();
 
   const [overview, setOverview] = useState<AdminOverviewResponse | null>(null);
   const [assets, setAssets] = useState<AdminAssetItem[]>([]);
@@ -50,15 +50,14 @@ export default function AdminPage() {
       } else if (currentTab === 'rounds') {
         const [roundsData, assetsData] = await Promise.all([
           adminApi.getUpsideRounds(chainId),
-          assets.length === 0 ? adminApi.getAssets(chainId) : Promise.resolve({ data: assets }),
+          adminApi.getAssets(chainId),
         ]);
         setRounds(roundsData.data);
-        if (assets.length === 0 && assetsData.data) {
-          setAssets(assetsData.data);
-        }
+        setAssets(assetsData.data);
       } else if (currentTab === 'markets') {
-        const data = await adminApi.getMarkets(chainId);
+        const [data, catalog] = await Promise.all([adminApi.getMarkets(chainId), adminApi.getAssets(chainId)]);
         setMarkets(data.data);
+        setAssets(catalog.data);
       } else if (currentTab === 'operations') {
         const data = await adminApi.getOperations(chainId);
         setOperations(data);
@@ -86,7 +85,7 @@ export default function AdminPage() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
         {!isAuthenticated && (
           <div className="mb-6 rounded-lg border border-[#292a27] bg-[#161715] p-5 text-sm text-zinc-300">
-            Connect the configured factory owner wallet and sign in to load operator data. The factory must be deployed and configured in the backend first.
+            Sign in with a wallet that owns a configured admin contract. Available actions depend on which contracts it owns.
           </div>
         )}
         {fetchError && (
@@ -106,7 +105,7 @@ export default function AdminPage() {
         )}
 
         {isAuthenticated && currentTab === 'assets' && (
-          <AssetsView assets={assets} isLoading={isLoading} onRefresh={fetchData} isOwner={isOwner} />
+          <AssetsView assets={assets} isLoading={isLoading} onRefresh={fetchData} isOwner={capabilities.assetRegistry} />
         )}
 
         {isAuthenticated && currentTab === 'rounds' && (
@@ -115,13 +114,13 @@ export default function AdminPage() {
             assets={assets}
             isLoading={isLoading}
             onRefresh={fetchData}
-            isOwner={isOwner}
+            isOwner={capabilities.upside}
             chainId={chainId}
           />
         )}
 
         {isAuthenticated && currentTab === 'markets' && (
-          <MarketsView markets={markets} isLoading={isLoading} onRefresh={fetchData} isOwner={isOwner} />
+          <MarketsView markets={markets} assets={assets} isLoading={isLoading} onRefresh={fetchData} isOwner={capabilities.riskSplit} />
         )}
 
         {isAuthenticated && currentTab === 'operations' && (
@@ -129,7 +128,6 @@ export default function AdminPage() {
             operations={operations}
             isLoading={isLoading}
             onRefresh={fetchData}
-            isOwner={isOwner}
           />
         )}
       </main>

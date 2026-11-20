@@ -39,7 +39,6 @@ export function OverviewView({ overview, isLoading, onRefresh }: OverviewViewPro
           address: '—',
           owner: '—',
           pendingOwner: null,
-          publicCreationEnabled: false,
         },
       },
       indexerHealth: {
@@ -167,6 +166,27 @@ export function OverviewView({ overview, isLoading, onRefresh }: OverviewViewPro
         </div>
       </div>
 
+      <section className="rounded-lg border border-[#292a27] bg-[#161715] p-5">
+        <h2 className="mb-2 text-sm font-semibold text-zinc-200">Indexed product activity and TVL</h2>
+        <p className="mb-3 text-xs text-zinc-500">All-time indexed wallets, not unique people. TVL is an estimate from indexed collateral or basket NAV.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs font-mono">
+            <thead className="text-zinc-500"><tr><th>Product</th><th>Wallets</th><th>TVL (USD)</th></tr></thead>
+            <tbody className="divide-y divide-[#292a27] text-zinc-300">
+              {overview?.products?.map((metric) => (
+                <tr key={metric.product}>
+                  <td className="py-2">{metric.product}</td>
+                  <td>{metric.indexedWallets?.toLocaleString() ?? 'Unavailable'}</td>
+                  <td>{metric.tvlUsd === null ? 'Unavailable' : Number(metric.tvlUsd).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                    {metric.valuationIssue && <div className="text-amber-400">{metric.valuationIssue}</div>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {/* Governed Contracts Section */}
       <div className="bg-[#161715] border border-[#292a27] rounded-lg p-6">
         <h2 className="text-sm font-semibold tracking-wider uppercase font-mono text-zinc-300 mb-4">
@@ -180,7 +200,7 @@ export function OverviewView({ overview, isLoading, onRefresh }: OverviewViewPro
                 <th className="pb-3">Address</th>
                 <th className="pb-3">Onchain Owner</th>
                 <th className="pb-3">Pending Owner</th>
-                <th className="pb-3">Public Creation</th>
+                <th className="pb-3">Creation Policy</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#292a27] text-zinc-300">
@@ -192,15 +212,7 @@ export function OverviewView({ overview, isLoading, onRefresh }: OverviewViewPro
                   {governedContracts.factory.pendingOwner || 'None'}
                 </td>
                 <td className="py-3">
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
-                      governedContracts.factory.publicCreationEnabled
-                        ? 'bg-amber-950/40 text-amber-400 border-amber-800'
-                        : 'bg-emerald-950/40 text-emerald-400 border-emerald-800'
-                    }`}
-                  >
-                    {governedContracts.factory.publicCreationEnabled ? 'ENABLED' : 'DISABLED (RESTRICTED)'}
-                  </span>
+                  <span className="text-emerald-400">OWNER ONLY</span>
                 </td>
               </tr>
             </tbody>

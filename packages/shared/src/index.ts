@@ -147,7 +147,7 @@ export * from "./risksplit/contracts.js";
 export * from "./risksplit/deployment.js";
 export * from "./admin/types.js";
 export * from "./upside/types.js";
+export * from "./upside/strikes.js";
 export * from "./upside/contracts.js";
 export * from "./upside/deployment.js";
 export * from "./upside/venue.js";
-

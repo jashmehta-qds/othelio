@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { AdminAssetsService } from './admin-assets.service';
-import { AdminGuard } from '../auth/admin.guard';
+import { AdminChain, AdminGuard, RequireAdminOwner } from '../auth/admin.guard';
 import { AdminAssetsResponse, AdminTransactionPreview } from '@othelio/shared';
 
 @Controller('v1/admin/assets')
@@ -9,12 +9,13 @@ export class AdminAssetsController {
   constructor(private readonly assetsService: AdminAssetsService) {}
 
   @Get()
-  async getAssets(@Query('chainId') chainId?: string): Promise<AdminAssetsResponse> {
-    return this.assetsService.getAssets(chainId ? Number(chainId) : 8453);
+  async getAssets(@AdminChain() chainId: number): Promise<AdminAssetsResponse> {
+    return this.assetsService.getAssets(chainId);
   }
 
   @Post('preview-enable')
-  async previewEnable(@Body() body: { assetAddress: string; chainId?: number }): Promise<AdminTransactionPreview[]> {
-    return this.assetsService.previewEnableAsset(body.assetAddress, body.chainId);
+  @RequireAdminOwner('assetRegistry')
+  async previewEnable(@Body() body: { assetAddress: string }, @AdminChain() chainId: number): Promise<AdminTransactionPreview[]> {
+    return this.assetsService.previewEnableAsset(body.assetAddress, chainId);
   }
 }

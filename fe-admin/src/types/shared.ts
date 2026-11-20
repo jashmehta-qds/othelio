@@ -8,6 +8,7 @@ export * from '../../../packages/shared/src/upside/contracts';
 export * from '../../../packages/shared/src/upside/venue';
 export * from '../../../packages/shared/src/upside/deployment';
 export * from '../../../packages/shared/src/upside/types';
+export * from '../../../packages/shared/src/upside/strikes';
 export * from '../../../packages/shared/src/admin/types';
 export * from '../../../packages/shared/src/networks';
 export * from '../../../packages/shared/src/primitives';

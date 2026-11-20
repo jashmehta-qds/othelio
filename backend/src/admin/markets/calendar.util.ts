@@ -7,6 +7,19 @@ export interface CalendarValidationResult {
   error?: string;
 }
 
+export function validateWeeklyUpsideExpiry(expiry: number, now: number): CalendarValidationResult {
+  const calendar = validateExpiryCalendar(expiry, now);
+  if (!calendar.valid) return calendar;
+  const day = new Date(expiry * 1000);
+  const isEarlyClose = (day.getUTCMonth() === 10 && day.getUTCDate() >= 23 && day.getUTCDate() <= 29) ||
+    (day.getUTCMonth() === 6 && day.getUTCDate() === 3) ||
+    (day.getUTCMonth() === 11 && day.getUTCDate() === 24);
+  if (day.getUTCDay() !== 5 || calendar.sessionCloseDeltaMinutes !== 0 || expiry % 60 !== 0 || isEarlyClose) {
+    return { ...calendar, valid: false, error: 'Upside expiry must be Friday at 4:00 PM New York time on a full trading day.' };
+  }
+  return calendar;
+}
+
 /**
  * Computes Western Easter Sunday for a given year using the Anonymous Gregorian algorithm.
  */

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {SettlementAdapter} from "../../src/risksplit/SettlementAdapter.sol";
 import {ISettlementAdapter, AggregatorV3Interface} from "../../src/risksplit/interfaces/ISettlementAdapter.sol";
 import {RiskSplitSeries} from "../../src/risksplit/RiskSplitSeries.sol";
+import {IRiskSplitSeries} from "../../src/risksplit/interfaces/IRiskSplitSeries.sol";
 import {SeriesFactory} from "../../src/risksplit/SeriesFactory.sol";
 import {ClaimToken} from "../../src/risksplit/ClaimToken.sol";
 import {MockStockToken} from "./RiskSplitSeriesTest.t.sol";
@@ -84,9 +85,24 @@ contract RiskSplitFixingTest is Test {
         expiry = 2000;
         vm.warp(1000);
         factory.setApprovedExpiry(address(stock), expiry, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
 
         address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
         series = RiskSplitSeries(seriesAddr);
+    }
+
+    function test_Fixing_ExactlyExpiryReverts() public {
+        vm.warp(expiry);
+        vm.expectRevert(ISettlementAdapter.ExpiryNotReached.selector);
+        adapter.settleSeries(address(series), 10);
+        vm.expectRevert(ISettlementAdapter.ExpiryNotReached.selector);
+        adapter.settleSeries(address(series));
+        vm.startPrank(address(adapter));
+        vm.expectRevert(IRiskSplitSeries.ExpiryNotReached.selector);
+        series.settleWithFixing(50e8, 10, expiry);
+        vm.expectRevert(IRiskSplitSeries.ExpiryNotReached.selector);
+        series.settle(50e8);
+        vm.stopPrank();
     }
 
     function test_Fixing_DelayedCallProducesIdenticalPreExpiryFixing() public {

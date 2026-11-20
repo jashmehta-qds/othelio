@@ -11,8 +11,8 @@ export class DatabaseService implements OnModuleDestroy {
     this.pool = new pg.Pool({ connectionString, max: 5 });
   }
 
-  async query(text: string, params?: any[]) {
-    return this.pool.query(text, params);
+  async query<Row extends pg.QueryResultRow = pg.QueryResultRow>(text: string, params?: any[]) {
+    return this.pool.query<Row>(text, params);
   }
 
   async onModuleDestroy() {

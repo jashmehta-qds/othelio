@@ -1,21 +1,53 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { AdminAssetsService } from './admin-assets.service';
 
+const newToken = '0xb200000000000000000000000000000000000999';
+const newFeed = '0x3333333333333333333333333333333333333333';
+let initialized = true;
+let feedAge = 60n;
+let enabledAddition = false;
+const now = BigInt(Math.floor(Date.now() / 1000));
 vi.mock('viem', async (importOriginal) => {
   const actual = await importOriginal<typeof import('viem')>();
   return {
     ...actual,
     createPublicClient: () => ({
-      readContract: async ({ functionName }: { functionName: string }) =>
-        functionName === 'isSupported'
-          ? true
-          : [1n, 50000000000n, 0n, BigInt(Math.floor(Date.now() / 1000)), 1n],
+      getBlock: async () => ({ number: 1n, timestamp: now }),
+      readContract: async ({ functionName, args }: { functionName: string; args?: [bigint, string] }) => {
+        switch (functionName) {
+          case 'getAsset': return enabledAddition && args?.[1].toLowerCase() === newToken
+            ? { supported: true, isCoinbaseB20: true, priceFeed: newFeed, tokenDecimals: 8, feedDecimals: 8 }
+            : { supported: false, isCoinbaseB20: false };
+          case 'symbol': return 'NEWc';
+          case 'name': return 'New Stock';
+          case 'isB20': return true;
+          case 'isB20Initialized': return initialized;
+          case 'decimals': return 8;
+          case 'totalSupply': return 1000000000n;
+          case 'description': return 'Total Return / USD';
+          case 'latestRoundData': return [1n, 50000000000n, now - feedAge - 1n, now - feedAge, 1n];
+          default: throw new Error(functionName);
+        }
+      },
     }),
   };
 });
 
 describe('AdminAssetsService', () => {
+  beforeEach(() => {
+    vi.stubEnv('CHAIN_ID', '8453');
+    vi.stubEnv('ASSET_REGISTRY_ADDRESS', '0x3DB84b8e172A2b8b1634F8C630C6e2acD07424AC');
+    vi.stubEnv('OTHELIO_ASSET_REGISTRY', undefined);
+    vi.stubEnv('B20_REVIEWED_FEEDS_JSON', undefined);
+    initialized = true;
+    feedAge = 60n;
+    enabledAddition = false;
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
   it('lists candidate B20 assets with decimals, price feeds, and readiness status', async () => {
     const mockDb = {
       query: vi.fn().mockResolvedValue({
@@ -90,5 +122,38 @@ describe('AdminAssetsService', () => {
     await expect(service.previewEnableAsset('0x1234567890123456789012345678901234567890', 8453)).rejects.toBeInstanceOf(
       BadRequestException
     );
+  });
+
+  it('stages and prepares calldata for an additional reviewed B20 but does not approve a route', async () => {
+    vi.stubEnv('B20_REVIEWED_FEEDS_JSON', JSON.stringify({ [newToken]: newFeed }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      tokens: [{ contract_address: newToken, symbol: 'NEWc', name: 'New Stock', decimals: 8 }],
+    }) }));
+    const service = new AdminAssetsService();
+    const { data } = await service.getAssets();
+    expect(data.find((asset) => asset.symbol === 'NEWc')).toMatchObject({ staged: true, tradeable: false });
+    const previews = await service.previewEnableAsset(newToken);
+    expect(previews).toHaveLength(1);
+    expect(previews[0]).toMatchObject({ method: 'configure', args: [8453, expect.stringMatching(/^0xb200/i), newFeed, true, 8, 8, true] });
+
+    initialized = false;
+    await expect(service.previewEnableAsset(newToken)).rejects.toThrow('not an initialized');
+    initialized = true;
+    feedAge = 86401n;
+    await expect(service.previewEnableAsset(newToken)).rejects.toThrow('fresh');
+  });
+
+  it('keeps enabled additions in market selectors but requires Coinbase metadata to onboard', async () => {
+    vi.stubEnv('B20_REVIEWED_FEEDS_JSON', JSON.stringify({ [newToken]: newFeed }));
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Metadata unavailable')));
+    const service = new AdminAssetsService();
+    expect((await service.getAssets()).data.some((asset) => asset.address.toLowerCase() === newToken)).toBe(false);
+
+    enabledAddition = true;
+    const { data } = await service.getAssets();
+    expect(data.find((asset) => asset.address.toLowerCase() === newToken)).toMatchObject({
+      symbol: 'NEWc', name: 'New Stock', decimals: 8, registryStatus: { isSupported: true },
+    });
+    await expect(service.previewEnableAsset(newToken)).rejects.toThrow('matching Coinbase catalog entry');
   });
 });

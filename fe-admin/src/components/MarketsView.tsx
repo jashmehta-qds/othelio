@@ -1,64 +1,26 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AdminMarketItem } from '@othelio/shared';
+import { AdminAssetItem, AdminMarketItem } from '@othelio/shared';
 import { CreateMarketModal } from './CreateMarketModal';
-import { seriesFactoryAbi } from '@othelio/shared';
-import { useAccount, usePublicClient, useReadContract, useWriteContract } from 'wagmi';
-import { useAdminAuth } from '../context/AdminAuthContext';
+import { SeriesMetrics } from './SeriesMetrics';
 
 interface MarketsViewProps {
   markets: AdminMarketItem[];
+  assets: AdminAssetItem[];
   isLoading: boolean;
   onRefresh: () => void;
   isOwner: boolean;
 }
 
-export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsViewProps) {
-  const { factoryAddress } = useAdminAuth();
-  const { address } = useAccount();
-  const publicClient = usePublicClient();
-  const { writeContractAsync, isPending: isConfigPending } = useWriteContract();
-  const [configError, setConfigError] = useState<string | null>(null);
-  const [isWaitingConfigReceipt, setIsWaitingConfigReceipt] = useState(false);
-  const factory = factoryAddress as `0x${string}` | null;
-  const { data: publicCreationEnabled, refetch: refetchCreationFlag } = useReadContract({
-    address: factory || undefined,
-    abi: seriesFactoryAbi,
-    functionName: 'publicCreationEnabled',
-    query: { enabled: Boolean(factory) },
-  });
-  const handleTogglePublicCreation = async () => {
-    try {
-      if (!factory || !publicClient || !address) throw new Error('Factory or owner wallet RPC is unavailable.');
-      setConfigError(null);
-      const request = await publicClient.simulateContract({
-        address: factory,
-        account: address,
-        abi: seriesFactoryAbi,
-        functionName: 'setPublicCreationEnabled',
-        args: [!Boolean(publicCreationEnabled)],
-      });
-      const hash = await writeContractAsync(request.request);
-      setIsWaitingConfigReceipt(true);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== 'success') throw new Error(`Creation flag transaction ${hash} reverted.`);
-      await refetchCreationFlag();
-    } catch (error: any) {
-      setConfigError(error?.message || 'Failed to update public creation flag.');
-    } finally {
-      setIsWaitingConfigReceipt(false);
-    }
-  };
-  const [filter, setFilter] = useState<'all' | 'active' | 'expired' | 'settled'>('all');
+export function MarketsView({ markets, assets, isLoading, onRefresh, isOwner }: MarketsViewProps) {
+  const [filter, setFilter] = useState<'all' | 'active' | 'expired' | 'settled' | 'failed'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState('');
 
-  const filteredMarkets = markets.filter((m) => {
-    if (filter === 'active') return !m.isExpired && !m.isSettled;
-    if (filter === 'expired') return m.isExpired && !m.isSettled;
-    if (filter === 'settled') return m.isSettled;
-    return true;
-  });
+  const marketStatus = (m: AdminMarketItem) => m.isSettled ? 'settled'
+    : m.operationsAuditStatus === 'SETTLEMENT_FAILED' ? 'failed' : m.isExpired ? 'expired' : 'active';
+  const filteredMarkets = markets.filter((m) => filter === 'all' || marketStatus(m) === filter);
 
   return (
     <div className="space-y-6">
@@ -79,31 +41,18 @@ export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsV
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="px-4 py-1.5 rounded bg-[#ff5729] hover:bg-[#ff6f47] text-black font-semibold text-xs font-mono tracking-wider uppercase transition-colors"
+            disabled={!isOwner}
+            className="px-4 py-1.5 rounded bg-[#ff5729] hover:bg-[#ff6f47] text-black font-semibold text-xs font-mono tracking-wider uppercase transition-colors disabled:opacity-50"
           >
             + Create Series
           </button>
         </div>
       </div>
-
-      <div className="rounded-lg border border-[#292a27] bg-[#161715] p-4 text-xs font-mono text-zinc-300">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <strong>Public market creation: {publicCreationEnabled === undefined ? 'Loading' : publicCreationEnabled ? 'Enabled' : 'Disabled'}</strong>
-            <p className="mt-1 text-zinc-500">The factory owner can change this onchain. Operator creation remains available while disabled.</p>
-          </div>
-          <button type="button" onClick={handleTogglePublicCreation}
-            disabled={!isOwner || publicCreationEnabled === undefined || isConfigPending || isWaitingConfigReceipt}
-            className="rounded bg-[#292a27] px-3 py-2 text-white disabled:opacity-50">
-            {isConfigPending || isWaitingConfigReceipt ? 'Confirming…' : publicCreationEnabled ? 'Disable public creation' : 'Enable public creation'}
-          </button>
-        </div>
-        {configError && <p className="mt-2 text-red-400">{configError}</p>}
-      </div>
+      {confirmation && <p role="status" className="break-all text-xs font-mono text-emerald-400">{confirmation}</p>}
 
       {/* Filter Tabs */}
-      <div className="flex space-x-2 border-b border-[#292a27] pb-2 text-xs font-mono">
-        {(['all', 'active', 'expired', 'settled'] as const).map((tab) => (
+      <div className="flex flex-wrap gap-2 border-b border-[#292a27] pb-2 text-xs font-mono">
+        {(['all', 'active', 'expired', 'settled', 'failed'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setFilter(tab)}
@@ -114,12 +63,7 @@ export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsV
             }`}
           >
             {tab} ({
-              markets.filter((m) => {
-                if (tab === 'active') return !m.isExpired && !m.isSettled;
-                if (tab === 'expired') return m.isExpired && !m.isSettled;
-                if (tab === 'settled') return m.isSettled;
-                return true;
-              }).length
+              markets.filter((m) => tab === 'all' || marketStatus(m) === tab).length
             })
           </button>
         ))}
@@ -146,7 +90,7 @@ export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsV
                   <th className="py-3 px-4">Expiry</th>
                   <th className="py-3 px-4">Reference Round</th>
                   <th className="py-3 px-4">Fixing / Settled</th>
-                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Status / Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#292a27] text-zinc-300">
@@ -162,6 +106,8 @@ export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsV
                         SETTLED
                       </span>
                     );
+                  } else if (marketStatus(market) === 'failed') {
+                    statusBadge = <span className="text-red-400">SETTLEMENT FAILED</span>;
                   } else if (market.isExpired) {
                     statusBadge = (
                       <span className="px-2 py-0.5 rounded text-[10px] font-semibold border bg-amber-950/40 text-amber-400 border-amber-800">
@@ -176,11 +122,10 @@ export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsV
                         <div className="font-semibold text-white">
                           {market.seriesAddress.slice(0, 6)}...{market.seriesAddress.slice(-4)}
                         </div>
-                        <div className="text-[10px] text-zinc-500">Block #{market.lastIndexedBlock}</div>
+                        <div className="text-[10px] text-zinc-500">Indexed block #{market.lastIndexedBlock}</div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-zinc-200">{market.underlying.symbol}</div>
-                        <div className="text-[10px] text-zinc-500">{market.underlying.decimals} dec</div>
+                        <div className="font-semibold text-zinc-200">{assets.find((asset) => asset.address.toLowerCase() === market.underlying.address.toLowerCase())?.symbol ?? market.underlying.symbol}</div>
                       </td>
                       <td className="py-3 px-4">
                         <div className="text-emerald-400 font-semibold">{market.floorFormatted}</div>
@@ -204,15 +149,27 @@ export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsV
                         {market.isSettled ? (
                           <div>
                             <div className="font-semibold text-white">
-                              ${(Number(market.settledPrice || 0) / 1e8).toFixed(2)}
+                              {market.settledPrice ? `$${(Number(market.settledPrice) / 1e8).toFixed(2)}` : 'Not indexed'}
                             </div>
                             <div className="text-[10px] text-zinc-500">Fixing #{market.settledRoundId}</div>
                           </div>
                         ) : (
-                          <div className="text-zinc-500">Pending Expiry</div>
+                          <div className="text-zinc-500">{market.isExpired ? 'Awaiting settlement' : 'Pending expiry'}</div>
                         )}
                       </td>
-                      <td className="py-3 px-4">{statusBadge}</td>
+                      <td className="py-3 px-4">
+                        {statusBadge}
+                        <details className="mt-2 max-w-sm space-y-1 break-all text-xs text-zinc-400">
+                          <summary className="cursor-pointer">Indexed history and metrics</summary>
+                          <div>Series: {market.seriesAddress}</div>
+                          <div>Reference feed: {market.referenceFeed ?? 'Unavailable'} ({market.referenceBlock ? `block #${market.referenceBlock}` : 'block unavailable'})</div>
+                          <div>Fixing update: {market.settledFeedUpdatedAt ?? 'Unavailable'}</div>
+                          <div>Protected token: {market.protectedTokenAddress ?? 'Unavailable'}</div>
+                          <div>Upside token: {market.upsideTokenAddress ?? 'Unavailable'}</div>
+                          <div>Audit: {market.operationsAuditStatus}{market.operationsAuditNote && ` — ${market.operationsAuditNote}`}</div>
+                          <SeriesMetrics metrics={market.metrics} claims={['Protected', 'Upside']} />
+                        </details>
+                      </td>
                     </tr>
                   );
                 })}
@@ -223,15 +180,17 @@ export function MarketsView({ markets, isLoading, onRefresh, isOwner }: MarketsV
       </div>
 
       {/* Creation Modal */}
-      <CreateMarketModal
+      {isOwner && isModalOpen && <CreateMarketModal
+        assets={assets}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSuccess={() => {
+        onSuccess={(message) => {
+          setConfirmation(message);
           setIsModalOpen(false);
           onRefresh();
         }}
         isOwner={isOwner}
-      />
+      />}
     </div>
   );
 }

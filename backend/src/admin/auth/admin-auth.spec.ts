@@ -1,19 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BadRequestException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { privateKeyToAccount } from 'viem/accounts';
 import { AdminAuthService } from './admin-auth.service';
 
 let factoryOwner = '';
+let upsideOwner: string | undefined;
+let rpcChainId = 8453;
+const upsideFactory = '0x2222222222222222222222222222222222222222';
 vi.mock('viem', async (importOriginal) => {
   const actual = await importOriginal<typeof import('viem')>();
   return {
     ...actual,
-    createPublicClient: () => ({ readContract: async () => factoryOwner }),
+    createPublicClient: () => ({ getChainId: async () => rpcChainId, readContract: async ({ address }: { address: string }) =>
+      address === upsideFactory ? upsideOwner : factoryOwner }),
   };
 });
 
 describe('AdminAuthService', () => {
   let service: AdminAuthService;
+  afterEach(() => vi.unstubAllEnvs());
   // Anvil test account #0
   const ownerPrivateKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
   const ownerAccount = privateKeyToAccount(ownerPrivateKey);
@@ -26,15 +31,26 @@ describe('AdminAuthService', () => {
 
   beforeEach(() => {
     factoryOwner = ownerAddress;
-    process.env.RISK_SPLIT_FACTORY_ADDRESS = '0x1111111111111111111111111111111111111111';
-    delete process.env.ADMIN_WALLETS;
+    upsideOwner = otherAddress;
+    rpcChainId = 8453;
+    vi.stubEnv('CHAIN_ID', '8453');
+    vi.stubEnv('RISK_SPLIT_FACTORY_ADDRESS', '0x1111111111111111111111111111111111111111');
+    vi.stubEnv('UPSIDE_FACTORY_ADDRESS', undefined);
+    vi.stubEnv('ASSET_REGISTRY_ADDRESS', undefined);
+    vi.stubEnv('OTHELIO_ASSET_REGISTRY', undefined);
+    vi.stubEnv('ADMIN_WALLETS', undefined);
     service = new AdminAuthService();
   });
 
   it('does not accept an env allowlist as owner authority', async () => {
     factoryOwner = otherAddress;
-    process.env.ADMIN_WALLETS = ownerAddress;
+    vi.stubEnv('ADMIN_WALLETS', ownerAddress);
     await expect(service.checkOnchainOwner(ownerAddress, 8453)).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('fails closed when the RPC is connected to a different chain', async () => {
+    rpcChainId = 31337;
+    await expect(service.checkOnchainOwner(ownerAddress, 8453)).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
   it('generates an admin challenge nonce with expected message structure', () => {
@@ -54,13 +70,33 @@ describe('AdminAuthService', () => {
     const result = await service.verifyChallenge(ownerAddress, message, signature, 8453);
     expect(result.token).toBeDefined();
     expect(result.expiresAt).toBeDefined();
-    expect(result.isOwner).toBe(true);
+    expect(result.capabilities).toEqual({ riskSplit: true, assetRegistry: false, upside: false });
     expect(result.address).toBe(ownerAddress.toLowerCase());
 
     const payload = service.verifySessionToken(result.token);
     expect(payload.sub).toBe(ownerAddress.toLowerCase());
     expect(payload.role).toBe('admin');
     expect(payload.chainId).toBe(8453);
+  });
+
+  it('signs in an Upside-only owner without a Risk Split deployment', async () => {
+    vi.stubEnv('UPSIDE_FACTORY_ADDRESS', upsideFactory);
+    vi.stubEnv('RISK_SPLIT_FACTORY_ADDRESS', undefined);
+    const { message } = service.generateChallenge(otherAddress, 8453);
+    const signature = await otherAccount.signMessage({ message });
+    await expect(service.verifyChallenge(otherAddress, message, signature)).resolves.toMatchObject({
+      capabilities: { riskSplit: false, assetRegistry: false, upside: true },
+    });
+  });
+
+  it('reports the relevant ownership independently for two deployed factories', async () => {
+    vi.stubEnv('UPSIDE_FACTORY_ADDRESS', upsideFactory);
+    await expect(service.checkOnchainOwner(ownerAddress, 8453)).resolves.toMatchObject({
+      capabilities: { riskSplit: true, upside: false },
+    });
+    await expect(service.checkOnchainOwner(otherAddress, 8453)).resolves.toMatchObject({
+      capabilities: { riskSplit: false, upside: true },
+    });
   });
 
   it('prevents nonce replay attacks', async () => {

@@ -6,9 +6,10 @@ import {
   AdminUpsideRoundItem,
 } from '@othelio/shared';
 import { UpsideRoundModal } from './UpsideRoundModal';
-import { adminApi } from '../lib/api';
-import { usePublicClient, useWriteContract } from 'wagmi';
-import { upsideFactoryAbi } from '@othelio/shared';
+import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
+import { deployPresetStrikes } from '../lib/upside-launch';
+import { useAdminAuth } from '../context/AdminAuthContext';
+import { SeriesMetrics } from './SeriesMetrics';
 
 interface UpsideRoundsViewProps {
   rounds: AdminUpsideRoundItem[];
@@ -28,29 +29,27 @@ export function UpsideRoundsView({
   chainId,
 }: UpsideRoundsViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [togglingRoundId, setTogglingRoundId] = useState<number | null>(null);
+  const [resuming, setResuming] = useState<number | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
-  const publicClient = usePublicClient();
+  const { contracts } = useAdminAuth();
+  const { address } = useAccount();
+  const publicClient = usePublicClient({ chainId });
   const { writeContractAsync } = useWriteContract();
 
-  const handleTogglePublicCreation = async (round: AdminUpsideRoundItem) => {
-    if (!isOwner || !publicClient) return;
-    const targetState = !round.publicCreationEnabled;
-    setTogglingRoundId(round.roundId);
-
+  const resume = async (round: AdminUpsideRoundItem) => {
+    const factory = contracts?.upside;
+    if (!isOwner || !address || !publicClient || !factory || factory.toLowerCase() !== round.factoryAddress.toLowerCase()) return;
+    setResuming(round.roundId);
     try {
-      const hash = await writeContractAsync({
-        address: round.factoryAddress as `0x${string}`,
-        abi: upsideFactoryAbi,
-        functionName: 'setPublicCreationEnabled',
-        args: [BigInt(round.roundId), targetState],
-      });
-      await publicClient.waitForTransactionReceipt({ hash });
-      onRefresh();
-    } catch (err: any) {
-      alert(`Failed to update public creation setting: ${err?.message || err}`);
+      await deployPresetStrikes(publicClient, address, factory, BigInt(round.roundId), writeContractAsync, (index, total) =>
+        setStatus(`Round #${round.roundId}: checking preset strike ${index}/${total}…`));
+      setStatus(`Round #${round.roundId}: all preset strikes confirmed onchain. Indexing may take a moment.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Could not finish preset strikes.');
     } finally {
-      setTogglingRoundId(null);
+      setResuming(null);
+      onRefresh();
     }
   };
 
@@ -81,6 +80,7 @@ export function UpsideRoundsView({
         </div>
       </div>
 
+      {status && <p role="status" className="text-xs font-mono text-zinc-300">{status}</p>}
       {/* Rounds Table */}
       <div className="bg-[#161715] border border-[#292a27] rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
@@ -93,7 +93,7 @@ export function UpsideRoundsView({
                 <th className="py-3 px-4">Expected Move ±</th>
                 <th className="py-3 px-4">Expiry</th>
                 <th className="py-3 px-4">Strikes</th>
-                <th className="py-3 px-4">Public Creation</th>
+                <th className="py-3 px-4">Creation Policy</th>
                 <th className="py-3 px-4">Status</th>
               </tr>
             </thead>
@@ -112,7 +112,15 @@ export function UpsideRoundsView({
                       <div className="font-semibold text-white">{round.underlying.symbol}</div>
                       <div className="text-[10px] text-zinc-500">{round.underlying.address.slice(0, 8)}...</div>
                     </td>
-                    <td className="py-3.5 px-4 font-semibold text-white">${round.referencePriceFormatted}</td>
+                    <td className="py-3.5 px-4 font-semibold text-white">
+                      ${round.referencePriceFormatted}
+                      <details className="mt-1 max-w-64 break-all text-xs font-normal text-zinc-400">
+                        <summary className="cursor-pointer">Reference details</summary>
+                        <div>Oracle round #{round.referenceRoundId}</div>
+                        <div>Feed: {round.referenceFeed}</div>
+                        <div>Created on block #{round.createdBlock} at {round.createdAt}</div>
+                      </details>
+                    </td>
                     <td className="py-3.5 px-4 text-emerald-400 font-semibold">${round.expectedMoveFormatted}</td>
                     <td className="py-3.5 px-4 text-zinc-300">
                       <div>{new Date(round.expiryTimestamp * 1000).toISOString().slice(0, 10)}</div>
@@ -124,32 +132,35 @@ export function UpsideRoundsView({
                       <span className="px-2 py-0.5 rounded bg-[#292a27] text-white font-semibold">
                         {round.marketsCount} strikes
                       </span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {isOwner ? (
-                        <button
-                          onClick={() => handleTogglePublicCreation(round)}
-                          disabled={togglingRoundId === round.roundId}
-                          className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
-                            round.publicCreationEnabled
-                              ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800 hover:bg-emerald-900/60'
-                              : 'bg-zinc-800/40 text-zinc-400 border-zinc-700 hover:bg-zinc-700'
-                          }`}
-                        >
-                          {togglingRoundId === round.roundId
-                            ? 'Updating...'
-                            : round.publicCreationEnabled
-                            ? 'Enabled'
-                            : 'Admin Only'}
+                      {round.markets.length > 0 && (
+                        <details className="mt-2 min-w-48 max-w-sm break-all text-xs text-zinc-400">
+                          <summary className="cursor-pointer">Market history and metrics</summary>
+                          {round.markets.map((market) => (
+                            <div key={market.seriesAddress} className="space-y-1 border-b border-[#292a27] py-2 last:border-0">
+                              <div className="text-zinc-200">${market.strikePriceFormatted} strike — {market.isSettled ? 'Settled' : round.isExpired ? 'Awaiting settlement' : 'Active'}</div>
+                              <div>Series: {market.seriesAddress}</div>
+                              <div>Upside token: {market.upsideTokenAddress ?? 'Unavailable'}</div>
+                              <div>Residual token: {market.residualTokenAddress ?? 'Unavailable'}</div>
+                              {market.isSettled && <div>Fixing: {market.settledPriceFormatted ? `$${market.settledPriceFormatted}` : 'Unavailable'}; oracle round #{market.settledRoundId ?? 'unavailable'}</div>}
+                              <SeriesMetrics metrics={market.metrics} claims={['Upside', 'Residual']} />
+                            </div>
+                          ))}
+                        </details>
+                      )}
+                      {isOwner && !round.isExpired && contracts?.upside?.toLowerCase() === round.factoryAddress.toLowerCase() && (
+                        <button type="button" onClick={() => void resume(round)} disabled={resuming !== null}
+                          className="block mt-2 text-[10px] text-[#ff5729] disabled:opacity-50">
+                          Finish preset strikes
                         </button>
-                      ) : (
-                        <span className="text-zinc-500">
-                          {round.publicCreationEnabled ? 'Enabled' : 'Admin Only'}
-                        </span>
                       )}
                     </td>
                     <td className="py-3.5 px-4">
-                      {round.isSettled ? (
+                      <span className="text-zinc-500">Owner only</span>
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {round.marketsCount === 0 ? (
+                        <span className="text-zinc-400">{round.isExpired ? 'Expired — no strikes' : 'Registered — no strikes'}</span>
+                      ) : round.isSettled ? (
                         <span className="px-2 py-0.5 rounded text-[10px] bg-purple-950/40 text-purple-300 border border-purple-800">
                           Settled
                         </span>
@@ -171,14 +182,14 @@ export function UpsideRoundsView({
         </div>
       </div>
 
-      <UpsideRoundModal
+      {isModalOpen && <UpsideRoundModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={onRefresh}
         assets={assets}
         isOwner={isOwner}
         chainId={chainId}
-      />
+      />}
     </div>
   );
 }

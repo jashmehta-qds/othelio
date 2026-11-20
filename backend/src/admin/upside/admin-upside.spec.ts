@@ -1,97 +1,130 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { decodeFunctionData } from 'viem';
+import { upsideFactoryAbi } from '@othelio/shared';
 import { AdminUpsideService } from './admin-upside.service';
 
+const underlying = '0xb200000000000000000000ab99cfa739e253872b';
+const factory = '0x1111111111111111111111111111111111111111';
+const adapter = '0x2222222222222222222222222222222222222222';
+const feed = '0x3333333333333333333333333333333333333333';
+const registry = '0x4444444444444444444444444444444444444444';
+const now = Date.parse('2026-06-12T18:00:00Z') / 1000;
+const expiry = Date.parse('2026-06-12T20:00:00Z') / 1000;
+const { readContract, getBlock } = vi.hoisted(() => ({ readContract: vi.fn(), getBlock: vi.fn() }));
+
+vi.mock('viem', async (importOriginal) => ({
+  ...await importOriginal<typeof import('viem')>(),
+  createPublicClient: () => ({ readContract, getBlock }),
+}));
+
 describe('AdminUpsideService', () => {
-  let service: AdminUpsideService;
-  let mockDb: any;
+  const service = new AdminUpsideService();
+  const dto = { underlying, expiryTimestamp: expiry, expectedMove: '2000000000' };
+  let updatedAt: bigint;
+  let adapterFeed: string;
+  let supported: boolean;
+  let answeredInRound: bigint;
 
   beforeEach(() => {
-    mockDb = {
-      query: vi.fn(),
-    };
-    service = new AdminUpsideService(mockDb);
-  });
-
-  describe('previewRound', () => {
-    const underlying = '0xb200000000000000000000ab99cfa739e253872b'; // MSFTc
-
-    it('rejects round preview if expiry is in the past', async () => {
-      const pastExpiry = Math.floor(Date.now() / 1000) - 3600;
-
-      await expect(
-        service.previewRound({
-          underlying,
-          expiryTimestamp: pastExpiry,
-        }),
-      ).rejects.toThrow('Expiry timestamp must be strictly in the future');
-    });
-
-    it('calculates 4 standard preset strikes from reference price and expected move', async () => {
-      // Future Friday
-      const futureFriday = Math.floor(Date.now() / 1000) + 86400 * 7;
-
-      // Mock DB price of $500.00
-      mockDb.query.mockResolvedValueOnce({
-        rows: [
-          {
-            price_usd_e8: '50000000000',
-            observed_at: new Date().toISOString(),
-          },
-        ],
-      });
-
-      const preview = await service.previewRound({
-        underlying,
-        expiryTimestamp: futureFriday,
-        expectedMove: '2000000000', // $20.00 expected move
-      });
-
-      expect(preview.underlying.symbol).toBe('MSFTc');
-      expect(preview.referencePriceFormatted).toBe('500.00');
-      expect(preview.expectedMoveFormatted).toBe('20.00');
-
-      // 4 target labels: Starting price, Reach, Strong move, Long shot
-      expect(preview.strikes.length).toBe(4);
-      expect(preview.strikes[0].targetLabel).toBe('Starting price');
-      expect(preview.strikes[0].strikePriceFormatted).toBe('500.00'); // K0 = P0
-
-      expect(preview.strikes[1].targetLabel).toBe('Reach');
-      expect(preview.strikes[1].strikePriceFormatted).toBe('510.00'); // K1 = P0 + 0.5 * 20 = 510
-
-      expect(preview.strikes[2].targetLabel).toBe('Strong move');
-      expect(preview.strikes[2].strikePriceFormatted).toBe('520.00'); // K2 = P0 + 1.0 * 20 = 520
-
-      expect(preview.strikes[3].targetLabel).toBe('Long shot');
-      expect(preview.strikes[3].strikePriceFormatted).toBe('540.00'); // K3 = P0 + 2.0 * 20 = 540
-
-      expect(preview.transactions.length).toBe(1);
-      expect(preview.transactions[0].method).toBe('registerRound');
-      expect(preview.transactions[0].target.startsWith('0x')).toBe(true);
-    });
-
-    it('flags calendar warning if expiry falls on weekend', async () => {
-      // Find a Saturday timestamp
-      const d = new Date();
-      d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
-      d.setHours(16, 0, 0, 0);
-      const saturdayTs = Math.floor(d.getTime() / 1000);
-
-      const preview = await service.previewRound({
-        underlying,
-        expiryTimestamp: saturdayTs,
-      });
-
-      expect(preview.calendarCheck.valid).toBe(false);
-      expect(preview.calendarCheck.note).toContain('weekend');
+    vi.useFakeTimers();
+    vi.setSystemTime(now * 1000);
+    vi.stubEnv('CHAIN_ID', '8453');
+    vi.stubEnv('UPSIDE_FACTORY_ADDRESS', factory);
+    vi.stubEnv('UPSIDE_SETTLEMENT_ADAPTER_ADDRESS', adapter);
+    updatedAt = BigInt(now - 90);
+    adapterFeed = feed;
+    supported = true;
+    answeredInRound = 5n;
+    getBlock.mockResolvedValue({ number: 99n, timestamp: BigInt(now) });
+    readContract.mockImplementation(async ({ functionName }) => {
+      switch (functionName) {
+        case 'assetRegistry': return registry;
+        case 'getAsset': return { supported, isCoinbaseB20: true, priceFeed: feed, tokenDecimals: 8, feedDecimals: 8 };
+        case 'symbol': return 'MSFTc';
+        case 'priceFeed': return adapterFeed;
+        case 'maxStaleness': return 3600n;
+        case 'decimals': return 8;
+        case 'description': return 'MSFT Total Return / USD';
+        case 'latestRoundData': return [5n, 500_37000000n, updatedAt - 10n, updatedAt, answeredInRound];
+        default: throw new Error(functionName);
+      }
     });
   });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    vi.resetAllMocks();
+  });
 
-  describe('togglePublicCreationTx', () => {
-    it('generates valid transaction to toggle public strike creation', () => {
-      const tx = service.togglePublicCreationTx(8453, 1, true);
-      expect(tx.method).toBe('setPublicCreationEnabled');
-      expect(tx.args).toEqual([1, true]);
-      expect(tx.target.startsWith('0x')).toBe(true);
-    });
+  it('returns serializable, ABI-encoded calldata with grid-aligned bounds and distinct presets', async () => {
+    const preview = JSON.parse(JSON.stringify(await service.previewRound(dto)));
+    expect(preview.referencePrice).toBe('50037000000');
+    expect(preview.referenceRoundId).toBe('5');
+    expect(preview.strikes.map((strike: { strikePriceFormatted: string }) => strike.strikePriceFormatted))
+      .toEqual(['500.00', '510.00', '520.00', '540.00']);
+    const [transaction] = preview.transactions;
+    expect(transaction.target).toBe(factory);
+    const decoded = decodeFunctionData({ abi: upsideFactoryAbi, data: transaction.data });
+    expect(decoded.functionName).toBe('registerRound');
+    if (decoded.functionName !== 'registerRound') throw new Error('Unexpected method');
+    const [config] = decoded.args;
+    expect(config.minStrike % config.strikeTick).toBe(0n);
+    expect(config.maxStrike % config.strikeTick).toBe(0n);
+    expect(config.referenceRoundId).toBe(5n);
+    expect(config.referenceTime).toBe(updatedAt);
+    expect(config.feed).toBe(feed);
+    expect(config).not.toHaveProperty('publicCreationEnabled');
+  });
+
+  it('groups indexed strikes by historical round and settles a round only when every strike settles', async () => {
+    const rounds = [1, 2, 3].map((id) => ({
+      round_id: id, factory_address: factory, underlying_address: underlying, feed_address: feed,
+      expiry_timestamp: now - 1, reference_round_id: '18446744073709551617', reference_price: '50000000000',
+      expected_move: '2000000000', created_at: new Date((now - 200) * 1000), created_block: '998',
+    }));
+    const markets = [1, 2, 2].map((id, index) => ({
+      series_address: `0x${String(index + 1).repeat(40)}`, round_id: id, strike_price: '50000000000',
+      expiry_timestamp: now - 1, is_settled: index < 2, settled_round_id: index < 2 ? '123' : null,
+      settled_price: index < 2 ? '50500000000' : null, created_at: new Date((now - 150) * 1000),
+    }));
+    const db = { query: vi.fn().mockImplementation(async (sql: string) => ({ rows: sql.startsWith('SELECT * FROM upside_rounds') ? rounds
+      : sql.startsWith('SELECT * FROM upside_markets') ? markets : [] })) };
+    const history = await new AdminUpsideService(db as any).getRounds();
+    expect(history.map(({ marketsCount, isSettled, isExpired }) => [marketsCount, isSettled, isExpired]))
+      .toEqual([[1, true, true], [2, false, true], [0, false, true]]);
+    expect(history[0]).toMatchObject({ referenceRoundId: '18446744073709551617', referenceFeed: feed, createdBlock: 998,
+      markets: [{ settledRoundId: '123', settledPriceFormatted: '505.00' }] });
+    expect(db.query.mock.calls.filter(([sql]) => sql.startsWith('SELECT * FROM upside_markets'))).toHaveLength(1);
+  });
+
+  it('rejects stale, incomplete, and unavailable feeds instead of preparing placeholder calldata', async () => {
+    updatedAt = BigInt(now - 3601);
+    await expect(service.previewRound(dto)).rejects.toThrow('fresh');
+    updatedAt = BigInt(now - 60);
+    answeredInRound = 4n;
+    await expect(service.previewRound(dto)).rejects.toThrow('complete');
+    getBlock.mockRejectedValueOnce(new Error('RPC unavailable'));
+    await expect(service.previewRound(dto)).rejects.toThrow('Could not verify');
+  });
+
+  it('rejects a mismatched adapter, unsupported underlying, or invalid grid', async () => {
+    adapterFeed = registry;
+    await expect(service.previewRound(dto)).rejects.toThrow('does not match');
+    adapterFeed = feed;
+    supported = false;
+    await expect(service.previewRound(dto)).rejects.toThrow('supported B20');
+    supported = true;
+    await expect(service.previewRound({ ...dto, strikeTick: '0' })).rejects.toThrow('positive');
+    await expect(service.previewRound({ ...dto, strikeTick: '5000000000' })).rejects.toThrow('four distinct');
+  });
+
+  it('rejects past, holiday, early-close and incorrectly DST-adjusted expiries', async () => {
+    await expect(service.previewRound({ ...dto, expiryTimestamp: now })).rejects.toThrow('future');
+    await expect(service.previewRound({ ...dto, expiryTimestamp: Date.parse('2026-06-19T20:00:00Z') / 1000 }))
+      .rejects.toThrow('holiday');
+    await expect(service.previewRound({ ...dto, expiryTimestamp: Date.parse('2026-11-27T21:00:00Z') / 1000 }))
+      .rejects.toThrow('full trading day');
+    await expect(service.previewRound({ ...dto, expiryTimestamp: expiry + 3600 })).rejects.toThrow('close window');
+    expect(readContract).not.toHaveBeenCalled();
   });
 });
