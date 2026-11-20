@@ -115,7 +115,7 @@ export function RiskSplitDashboard() {
     <main className={`app-page-frame ${styles.page}`}>
       <header className={styles.heading}>
         <div>
-          <h1>Protected & Upside</h1>
+          <h1>Risk Split</h1>
           <p>The same stock. A different balance of risk and reward.</p>
         </div>
       </header>

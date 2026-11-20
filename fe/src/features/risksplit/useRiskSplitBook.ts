@@ -54,8 +54,8 @@ export function useRiskSplitBook(seriesAddress: string, claimType: "protected" |
     },
     enabled: Boolean(seriesAddress),
     retry: false,
-    refetchInterval: (current) => current.state.error ? 30_000 : 5_000,
-    staleTime: 4_000,
+    refetchInterval: 15_000,
+    staleTime: 15_000,
   });
 
   const usableBook = query.isError ? null : query.data ?? null;

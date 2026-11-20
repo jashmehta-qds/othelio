@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { addressSchema } from '@othelio/shared';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { createPublicClient, getAddress, http, isAddress, parseAbi } from 'viem';
-import { rpcUrlForChain } from '../../config/network-runtime';
+import { createPublicClient, getAddress, isAddress, parseAbi } from 'viem';
+import { rpcTransportForChain } from '../../config/network-runtime';
 import { seriesFactoryAbi } from '@othelio/shared';
 
 interface AdminNonceEntry {
@@ -210,10 +210,10 @@ export class AdminAuthService {
     const factoryAddress = this.getFactoryAddress(chainId);
     // The onchain owner is the sole authority; environment allowlists cannot grant it.
     try {
-      const rpcUrl = rpcUrlForChain(chainId);
-      if (!rpcUrl) throw new Error(`No RPC configured for chain ${chainId}`);
+      const transport = rpcTransportForChain(chainId);
+      if (!transport) throw new Error(`No RPC configured for chain ${chainId}`);
 
-      const client = createPublicClient({ transport: http(rpcUrl) });
+      const client = createPublicClient({ transport });
       const onchainOwner = await client.readContract({
         address: factoryAddress,
         abi: seriesFactoryAbi,
@@ -222,7 +222,8 @@ export class AdminAuthService {
 
       return (onchainOwner as string).toLowerCase() === targetAddr;
     } catch (err) {
-      this.logger.warn(`Could not verify onchain owner for ${targetAddr} on chain ${chainId} at ${factoryAddress}: ${err}`);
+      const reason = err instanceof Error ? err.message.replace(/https?:\/\/[^\s)\]}]+/g, '[RPC URL]').slice(0, 500) : 'Unknown RPC error';
+      this.logger.warn(`Could not verify onchain owner for ${targetAddr} on chain ${chainId} at ${factoryAddress}: ${reason}`);
       throw new ServiceUnavailableException(
         `Cannot verify factory owner onchain on chain ${chainId} at ${factoryAddress}. Check the configured factory and RPC.`,
       );

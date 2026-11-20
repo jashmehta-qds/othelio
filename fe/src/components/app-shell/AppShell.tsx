@@ -18,7 +18,7 @@ const navigation: { id: AppNavId; label: string; href: string }[] = [
   { id: "baskets", label: "Baskets", href: "/app/baskets" },
   ...(process.env.NEXT_PUBLIC_RISK_SPLIT_NAV_ENABLED === "false"
     ? []
-    : [{ id: "risk-split" as const, label: "Protected & Upside", href: "/app/risk-split" }]),
+    : [{ id: "risk-split" as const, label: "Risk Split", href: "/app/risk-split" }]),
   { id: "upside", label: "Upside", href: "/app/upside" },
   { id: "activity", label: "Activity", href: "/app/activity" },
   { id: "agents", label: "Agents", href: "/app/agents" },

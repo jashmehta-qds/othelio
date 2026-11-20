@@ -4,6 +4,7 @@ import {
   networkKindForChainId,
   type SupportedChainId,
 } from '@othelio/shared';
+import { fallback, http } from 'viem';
 
 type RuntimeEnv = Record<string, string | undefined>;
 
@@ -17,6 +18,15 @@ export function rpcUrlForChain(chainId: number, env: RuntimeEnv = process.env): 
   // old Base adapter used this same public fallback; without it every quote
   // attempt is swallowed by the DEX adapter and reported as “no route”.
   return env.BASE_RPC_URL || 'https://mainnet.base.org';
+}
+
+export function rpcTransportForChain(chainId: number, env: RuntimeEnv = process.env) {
+  const primaryUrl = rpcUrlForChain(chainId, env);
+  if (!primaryUrl) return undefined;
+  const secondaryUrl = chainId === BASE_MAINNET_CHAIN_ID ? env.RPC_URL_SECONDARY?.trim() : undefined;
+  return secondaryUrl && secondaryUrl !== primaryUrl
+    ? fallback([http(primaryUrl), http(secondaryUrl)], { retryCount: 1 })
+    : http(primaryUrl);
 }
 
 export function supportedRuntimeChainIds(): readonly SupportedChainId[] {

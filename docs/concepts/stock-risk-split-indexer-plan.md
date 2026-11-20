@@ -123,8 +123,8 @@ flowchart TD
 
 | Event Name | Event Signature | Purpose |
 | :--- | :--- | :--- |
-| `Minted` | `Minted(address indexed caller, uint256 amount)` | Escrows underlying, mints equal Protected & Upside tokens 1:1 |
-| `PairRedeemed` | `PairRedeemed(address indexed caller, uint256 amount)` | Burns equal pair of Protected & Upside tokens, unlocks underlying 1:1 |
+| `Minted` | `Minted(address indexed caller, uint256 amount)` | Escrows underlying, mints equal Risk Split tokens 1:1 |
+| `PairRedeemed` | `PairRedeemed(address indexed caller, uint256 amount)` | Burns equal pair of Risk Split tokens, unlocks underlying 1:1 |
 | `Settled` | `Settled(uint256 settlementPrice, uint256 protectedFraction, uint256 upsideFraction)` | Fixes final settlement price and fractions at or after expiry |
 | `ProtectedRedeemed` | `ProtectedRedeemed(address indexed caller, uint256 amount, uint256 underlyingOut)` | Burns Protected claim token, releases calculated underlying |
 | `UpsideRedeemed` | `UpsideRedeemed(address indexed caller, uint256 amount, uint256 underlyingOut)` | Burns Upside claim token, releases calculated underlying |

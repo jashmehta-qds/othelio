@@ -19,7 +19,7 @@ export function MarketIntro({ kind }: { kind: "protected" | "upside" }) {
             <h3>{protectedMarket ? "Protected" : "Upside"}</h3>
             <p>
               {protectedMarket
-                ? "Gets first share of the stock’s value at lower prices. You give up some of the growth."
+                ? "Gets first share of the stock’s value at lower prices."
                 : "Receives the stock’s value above your target at the end. Below the target? Zero."}
             </p>
           </div>
@@ -29,7 +29,7 @@ export function MarketIntro({ kind }: { kind: "protected" | "upside" }) {
             {protectedMarket ? "02" : "="}
           </span>
           <div>
-            <h3>{protectedMarket ? "Upside" : "Remaining value"}</h3>
+            <h3>{protectedMarket ? "Upside" : "Protected Value"}</h3>
             <p>
               {protectedMarket
                 ? "Gets more value as the stock rises. Can finish with nothing if the price is too low."
@@ -38,12 +38,6 @@ export function MarketIntro({ kind }: { kind: "protected" | "upside" }) {
           </div>
         </div>
       </div>
-      <p className={styles.note}>
-        {protectedMarket
-          ? "Protected does not mean guaranteed. Both sides can lose money."
-          : "This is not a yes/no bet. The size of the move determines the payout."}{" "}
-        You trade in USDC; payouts are in stock tokens.
-      </p>
       <ol className={styles.steps}>
         <li>
           <span>1</span> Pick a stock
