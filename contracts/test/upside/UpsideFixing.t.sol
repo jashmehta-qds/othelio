@@ -2,9 +2,11 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {UpsideFixingAdapter} from "../../src/upside/UpsideFixingAdapter.sol";
 import {IUpsideFixingAdapter, AggregatorV3Interface} from "../../src/upside/interfaces/IUpsideFixingAdapter.sol";
 import {UpsideSeries} from "../../src/upside/UpsideSeries.sol";
+import {IUpsideSeries} from "../../src/upside/interfaces/IUpsideSeries.sol";
 import {UpsideClaimToken} from "../../src/upside/UpsideClaimToken.sol";
 import {MockUnderlyingToken, MockAssetRegistry} from "./UpsidePayoff.t.sol";
 
@@ -78,7 +80,7 @@ contract UpsideFixingTest is Test {
 
         // Phase 1 round 10 at t=1000
         oracle = new MultiRoundMockOracle(10, 200e8, 1000);
-        adapter = new UpsideFixingAdapter(address(oracle), MAX_STALENESS);
+        adapter = new UpsideFixingAdapter(address(oracle), MAX_STALENESS, address(this));
 
         registry.setAsset(block.chainid, address(stock), true, address(oracle), 18, 8);
 
@@ -101,6 +103,153 @@ contract UpsideFixingTest is Test {
         UpsideClaimToken up = new UpsideClaimToken("Upside", "UP", address(series), 18);
         UpsideClaimToken res = new UpsideClaimToken("Residual", "RES", address(series), 18);
         series.initializeTokens(address(up), address(res));
+    }
+
+    function test_Emergency_NonOwnerReverts() public {
+        vm.warp(expiry + 24 hours + 1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(0xBEEF)));
+        vm.prank(address(0xBEEF));
+        adapter.emergencySettle(address(series), 250e8);
+        assertFalse(series.isSettled());
+    }
+
+    function test_Emergency_RequiresStrictGracePeriod() public {
+        assertEq(adapter.EMERGENCY_SETTLEMENT_DELAY(), 24 hours);
+        uint256[4] memory timestamps = [expiry - 1, expiry, expiry + 24 hours - 1, expiry + 24 hours];
+        for (uint256 i; i < timestamps.length; i++) {
+            vm.warp(timestamps[i]);
+            vm.expectRevert(IUpsideFixingAdapter.ExpiryNotReached.selector);
+            adapter.emergencySettle(address(series), 250e8);
+            assertFalse(series.isSettled());
+        }
+    }
+
+    function test_Emergency_SettlesWithManualFixingAndEventWithoutOracle() public {
+        stock.mint(address(this), 100 ether);
+        stock.approve(address(series), 100 ether);
+        series.mint(100 ether);
+        vm.warp(expiry + 24 hours + 1);
+        vm.mockCallRevert(address(oracle), abi.encodeWithSelector(AggregatorV3Interface.latestRoundData.selector), "OFFLINE");
+        vm.mockCallRevert(address(oracle), abi.encodeWithSelector(AggregatorV3Interface.getRoundData.selector), "OFFLINE");
+        vm.expectEmit(true, true, false, true, address(adapter));
+        emit IUpsideFixingAdapter.EmergencySettled(address(series), 250e8, address(this));
+        adapter.emergencySettle(address(series), 250e8);
+        assertTrue(series.isSettled());
+        assertEq(series.settledPrice(), 250e8);
+        assertEq(series.settledRoundId(), 0);
+        assertEq(series.settledTimestamp(), block.timestamp);
+    }
+
+    function test_Emergency_EmptySeriesAcceptsSmallestPositivePrice() public {
+        vm.warp(expiry + 24 hours + 1);
+        adapter.emergencySettle(address(series), 1);
+        assertTrue(series.isSettled());
+        assertEq(series.settledPrice(), 1);
+        assertEq(series.settledRoundId(), 0);
+    }
+
+    function _prepareOracleAfterDelay() internal {
+        oracle.setRound(11, 200e8, expiry + 1, expiry + 1, 11);
+        vm.warp(expiry + 24 hours + 1);
+    }
+
+    function test_Emergency_OracleSettlementStillPermissionlessAfterDelay() public {
+        _prepareOracleAfterDelay();
+        vm.prank(address(0xBEEF));
+        adapter.settleSeries(address(series), 10);
+        assertTrue(series.isSettled());
+        assertEq(series.settledPrice(), 200e8);
+        assertEq(series.settledRoundId(), 10);
+        assertEq(series.settledTimestamp(), 1000);
+    }
+
+    function test_Emergency_OracleDiscoveryStillPermissionlessAfterDelay() public {
+        _prepareOracleAfterDelay();
+        vm.prank(address(0xBEEF));
+        adapter.settleSeries(address(series));
+        assertTrue(series.isSettled());
+        assertEq(series.settledRoundId(), 10);
+    }
+
+    function test_Emergency_OracleSettledSeriesReverts() public {
+        _prepareOracleAfterDelay();
+        adapter.settleSeries(address(series), 10);
+        vm.expectRevert(IUpsideFixingAdapter.AlreadySettled.selector);
+        adapter.emergencySettle(address(series), 250e8);
+        assertEq(series.settledRoundId(), 10);
+    }
+
+    function test_Emergency_ManualSettlementBlocksAllLaterSettlements() public {
+        _prepareOracleAfterDelay();
+        adapter.emergencySettle(address(series), 250e8);
+        vm.expectRevert(IUpsideFixingAdapter.AlreadySettled.selector);
+        adapter.emergencySettle(address(series), 250e8);
+        vm.expectRevert(IUpsideFixingAdapter.AlreadySettled.selector);
+        adapter.settleSeries(address(series), 10);
+        vm.expectRevert(IUpsideFixingAdapter.AlreadySettled.selector);
+        adapter.settleSeries(address(series));
+        assertEq(series.settledPrice(), 250e8);
+        assertEq(series.settledRoundId(), 0);
+    }
+
+    function test_Emergency_DifferentAdapterReverts() public {
+        UpsideFixingAdapter otherAdapter = new UpsideFixingAdapter(address(oracle), MAX_STALENESS, address(this));
+        vm.warp(expiry + 24 hours + 1);
+        vm.expectRevert(IUpsideFixingAdapter.MismatchedAdapter.selector);
+        otherAdapter.emergencySettle(address(series), 250e8);
+        assertFalse(series.isSettled());
+    }
+
+    function test_Emergency_ZeroPriceReverts() public {
+        vm.warp(expiry + 24 hours + 1);
+        vm.expectRevert(IUpsideFixingAdapter.ZeroPrice.selector);
+        adapter.emergencySettle(address(series), 0);
+        assertFalse(series.isSettled());
+    }
+
+    function test_Emergency_ZeroSeriesReverts() public {
+        vm.warp(expiry + 24 hours + 1);
+        vm.expectRevert(IUpsideFixingAdapter.ZeroAddress.selector);
+        adapter.emergencySettle(address(0), 250e8);
+    }
+
+    function test_Emergency_OwnershipTransferRequiresAcceptance() public {
+        address nextOwner = address(0xBEEF);
+        UpsideFixingAdapter ownedAdapter = new UpsideFixingAdapter(address(oracle), MAX_STALENESS, nextOwner);
+        assertEq(ownedAdapter.owner(), nextOwner);
+        assertEq(adapter.owner(), address(this));
+        adapter.transferOwnership(nextOwner);
+        assertEq(adapter.owner(), address(this));
+        assertEq(adapter.pendingOwner(), nextOwner);
+        vm.warp(expiry + 24 hours + 1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, nextOwner));
+        vm.prank(nextOwner);
+        adapter.emergencySettle(address(series), 250e8);
+        vm.prank(nextOwner);
+        adapter.acceptOwnership();
+        assertEq(adapter.owner(), nextOwner);
+        assertEq(adapter.pendingOwner(), address(0));
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        adapter.emergencySettle(address(series), 250e8);
+        vm.prank(nextOwner);
+        adapter.emergencySettle(address(series), 250e8);
+        assertTrue(series.isSettled());
+    }
+
+    function test_Emergency_ZeroOwnerRejected() public {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
+        new UpsideFixingAdapter(address(oracle), MAX_STALENESS, address(0));
+    }
+
+    function test_Fixing_ExactlyExpiryReverts() public {
+        vm.warp(expiry);
+        vm.expectRevert(IUpsideFixingAdapter.ExpiryNotReached.selector);
+        adapter.settleSeries(address(series), 10);
+        vm.expectRevert(IUpsideFixingAdapter.ExpiryNotReached.selector);
+        adapter.settleSeries(address(series));
+        vm.prank(address(adapter));
+        vm.expectRevert(IUpsideSeries.ExpiryNotReached.selector);
+        series.settleWithFixing(200e8, 10, expiry);
     }
 
     function test_Fixing_PreExpiryCallReverts() public {
@@ -223,7 +372,7 @@ contract UpsideFixingTest is Test {
 
     function test_Fixing_MismatchedFeedReverts() public {
         MultiRoundMockOracle otherOracle = new MultiRoundMockOracle(1, 100e8, 1000);
-        UpsideFixingAdapter otherAdapter = new UpsideFixingAdapter(address(otherOracle), MAX_STALENESS);
+        UpsideFixingAdapter otherAdapter = new UpsideFixingAdapter(address(otherOracle), MAX_STALENESS, address(this));
 
         vm.warp(expiry + 1);
         vm.expectRevert(IUpsideFixingAdapter.MismatchedFeed.selector);

@@ -6,9 +6,6 @@ import {
   AdminUpsideRoundItem,
 } from '@othelio/shared';
 import { UpsideRoundModal } from './UpsideRoundModal';
-import { adminApi } from '../lib/api';
-import { usePublicClient, useWriteContract } from 'wagmi';
-import { upsideFactoryAbi } from '@othelio/shared';
 
 interface UpsideRoundsViewProps {
   rounds: AdminUpsideRoundItem[];
@@ -28,32 +25,6 @@ export function UpsideRoundsView({
   chainId,
 }: UpsideRoundsViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [togglingRoundId, setTogglingRoundId] = useState<number | null>(null);
-
-  const publicClient = usePublicClient();
-  const { writeContractAsync } = useWriteContract();
-
-  const handleTogglePublicCreation = async (round: AdminUpsideRoundItem) => {
-    if (!isOwner || !publicClient) return;
-    const targetState = !round.publicCreationEnabled;
-    setTogglingRoundId(round.roundId);
-
-    try {
-      const hash = await writeContractAsync({
-        address: round.factoryAddress as `0x${string}`,
-        abi: upsideFactoryAbi,
-        functionName: 'setPublicCreationEnabled',
-        args: [BigInt(round.roundId), targetState],
-      });
-      await publicClient.waitForTransactionReceipt({ hash });
-      onRefresh();
-    } catch (err: any) {
-      alert(`Failed to update public creation setting: ${err?.message || err}`);
-    } finally {
-      setTogglingRoundId(null);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[#292a27] pb-4">
@@ -93,7 +64,7 @@ export function UpsideRoundsView({
                 <th className="py-3 px-4">Expected Move ±</th>
                 <th className="py-3 px-4">Expiry</th>
                 <th className="py-3 px-4">Strikes</th>
-                <th className="py-3 px-4">Public Creation</th>
+                <th className="py-3 px-4">Creation Policy</th>
                 <th className="py-3 px-4">Status</th>
               </tr>
             </thead>
@@ -126,27 +97,7 @@ export function UpsideRoundsView({
                       </span>
                     </td>
                     <td className="py-3.5 px-4">
-                      {isOwner ? (
-                        <button
-                          onClick={() => handleTogglePublicCreation(round)}
-                          disabled={togglingRoundId === round.roundId}
-                          className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
-                            round.publicCreationEnabled
-                              ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800 hover:bg-emerald-900/60'
-                              : 'bg-zinc-800/40 text-zinc-400 border-zinc-700 hover:bg-zinc-700'
-                          }`}
-                        >
-                          {togglingRoundId === round.roundId
-                            ? 'Updating...'
-                            : round.publicCreationEnabled
-                            ? 'Enabled'
-                            : 'Admin Only'}
-                        </button>
-                      ) : (
-                        <span className="text-zinc-500">
-                          {round.publicCreationEnabled ? 'Enabled' : 'Admin Only'}
-                        </span>
-                      )}
+                      <span className="text-zinc-500">Owner only</span>
                     </td>
                     <td className="py-3.5 px-4">
                       {round.isSettled ? (

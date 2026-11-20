@@ -124,7 +124,6 @@ describe('UpsideService', () => {
         strikeTick: '100000000',
         minStrike: '40000000000',
         maxStrike: '60000000000',
-        publicCreationEnabled: false,
         createdBlock: 100,
         createdTx: '0x123',
         createdAt: new Date().toISOString(),

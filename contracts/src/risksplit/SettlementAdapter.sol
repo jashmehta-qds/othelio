@@ -1,21 +1,47 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ISettlementAdapter, AggregatorV3Interface} from "./interfaces/ISettlementAdapter.sol";
 import {IRiskSplitSeries} from "./interfaces/IRiskSplitSeries.sol";
 
-contract SettlementAdapter is ISettlementAdapter {
+contract SettlementAdapter is ISettlementAdapter, Ownable2Step {
+    uint256 public constant MAX_SUCCESSOR_SCAN = 20;
+    uint256 public constant EMERGENCY_SETTLEMENT_DELAY = 24 hours;
+
+    struct RoundObservation {
+        uint80 returnedId;
+        int256 answer;
+        uint256 startedAt;
+        uint256 updatedAt;
+        uint80 answeredInRound;
+        bool valid;
+    }
+
     AggregatorV3Interface public immutable override priceFeed;
     uint256 public immutable override maxStaleness;
     uint8 public immutable override decimals;
 
-    constructor(address priceFeed_, uint256 maxStaleness_) {
+    constructor(address priceFeed_, uint256 maxStaleness_, address initialOwner_) Ownable(initialOwner_) {
         if (priceFeed_ == address(0)) revert ZeroAddress();
         if (maxStaleness_ == 0) revert InvalidParameters();
         priceFeed = AggregatorV3Interface(priceFeed_);
         maxStaleness = maxStaleness_;
         decimals = AggregatorV3Interface(priceFeed_).decimals();
         if (decimals == 0) revert InvalidDecimals();
+    }
+
+    function emergencySettle(address series, uint256 price) external override onlyOwner {
+        if (series == address(0)) revert ZeroAddress();
+        IRiskSplitSeries target = IRiskSplitSeries(series);
+        if (target.settlementAdapter() != address(this)) revert MismatchedAdapter();
+        if (target.isSettled()) revert SeriesAlreadySettled();
+        if (block.timestamp <= target.expiry() + EMERGENCY_SETTLEMENT_DELAY) revert ExpiryNotReached();
+        if (price == 0) revert ZeroPrice();
+
+        target.settleWithFixing(price, 0, block.timestamp);
+        emit EmergencySettled(series, price, msg.sender);
     }
 
     /// @notice Returns the validated current price and timestamp from the feed (spot check)
@@ -32,110 +58,175 @@ contract SettlementAdapter is ISettlementAdapter {
         return (uint256(answer), roundUpdatedAt);
     }
 
-    /// @notice Verifies that a specific round is the unique last valid pre-expiry observation
     function verifyFixingRound(uint256 expiry, uint80 roundId) public view override returns (FixingData memory fixing) {
         if (roundId == 0) revert RoundNotComplete();
 
-        (uint80 rId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) =
-            priceFeed.getRoundData(roundId);
+        RoundObservation memory candidate = _readRound(roundId);
+        _requireValidCandidate(candidate, roundId);
 
-        if (rId == 0) revert RoundNotComplete();
-        if (answer == 0) revert ZeroPrice();
-        if (answer < 0) revert NegativePrice();
-        if (updatedAt == 0 || startedAt > updatedAt) revert StalePrice();
-        if (answeredInRound < roundId) revert RoundNotComplete();
+        if (candidate.updatedAt > expiry) revert PostExpiryRound();
 
-        // Observation must be at or before expiry
-        if (updatedAt > expiry) revert PostExpiryRound();
+        if (expiry - candidate.updatedAt > maxStaleness) revert StalePrice();
 
-        // Observation cannot be staler than maxStaleness relative to expiry
-        if (expiry - updatedAt > maxStaleness) revert StalePrice();
-
-        // Prove no later eligible observation exists before or at expiry
         uint16 phaseId = uint16(roundId >> 64);
         uint64 aggRoundId = uint64(roundId);
+        (RoundObservation memory successor, bool phaseEnded) = _findFirstValidSuccessor(phaseId, aggRoundId);
+        if (successor.valid && successor.updatedAt <= expiry) revert NotLastPreExpiryRound();
 
-        bool nextFound = false;
-
-        // 1. Try the next round in the same phase
-        uint80 nextInPhase = (uint80(phaseId) << 64) | (aggRoundId + 1);
-        try priceFeed.getRoundData(nextInPhase) returns (
-            uint80, int256, uint256, uint256 nextUpdated, uint80 nextAnswered
-        ) {
-            if (nextUpdated > 0 && nextAnswered >= nextInPhase) {
-                nextFound = true;
-                if (nextUpdated <= expiry) revert NotLastPreExpiryRound();
+        if (!successor.valid) {
+            RoundObservation memory latest = _readLatestRound();
+            if (!_latestRoundWasScanned(phaseId, aggRoundId, latest.returnedId, phaseEnded)) {
+                revert NotLastPreExpiryRound();
             }
-        } catch {}
-
-        // 2. If not found in the same phase, check if a new phase started
-        if (!nextFound) {
-            uint80 nextPhaseFirst = (uint80(phaseId + 1) << 64) | 1;
-            try priceFeed.getRoundData(nextPhaseFirst) returns (
-                uint80, int256, uint256, uint256 nextPhaseUpdated, uint80 nextPhaseAnswered
-            ) {
-                if (nextPhaseUpdated > 0 && nextPhaseAnswered >= nextPhaseFirst) {
-                    nextFound = true;
-                    if (nextPhaseUpdated <= expiry) revert NotLastPreExpiryRound();
-                }
-            } catch {}
-        }
-
-        // 3. If neither next round exists yet, verify candidate is currently the latest round in the feed
-        if (!nextFound) {
-            (uint80 latestRoundId,,,,) = priceFeed.latestRoundData();
-            if (latestRoundId != roundId) revert NotLastPreExpiryRound();
         }
 
         return FixingData({
-            roundId: roundId, price: uint256(answer), updatedAt: updatedAt, feed: address(priceFeed), decimals: decimals
+            roundId: roundId,
+            price: uint256(candidate.answer),
+            updatedAt: candidate.updatedAt,
+            feed: address(priceFeed),
+            decimals: decimals
         });
     }
 
-    /// @notice Discovers the unique last pre-expiry round from the feed
     function getFixingRound(uint256 expiry) public view override returns (FixingData memory fixing) {
-        (uint80 currentRoundId,,, uint256 currentUpdatedAt,) = priceFeed.latestRoundData();
+        RoundObservation memory latest = _readLatestRound();
+        if (latest.returnedId == 0) revert RoundNotComplete();
 
-        if (currentRoundId == 0) revert RoundNotComplete();
+        uint80 candidateRoundId = latest.returnedId;
 
-        // If the latest round is already at or before expiry, verify it directly
-        if (currentUpdatedAt <= expiry) {
-            return verifyFixingRound(expiry, currentRoundId);
-        }
+        if (!latest.valid || latest.updatedAt > expiry) {
+            uint16 phaseId = uint16(candidateRoundId >> 64);
+            uint64 aggRoundId = uint64(candidateRoundId);
 
-        // Otherwise walk backwards from currentRoundId to find the last pre-expiry round
-        uint16 phaseId = uint16(currentRoundId >> 64);
-        uint64 aggRoundId = uint64(currentRoundId);
+            bool found = false;
 
-        for (uint256 i = 0; i < 100; i++) {
-            if (aggRoundId == 0) {
-                // Check if previous phase exists
-                if (phaseId <= 1) break;
-                phaseId--;
-                // Walk back from maximum feasible round or 1
-                aggRoundId = 1000; // standard search bound
-            } else {
-                aggRoundId--;
+            for (uint256 i = 0; i < 100; i++) {
+                if (aggRoundId == 0) {
+                    if (phaseId <= 1) break;
+                    phaseId--;
+                    aggRoundId = 1000;
+                } else {
+                    aggRoundId--;
+                }
+                uint80 roundToCheck = (uint80(phaseId) << 64) | aggRoundId;
+
+                RoundObservation memory candidate = _readRound(roundToCheck);
+                if (candidate.valid && candidate.updatedAt <= expiry) {
+                    candidateRoundId = roundToCheck;
+                    found = true;
+                    break;
+                }
             }
 
-            uint80 candidate = (uint80(phaseId) << 64) | aggRoundId;
-            try priceFeed.getRoundData(candidate) returns (
-                uint80, int256, uint256, uint256 candidateUpdated, uint80 candidateAnswered
-            ) {
-                if (candidateUpdated > 0 && candidateAnswered >= candidate && candidateUpdated <= expiry) {
-                    return verifyFixingRound(expiry, candidate);
-                }
-            } catch {}
+            if (!found) revert StalePrice();
         }
 
-        revert StalePrice();
+        return verifyFixingRound(expiry, candidateRoundId);
+    }
+
+    function _isValidRound(
+        uint80 requestedId,
+        uint80 returnedId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    ) private pure returns (bool) {
+        return returnedId == requestedId && answer > 0 && updatedAt > 0 && startedAt <= updatedAt
+            && answeredInRound >= requestedId;
+    }
+
+    function _readRound(uint80 roundId) private view returns (RoundObservation memory observation) {
+        try priceFeed.getRoundData(roundId) returns (
+            uint80 returnedId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        ) {
+            observation = RoundObservation({
+                returnedId: returnedId,
+                answer: answer,
+                startedAt: startedAt,
+                updatedAt: updatedAt,
+                answeredInRound: answeredInRound,
+                valid: _isValidRound(roundId, returnedId, answer, startedAt, updatedAt, answeredInRound)
+            });
+        } catch {}
+    }
+
+    function _readLatestRound() private view returns (RoundObservation memory observation) {
+        try priceFeed.latestRoundData() returns (
+            uint80 returnedId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        ) {
+            observation = RoundObservation({
+                returnedId: returnedId,
+                answer: answer,
+                startedAt: startedAt,
+                updatedAt: updatedAt,
+                answeredInRound: answeredInRound,
+                valid: _isValidRound(returnedId, returnedId, answer, startedAt, updatedAt, answeredInRound)
+            });
+        } catch {}
+    }
+
+    function _requireValidCandidate(RoundObservation memory candidate, uint80 roundId) private pure {
+        if (candidate.valid) return;
+        if (candidate.returnedId != roundId) revert RoundNotComplete();
+        if (candidate.answer == 0) revert ZeroPrice();
+        if (candidate.answer < 0) revert NegativePrice();
+        if (candidate.updatedAt == 0 || candidate.startedAt > candidate.updatedAt) revert StalePrice();
+        if (candidate.answeredInRound < roundId) revert RoundNotComplete();
+    }
+
+    function _findFirstValidSuccessor(uint16 phaseId, uint64 aggRoundId)
+        private
+        view
+        returns (RoundObservation memory successor, bool phaseEnded)
+    {
+        for (uint256 offset = 1; offset <= MAX_SUCCESSOR_SCAN; offset++) {
+            if (uint256(aggRoundId) + offset > type(uint64).max) break;
+            uint80 successorId = (uint80(phaseId) << 64) | uint64(uint256(aggRoundId) + offset);
+            successor = _readRound(successorId);
+            if (successor.valid) return (successor, phaseEnded);
+            if (offset == MAX_SUCCESSOR_SCAN) {
+                phaseEnded = successor.returnedId == 0 || successor.updatedAt == 0;
+            }
+        }
+
+        if (!phaseEnded || phaseId == type(uint16).max) return (successor, phaseEnded);
+        for (uint256 offset = 1; offset <= MAX_SUCCESSOR_SCAN; offset++) {
+            uint80 successorId = (uint80(phaseId + 1) << 64) | uint64(offset);
+            successor = _readRound(successorId);
+            if (successor.valid) return (successor, phaseEnded);
+        }
+    }
+
+    function _latestRoundWasScanned(uint16 phaseId, uint64 aggRoundId, uint80 latestRoundId, bool phaseEnded)
+        private
+        pure
+        returns (bool)
+    {
+        if (latestRoundId == 0) return false;
+        uint16 latestPhaseId = uint16(latestRoundId >> 64);
+        uint64 latestAggRoundId = uint64(latestRoundId);
+        if (latestPhaseId == phaseId) {
+            return latestAggRoundId >= aggRoundId && latestAggRoundId - aggRoundId <= MAX_SUCCESSOR_SCAN;
+        }
+        return phaseEnded && phaseId < type(uint16).max && latestPhaseId == phaseId + 1 && latestAggRoundId > 0
+            && latestAggRoundId <= MAX_SUCCESSOR_SCAN;
     }
 
     /// @notice Settles a series using a nominated, verifiable roundId
     function settleSeries(address series, uint80 roundId) external override {
         IRiskSplitSeries seriesContract = IRiskSplitSeries(series);
         uint256 expiry = seriesContract.expiry();
-        if (block.timestamp < expiry) revert ExpiryNotReached();
+        if (block.timestamp <= expiry) revert ExpiryNotReached();
         if (seriesContract.isSettled()) revert SeriesAlreadySettled();
 
         FixingData memory fixing = verifyFixingRound(expiry, roundId);
@@ -150,7 +241,7 @@ contract SettlementAdapter is ISettlementAdapter {
     function settleSeries(address series) external override {
         IRiskSplitSeries seriesContract = IRiskSplitSeries(series);
         uint256 expiry = seriesContract.expiry();
-        if (block.timestamp < expiry) revert ExpiryNotReached();
+        if (block.timestamp <= expiry) revert ExpiryNotReached();
         if (seriesContract.isSettled()) revert SeriesAlreadySettled();
 
         FixingData memory fixing = getFixingRound(expiry);

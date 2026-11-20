@@ -23,7 +23,6 @@ export interface UpsideRound {
   strikeTick: string;
   minStrike: string;
   maxStrike: string;
-  publicCreationEnabled: boolean;
   marketsCount: number;
   createdAt?: string;
 }
@@ -105,7 +104,6 @@ export interface UpsideRoundModel {
   strikeTick: string;
   minStrike: string;
   maxStrike: string;
-  publicCreationEnabled: boolean;
   createdBlock: number;
   createdTx: string;
   createdAt: string;
@@ -269,4 +267,3 @@ export interface UpsideCancelIntentResponse {
     data: any;
   };
 }
-

@@ -26,6 +26,7 @@ contract CreateMsftcSeries is Script {
 
         vm.startBroadcast();
         factory.setApprovedExpiry(underlying, expiry, true);
+        factory.setApprovedAdapter(underlying, adapterAddr, true);
         seriesAddress = factory.createSeries(underlying, floorPrice, capPrice, expiry, adapterAddr);
         vm.stopBroadcast();
 

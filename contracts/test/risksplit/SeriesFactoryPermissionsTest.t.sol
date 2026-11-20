@@ -28,16 +28,35 @@ contract SeriesFactoryPermissionsTest is Test {
         factory = new SeriesFactory();
         stock = new MockStockToken();
         oracle = new MockOracle(50e8);
-        adapter = new SettlementAdapter(address(oracle), 86400);
+        adapter = new SettlementAdapter(address(oracle), 86400, address(this));
 
         expiry = block.timestamp + 7 days;
         factory.setApprovedExpiry(address(stock), expiry, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
+    }
+
+    function test_Permissions_AdapterAllowlist() public {
+        SettlementAdapter untrusted = new SettlementAdapter(address(oracle), 86400, address(this));
+        vm.prank(alice);
+        vm.expectRevert(ISeriesFactory.Unauthorized.selector);
+        factory.setApprovedAdapter(address(stock), address(untrusted), true);
+        vm.expectRevert(ISeriesFactory.InvalidAdapter.selector);
+        factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(untrusted));
+        factory.setApprovedAdapter(address(stock), address(untrusted), true);
+        address created = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(untrusted));
+        assertTrue(factory.isSeries(created));
+        factory.setApprovedAdapter(address(stock), address(untrusted), false);
+        vm.expectRevert(ISeriesFactory.InvalidAdapter.selector);
+        factory.createSeries(address(stock), FLOOR_PRICE + 1, CAP_PRICE, expiry, address(untrusted));
+        vm.expectRevert(ISeriesFactory.ZeroAddress.selector);
+        factory.setApprovedAdapter(address(stock), address(0), true);
+        vm.expectRevert(ISeriesFactory.InvalidAdapter.selector);
+        factory.setApprovedAdapter(address(stock), address(0xBAD), true);
     }
 
     function test_Permissions_InitialState() public view {
         assertEq(factory.owner(), owner, "Owner mismatch");
         assertEq(factory.pendingOwner(), address(0), "Pending owner should be 0");
-        assertFalse(factory.publicCreationEnabled(), "Public creation should default to false");
         assertTrue(factory.approvedExpiry(address(stock), expiry), "Expiry should be approved");
     }
 
@@ -58,31 +77,24 @@ contract SeriesFactoryPermissionsTest is Test {
         assertEq(factory.owner(), alice, "Owner not transferred");
         assertEq(factory.pendingOwner(), address(0), "Pending owner not reset");
 
-        // Old owner cannot perform owner actions
+        // Old owner cannot create after ownership transfer
         vm.expectRevert(ISeriesFactory.Unauthorized.selector);
-        factory.setPublicCreationEnabled(true);
+        factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
+        vm.prank(alice);
+        address created = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
+        assertTrue(factory.isSeries(created));
     }
 
-    function test_Permissions_NonOwnerCannotCreateSeriesByDefault() public {
+    function test_Permissions_NonOwnerCannotCreateSeries() public {
         vm.prank(alice);
         vm.expectRevert(ISeriesFactory.Unauthorized.selector);
         factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
     }
 
-    function test_Permissions_PublicCreationToggle() public {
-        // Non-owner cannot toggle
+    function test_Permissions_NonOwnerCannotCreateWithInvalidTerms() public {
         vm.prank(alice);
         vm.expectRevert(ISeriesFactory.Unauthorized.selector);
-        factory.setPublicCreationEnabled(true);
-
-        // Owner enables public creation
-        factory.setPublicCreationEnabled(true);
-        assertTrue(factory.publicCreationEnabled());
-
-        // Now alice can create a series with approved expiry
-        vm.prank(alice);
-        address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
-        assertTrue(factory.isSeries(seriesAddr));
+        factory.createSeries(address(0), 0, 0, 0, address(0));
     }
 
     function test_Permissions_UnapprovedExpiryReverts() public {
@@ -94,6 +106,7 @@ contract SeriesFactoryPermissionsTest is Test {
 
         // Approving expiry allows creation
         factory.setApprovedExpiry(address(stock), unapprovedExpiry, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
         address seriesAddr =
             factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, unapprovedExpiry, address(adapter));
         assertTrue(factory.isSeries(seriesAddr));
@@ -126,6 +139,7 @@ contract SeriesFactoryPermissionsTest is Test {
 
         // Past expiry
         factory.setApprovedExpiry(address(stock), block.timestamp - 1, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
         vm.expectRevert(ISeriesFactory.ExpiryInPast.selector);
         factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, block.timestamp - 1, address(adapter));
     }

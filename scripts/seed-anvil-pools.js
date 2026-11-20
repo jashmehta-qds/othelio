@@ -36,7 +36,29 @@ const TOKEN_ADDRESSES = [
   "0xb2000000000000000000001e800a7f5189430cD0", // TSLAc
 ];
 
+async function installTokenCode() {
+  const usdcArtifactPath = path.join(__dirname, "../contracts/out/MockUSDC.sol/MockUSDC.json");
+  const erc20ArtifactPath = path.join(__dirname, "../contracts/out/DeployLocalOthelio.s.sol/DeployMockERC20.json");
+  if (!fs.existsSync(usdcArtifactPath) || !fs.existsSync(erc20ArtifactPath)) {
+    throw new Error("Mock token artifacts are missing; run forge build first.");
+  }
+  const usdcJson = JSON.parse(fs.readFileSync(usdcArtifactPath, "utf8"));
+  const erc20Json = JSON.parse(fs.readFileSync(erc20ArtifactPath, "utf8"));
+  // The fork can expose canonical Base code/precompile stubs at these addresses.
+  // Local tests need deterministic mock ERC-20 semantics, so replace them only
+  // on Anvil through its non-production `anvil_setCode` RPC.
+  await rpc("anvil_setCode", [LOCAL_USDC, usdcJson.deployedBytecode.object]);
+  for (const addr of TOKEN_ADDRESSES) {
+    await rpc("anvil_setCode", [addr, erc20Json.deployedBytecode.object]);
+  }
+}
+
 async function seedAnvilPools() {
+  await installTokenCode();
+  if (process.argv.includes("--tokens-only")) {
+    console.log(`[seed-anvil-pools] Installed mock token code for USDC and ${TOKEN_ADDRESSES.length} B20 assets.`);
+    return;
+  }
   const rpcUrl = RPC_URL;
   // 1. Install MockAavePool code only when the fork did not already provide it.
   const aaveArtifactPath = path.join(__dirname, "../contracts/out/MockAavePool.sol/MockAavePool.json");
@@ -63,20 +85,12 @@ async function seedAnvilPools() {
     }
   }
 
-  // 2. Install six-decimal USDC, the router, and B20 tokens. Deployment may
-  // already have installed some of this code; liquidity must still be seeded.
-  const usdcArtifactPath = path.join(__dirname, "../contracts/out/MockUSDC.sol/MockUSDC.json");
-  const erc20ArtifactPath = path.join(__dirname, "../contracts/out/DeployLocalOthelio.s.sol/DeployMockERC20.json");
+  // 2. Install the router and seed token liquidity.
   const routerArtifactPath = path.join(__dirname, "../contracts/out/MockDEXRouter.sol/MockDEXRouter.json");
-  if (!fs.existsSync(usdcArtifactPath) || !fs.existsSync(routerArtifactPath)) {
-    throw new Error("Mock USDC/router artifacts are missing; run forge build first.");
+  if (!fs.existsSync(routerArtifactPath)) {
+    throw new Error("Mock router artifact is missing; run forge build first.");
   }
-  const usdcJson = JSON.parse(fs.readFileSync(usdcArtifactPath, "utf8"));
   const routerJson = JSON.parse(fs.readFileSync(routerArtifactPath, "utf8"));
-  // The fork can expose canonical Base code/precompile stubs at these addresses.
-  // Local tests need deterministic mock ERC-20 semantics, so replace them only
-  // on Anvil through its non-production `anvil_setCode` RPC.
-  await rpc("anvil_setCode", [LOCAL_USDC, usdcJson.deployedBytecode.object]);
   await rpc("anvil_setCode", [LOCAL_ROUTER, routerJson.deployedBytecode.object]);
   const routerRecipient = LOCAL_ROUTER.slice(2).toLowerCase().padStart(64, "0");
   const usdcAmount = ROUTER_USDC_LIQUIDITY.toString(16).padStart(64, "0");
@@ -93,21 +107,15 @@ async function seedAnvilPools() {
     data: `0x40c10f19${walletRecipient}${walletUsdcAmount}`,
   }]);
 
-  if (fs.existsSync(erc20ArtifactPath)) {
-    const erc20Json = JSON.parse(fs.readFileSync(erc20ArtifactPath, "utf8"));
-    const erc20Bytecode = erc20Json.deployedBytecode.object;
-
-    for (const addr of TOKEN_ADDRESSES) {
-      await rpc("anvil_setCode", [addr, erc20Bytecode]);
-      const amount = ROUTER_LIQUIDITY.toString(16).padStart(64, "0");
-      await rpc("eth_sendTransaction", [{
-        from: LOCAL_DEPLOYER,
-        to: addr,
-        data: `0x40c10f19${routerRecipient}${amount}`,
-      }]);
-    }
-    console.log(`[seed-anvil-pools] Seeded ${TOKEN_ADDRESSES.length} B20 assets, router liquidity, and ${DEFAULT_WALLET_USDC / 10n ** 6n} USDC for the default Anvil wallet.`);
-  } else throw new Error("DeployMockERC20 artifact is missing; run forge build first.");
+  for (const addr of TOKEN_ADDRESSES) {
+    const amount = ROUTER_LIQUIDITY.toString(16).padStart(64, "0");
+    await rpc("eth_sendTransaction", [{
+      from: LOCAL_DEPLOYER,
+      to: addr,
+      data: `0x40c10f19${routerRecipient}${amount}`,
+    }]);
+  }
+  console.log(`[seed-anvil-pools] Seeded ${TOKEN_ADDRESSES.length} B20 assets, router liquidity, and ${DEFAULT_WALLET_USDC / 10n ** 6n} USDC for the default Anvil wallet.`);
 }
 
 seedAnvilPools().catch((error) => {

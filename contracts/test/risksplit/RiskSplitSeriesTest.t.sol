@@ -86,11 +86,12 @@ contract RiskSplitSeriesTest is Test {
     function setUp() public {
         stock = new MockStockToken();
         oracle = new MockOracle(50e8); // $50 initial price
-        adapter = new SettlementAdapter(address(oracle), HEARTBEAT);
+        adapter = new SettlementAdapter(address(oracle), HEARTBEAT, address(this));
         factory = new SeriesFactory();
 
         expiry = block.timestamp + 7 days;
         factory.setApprovedExpiry(address(stock), expiry, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
 
         address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
 
@@ -144,6 +145,7 @@ contract RiskSplitSeriesTest is Test {
             uint256 oneToken = 10 ** units;
             token.mint(alice, oneToken);
             factory.setApprovedExpiry(address(token), expiry, true);
+            factory.setApprovedAdapter(address(token), address(adapter), true);
             address vaultAddress =
                 factory.createSeries(address(token), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
             RiskSplitSeries vault = RiskSplitSeries(vaultAddress);

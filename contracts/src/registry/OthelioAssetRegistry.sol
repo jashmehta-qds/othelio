@@ -2,6 +2,11 @@
 pragma solidity ^0.8.24;
 
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+
+interface IFeedDecimals {
+    function decimals() external view returns (uint8);
+}
 
 interface IB20Factory {
     function isB20(address token) external view returns (bool);
@@ -9,6 +14,10 @@ interface IB20Factory {
 }
 
 contract OthelioAssetRegistry is Ownable2Step {
+    error TokenDecimalsReadFailed(address token);
+    error TokenDecimalsMismatch(address token, uint8 expected, uint8 actual);
+    error TokenDecimalsTooLarge(uint8 tokenDecimals);
+
     /// @dev Base's singleton B20 factory precompile. It is intentionally not
     /// code-length checked: precompiles do not have conventional EVM bytecode.
     address private constant BASE_B20_FACTORY = 0xB20f000000000000000000000000000000000000;
@@ -22,6 +31,8 @@ contract OthelioAssetRegistry is Ownable2Step {
     }
 
     mapping(uint256 chainId => mapping(address token => Asset)) public assets;
+
+    mapping(uint256 chainId => mapping(address token => uint256)) private _heartbeats;
 
     mapping(address pool => bool) public approvedLendingPools;
 
@@ -41,6 +52,8 @@ contract OthelioAssetRegistry is Ownable2Step {
 
     event LendingPoolConfigured(address indexed pool, bool approved);
 
+    event HeartbeatUpdated(uint256 indexed chainId, address indexed token, uint256 maxStaleness);
+
     constructor(address owner_) Ownable(owner_) {}
 
     function configure(
@@ -54,7 +67,20 @@ contract OthelioAssetRegistry is Ownable2Step {
     ) public onlyOwner {
         require(token != address(0), "ZERO_TOKEN");
         require(!supported || priceFeed != address(0), "ZERO_FEED");
-        require(tokenDecimals <= 38 && feedDecimals <= 38, "DECIMALS_TOO_LARGE");
+        if (tokenDecimals > 18) revert TokenDecimalsTooLarge(tokenDecimals);
+        require(feedDecimals <= 38, "DECIMALS_TOO_LARGE");
+        try IERC20Metadata(token).decimals() returns (uint8 actualDecimals) {
+            if (actualDecimals != tokenDecimals) revert TokenDecimalsMismatch(token, tokenDecimals, actualDecimals);
+        } catch {
+            revert TokenDecimalsReadFailed(token);
+        }
+        if (supported && priceFeed.code.length > 0) {
+            try IFeedDecimals(priceFeed).decimals() returns (uint8 actualDecimals) {
+                require(actualDecimals == feedDecimals, "FEED_DECIMALS_MISMATCH");
+            } catch {
+                revert("FEED_DECIMALS_MISMATCH");
+            }
+        }
 
         // B20 assets are native/precompile-backed, so code-length is not a valid
         // authenticity check. On Base, verify the official B20 factory's address
@@ -144,6 +170,17 @@ contract OthelioAssetRegistry is Ownable2Step {
 
     function getAsset(uint256 chainId, address token) external view returns (Asset memory) {
         return assets[chainId][token];
+    }
+
+    function setHeartbeat(uint256 chainId, address token, uint256 maxStaleness) external onlyOwner {
+        require(token != address(0), "ZERO_TOKEN");
+        require(maxStaleness > 0 && maxStaleness <= 7 days, "INVALID_HEARTBEAT");
+        _heartbeats[chainId][token] = maxStaleness;
+        emit HeartbeatUpdated(chainId, token, maxStaleness);
+    }
+
+    function heartbeatOf(uint256 chainId, address token) external view returns (uint256) {
+        return _heartbeats[chainId][token];
     }
 
     /// @notice Returns all currently supported tokens for a given chainId.

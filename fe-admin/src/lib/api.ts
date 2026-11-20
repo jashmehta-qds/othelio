@@ -146,13 +146,6 @@ class AdminApiClient {
     const q = params.toString() ? `?${params.toString()}` : '';
     return this.fetchJson<{ data: AdminUpsideMarketItem[] }>(`/v1/admin/upside/markets${q}`);
   }
-
-  async togglePublicCreation(params: { chainId?: number; roundId: number; enabled: boolean }): Promise<AdminTransactionPreview> {
-    return this.fetchJson<AdminTransactionPreview>('/v1/admin/upside/rounds/toggle-public', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-  }
 }
 
 export const adminApi = new AdminApiClient();

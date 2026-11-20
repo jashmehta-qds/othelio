@@ -39,7 +39,7 @@ contract DeployLocalOthelio is Script {
         vm.startBroadcast(deployerPrivateKey);
         LocalMockAerodromeFactory canonicalFactory = new LocalMockAerodromeFactory();
         OthelioAssetRegistry registry = new OthelioAssetRegistry(deployer);
-        BasketOracle oracle = new BasketOracle(address(registry));
+        BasketOracle oracle = new BasketOracle(address(registry), address(0));
         OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(deployer, address(canonicalFactory));
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(BASE_AAVE_V3_POOL);
         OthelioAerodromeSlipstreamAdapter aerodromeAdapter = new OthelioAerodromeSlipstreamAdapter(LOCAL_ROUTER, BASE_USDC, address(routeRegistry));
@@ -54,11 +54,13 @@ contract DeployLocalOthelio is Script {
         uint8[] memory feedDecimals = new uint8[](tokens.length);
         bool[] memory isB20 = new bool[](tokens.length);
         for (uint256 i; i < tokens.length; i++) {
+            vm.mockCall(tokens[i], abi.encodeWithSignature("decimals()"), abi.encode(uint8(18)));
             feeds[i] = address(new MockPriceFeed(OthelioDeploymentAssets.localPriceUsdE8(i)));
             supported[i] = true; tokenDecimals[i] = 18; feedDecimals[i] = 8; isB20[i] = true;
             routeRegistry.setPoolApproval(block.chainid, BASE_USDC, tokens[i], 100, address(canonicalFactory), true);
         }
         registry.configureBatch(block.chainid, tokens, feeds, supported, tokenDecimals, feedDecimals, isB20);
+        vm.mockCall(BASE_USDC, abi.encodeWithSignature("decimals()"), abi.encode(uint8(6)));
         registry.configure(block.chainid, BASE_USDC, address(new MockPriceFeed(1e8)), true, 6, 8, false);
         registry.setApprovedLendingPool(BASE_AAVE_V3_POOL, true);
         vm.stopBroadcast();

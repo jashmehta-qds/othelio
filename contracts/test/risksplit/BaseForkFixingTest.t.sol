@@ -21,7 +21,7 @@ contract BaseForkFixingTest is Test {
         vm.createSelectFork(rpcUrl, BASE_FORK_BLOCK);
 
         // Max staleness covering multi-day spans (e.g. 7 days)
-        adapter = new SettlementAdapter(FEED_MSFT, 7 days);
+        adapter = new SettlementAdapter(FEED_MSFT, 7 days, address(this));
         factory = new SeriesFactory();
     }
 
@@ -83,6 +83,7 @@ contract BaseForkFixingTest is Test {
         // Create series with expiry in the future relative to block.timestamp
         uint256 expiry = block.timestamp + 3600;
         factory.setApprovedExpiry(MSFTc, expiry, true);
+        factory.setApprovedAdapter(MSFTc, address(adapter), true);
 
         address seriesAddr = factory.createSeries(MSFTc, floorPrice, capPrice, expiry, address(adapter));
         RiskSplitSeries series = RiskSplitSeries(seriesAddr);

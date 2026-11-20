@@ -82,7 +82,7 @@ contract Upside0xVenueForkTest is Test {
         vm.createSelectFork(rpcUrl, BASE_FORK_BLOCK);
 
         exchangeProxy = IZeroExFullExchangeProxy(ZERO_EX_EXCHANGE_PROXY);
-        router = new UpsideBatchFillRouter(ZERO_EX_EXCHANGE_PROXY);
+        router = new UpsideBatchFillRouter(ZERO_EX_EXCHANGE_PROXY, ZERO_EX_EXCHANGE_PROXY.codehash);
 
         domainSeparator = keccak256(
             abi.encode(

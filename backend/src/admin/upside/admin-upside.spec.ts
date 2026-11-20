@@ -67,6 +67,9 @@ describe('AdminUpsideService', () => {
       expect(preview.transactions.length).toBe(1);
       expect(preview.transactions[0].method).toBe('registerRound');
       expect(preview.transactions[0].target.startsWith('0x')).toBe(true);
+      const config = preview.transactions[0].args[0] as Record<string, unknown>;
+      expect(Object.keys(config)).toHaveLength(13);
+      expect(config.maxStrike).toBeDefined();
     });
 
     it('flags calendar warning if expiry falls on weekend', async () => {
@@ -83,15 +86,6 @@ describe('AdminUpsideService', () => {
 
       expect(preview.calendarCheck.valid).toBe(false);
       expect(preview.calendarCheck.note).toContain('weekend');
-    });
-  });
-
-  describe('togglePublicCreationTx', () => {
-    it('generates valid transaction to toggle public strike creation', () => {
-      const tx = service.togglePublicCreationTx(8453, 1, true);
-      expect(tx.method).toBe('setPublicCreationEnabled');
-      expect(tx.args).toEqual([1, true]);
-      expect(tx.target.startsWith('0x')).toBe(true);
     });
   });
 });

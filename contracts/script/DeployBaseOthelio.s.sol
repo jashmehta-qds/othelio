@@ -20,6 +20,7 @@ contract DeployBaseOthelio is Script {
     bytes32 private constant AERODROME_ROUTER_CODEHASH = 0xfedc4e21e1097b0ec1b4f1aa901cf645c22f9e5d297727b0f37275ee1d083df4;
     address private constant BASE_USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     address private constant BASE_USDC_USD_FEED = 0x7e860098F58bBFC8648a4311b374B1D669a2bc6B;
+    address private constant BASE_SEQUENCER_UPTIME_FEED = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
     address private constant BASE_AAVE_V3_POOL = 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5;
 
     function run() external virtual returns (address registryAddr, address oracleAddr, address moduleAddr, address factoryAddr) {
@@ -40,7 +41,7 @@ contract DeployBaseOthelio is Script {
 
         vm.startBroadcast(deployerPrivateKey);
         OthelioAssetRegistry registry = new OthelioAssetRegistry(deployer);
-        BasketOracle oracle = new BasketOracle(address(registry));
+        BasketOracle oracle = new BasketOracle(address(registry), BASE_SEQUENCER_UPTIME_FEED);
         OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(deployer, AERODROME_FACTORY);
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(BASE_AAVE_V3_POOL);
         OthelioAerodromeSlipstreamAdapter aerodromeAdapter = new OthelioAerodromeSlipstreamAdapter(AERODROME_ROUTER, BASE_USDC, address(routeRegistry));
@@ -66,6 +67,7 @@ contract DeployBaseOthelio is Script {
         require(AERODROME_ROUTER.codehash == AERODROME_ROUTER_CODEHASH, "UNEXPECTED_AERODROME_ROUTER_CODE");
         require(BASE_USDC.code.length > 0, "MISSING_USDC");
         require(BASE_USDC_USD_FEED.code.length > 0, "MISSING_USDC_PRICE_FEED");
+        require(BASE_SEQUENCER_UPTIME_FEED.code.length > 0, "MISSING_SEQUENCER_FEED");
         require(BASE_AAVE_V3_POOL.code.length > 0, "MISSING_AAVE_POOL");
     }
 

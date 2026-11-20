@@ -95,7 +95,6 @@ export const upsideFactoryAbi = [
           { name: "strikeTick", type: "uint256" },
           { name: "minStrike", type: "uint256" },
           { name: "maxStrike", type: "uint256" },
-          { name: "publicCreationEnabled", type: "bool" },
         ],
       },
     ],
@@ -129,21 +128,10 @@ export const upsideFactoryAbi = [
           { name: "strikeTick", type: "uint256" },
           { name: "minStrike", type: "uint256" },
           { name: "maxStrike", type: "uint256" },
-          { name: "publicCreationEnabled", type: "bool" },
         ],
       },
     ],
     outputs: [{ name: "roundId", type: "uint256" }],
-    stateMutability: "nonpayable",
-  },
-  {
-    type: "function",
-    name: "setPublicCreationEnabled",
-    inputs: [
-      { name: "roundId", type: "uint256" },
-      { name: "enabled", type: "bool" },
-    ],
-    outputs: [],
     stateMutability: "nonpayable",
   },
   {
@@ -181,18 +169,8 @@ export const upsideFactoryAbi = [
           { name: "strikeTick", type: "uint256" },
           { name: "minStrike", type: "uint256" },
           { name: "maxStrike", type: "uint256" },
-          { name: "publicCreationEnabled", type: "bool" },
         ],
       },
-    ],
-    anonymous: false,
-  },
-  {
-    type: "event",
-    name: "PublicCreationToggled",
-    inputs: [
-      { name: "roundId", type: "uint256", indexed: true },
-      { name: "enabled", type: "bool", indexed: false },
     ],
     anonymous: false,
   },
@@ -471,11 +449,56 @@ export const upsideSeriesAbi = [
 ] as const;
 
 export const upsideFixingAdapterAbi = [
+  { type: "function", name: "EMERGENCY_SETTLEMENT_DELAY", inputs: [], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "owner", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "pendingOwner", inputs: [], outputs: [{ name: "", type: "address" }], stateMutability: "view" },
+  { type: "function", name: "transferOwnership", inputs: [{ name: "newOwner", type: "address" }], outputs: [], stateMutability: "nonpayable" },
+  { type: "function", name: "acceptOwnership", inputs: [], outputs: [], stateMutability: "nonpayable" },
+  { type: "function", name: "renounceOwnership", inputs: [], outputs: [], stateMutability: "nonpayable" },
+  {
+    type: "function",
+    name: "emergencySettle",
+    inputs: [{ name: "series", type: "address" }, { name: "price", type: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "event",
+    name: "EmergencySettled",
+    inputs: [
+      { name: "series", type: "address", indexed: true },
+      { name: "price", type: "uint256", indexed: false },
+      { name: "caller", type: "address", indexed: true },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "OwnershipTransferred",
+    inputs: [
+      { name: "previousOwner", type: "address", indexed: true },
+      { name: "newOwner", type: "address", indexed: true },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "OwnershipTransferStarted",
+    inputs: [
+      { name: "previousOwner", type: "address", indexed: true },
+      { name: "newOwner", type: "address", indexed: true },
+    ],
+    anonymous: false,
+  },
+  { type: "error", name: "MismatchedAdapter", inputs: [] },
+  { type: "error", name: "OwnableUnauthorizedAccount", inputs: [{ name: "account", type: "address" }] },
+  { type: "error", name: "OwnableInvalidOwner", inputs: [{ name: "owner", type: "address" }] },
   {
     type: "constructor",
     inputs: [
       { name: "priceFeed_", type: "address" },
       { name: "maxStaleness_", type: "uint256" },
+      { name: "initialOwner_", type: "address" },
     ],
     stateMutability: "nonpayable",
   },

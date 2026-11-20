@@ -310,6 +310,23 @@ export {
 export const SETTLEMENT_ADAPTER_ABI = [
   {
     type: 'function',
+    name: 'emergencySettle',
+    inputs: [{ name: 'series', type: 'address' }, { name: 'price', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'event',
+    name: 'EmergencySettled',
+    inputs: [
+      { name: 'series', type: 'address', indexed: true },
+      { name: 'price', type: 'uint256', indexed: false },
+      { name: 'caller', type: 'address', indexed: true },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'function',
     name: 'settleSeries',
     inputs: [{ name: 'series', type: 'address' }],
     outputs: [],

@@ -39,7 +39,6 @@ export function OverviewView({ overview, isLoading, onRefresh }: OverviewViewPro
           address: '—',
           owner: '—',
           pendingOwner: null,
-          publicCreationEnabled: false,
         },
       },
       indexerHealth: {
@@ -180,7 +179,7 @@ export function OverviewView({ overview, isLoading, onRefresh }: OverviewViewPro
                 <th className="pb-3">Address</th>
                 <th className="pb-3">Onchain Owner</th>
                 <th className="pb-3">Pending Owner</th>
-                <th className="pb-3">Public Creation</th>
+                <th className="pb-3">Creation Policy</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#292a27] text-zinc-300">
@@ -192,15 +191,7 @@ export function OverviewView({ overview, isLoading, onRefresh }: OverviewViewPro
                   {governedContracts.factory.pendingOwner || 'None'}
                 </td>
                 <td className="py-3">
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono border ${
-                      governedContracts.factory.publicCreationEnabled
-                        ? 'bg-amber-950/40 text-amber-400 border-amber-800'
-                        : 'bg-emerald-950/40 text-emerald-400 border-emerald-800'
-                    }`}
-                  >
-                    {governedContracts.factory.publicCreationEnabled ? 'ENABLED' : 'DISABLED (RESTRICTED)'}
-                  </span>
+                  <span className="text-emerald-400">OWNER ONLY</span>
                 </td>
               </tr>
             </tbody>

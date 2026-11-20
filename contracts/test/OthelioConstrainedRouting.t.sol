@@ -49,7 +49,7 @@ contract OthelioConstrainedRoutingTest is Test {
     function setUp() public {
         vm.startPrank(owner);
         registry = new OthelioAssetRegistry(owner);
-        oracle = new BasketOracle(address(registry));
+        oracle = new BasketOracle(address(registry), address(0));
         MockAavePool pool = new MockAavePool();
         aaveAdapter = new OthelioAaveV3Adapter(address(pool));
 
@@ -95,6 +95,13 @@ contract OthelioConstrainedRoutingTest is Test {
         assertTrue(portfolio.approvedDexRoutes(address(router), address(router)));
         assertFalse(portfolio.approvedDexRoutes(address(router), stranger));
         assertFalse(portfolio.approvedDexRoutes(stranger, address(router)));
+    }
+
+    function testCachedDependenciesDoNotCallGettersDuringFunding() public {
+        vm.mockCallRevert(address(portfolio.aerodromeAdapter()), abi.encodeWithSignature("router()"), "");
+        vm.mockCallRevert(address(portfolio.aerodromeAdapter()), abi.encodeWithSignature("usdc()"), "");
+        vm.mockCallRevert(address(oracle), abi.encodeWithSignature("registry()"), "");
+        testDirectRouteFundingSucceeds();
     }
 
     function testDirectRouteFundingSucceeds() public {

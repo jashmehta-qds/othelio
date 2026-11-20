@@ -69,11 +69,12 @@ contract RiskSplitSecurityTest is Test {
     function setUp() public {
         stock = new MockStockToken();
         oracle = new MockOracle(50e8);
-        adapter = new SettlementAdapter(address(oracle), HEARTBEAT);
+        adapter = new SettlementAdapter(address(oracle), HEARTBEAT, address(this));
         factory = new SeriesFactory();
 
         expiry = block.timestamp + 7 days;
         factory.setApprovedExpiry(address(stock), expiry, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
 
         address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
 
@@ -93,6 +94,7 @@ contract RiskSplitSecurityTest is Test {
     function test_Security_ReentrancyBlocked() public {
         MaliciousReentrantToken badToken = new MaliciousReentrantToken();
         factory.setApprovedExpiry(address(badToken), expiry, true);
+        factory.setApprovedAdapter(address(badToken), address(adapter), true);
         address seriesAddr = factory.createSeries(address(badToken), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
         RiskSplitSeries badSeries = RiskSplitSeries(seriesAddr);
         badToken.setTarget(seriesAddr);
@@ -112,6 +114,7 @@ contract RiskSplitSecurityTest is Test {
     function test_Security_FeeOnTransferRejected() public {
         DeceptiveFeeToken feeToken = new DeceptiveFeeToken();
         factory.setApprovedExpiry(address(feeToken), expiry, true);
+        factory.setApprovedAdapter(address(feeToken), address(adapter), true);
         address seriesAddr = factory.createSeries(address(feeToken), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
         RiskSplitSeries feeSeries = RiskSplitSeries(seriesAddr);
 
@@ -188,11 +191,11 @@ contract RiskSplitSecurityTest is Test {
     function test_Security_ZeroOrNegativeOraclePriceRejected() public {
         oracle.setPrice(0, expiry);
         vm.warp(expiry + 1);
-        vm.expectRevert(ISettlementAdapter.ZeroPrice.selector);
+        vm.expectRevert(ISettlementAdapter.StalePrice.selector);
         adapter.settleSeries(address(series));
 
         oracle.setPrice(-10e8, expiry);
-        vm.expectRevert(ISettlementAdapter.NegativePrice.selector);
+        vm.expectRevert(ISettlementAdapter.StalePrice.selector);
         adapter.settleSeries(address(series));
     }
 
