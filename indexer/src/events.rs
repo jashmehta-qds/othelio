@@ -353,8 +353,19 @@ pub async fn fetch_block_range(
             .to_block(to_block)
     };
     let (logs, completed_block) = tokio::try_join!(
-        provider.get_logs(&filter),
-        provider.get_block(to_block),
+        async {
+            provider.get_logs(&filter).await.map_err(|error| {
+                format!(
+                    "eth_getLogs failed for blocks {}..={}: {:?}",
+                    from_block, to_block, error
+                )
+            })
+        },
+        async {
+            provider.get_block(to_block).await.map_err(|error| {
+                format!("eth_getBlockByNumber failed at block {}: {:?}", to_block, error)
+            })
+        },
     )?;
     let completed_hash = completed_block
         .and_then(|block| block.hash)

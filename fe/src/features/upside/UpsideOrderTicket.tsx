@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { WalletConnectModal } from "@/components/WalletConnectModal";
 import styles from "./UpsideMarkets.module.css";
-import { fetchSweepQuote, submitLimitOrder, useUpsideOrderbook } from "./useUpside";
+import { fetchSweepQuote, submitLimitOrder, type UpsideBookQuery } from "./useUpside";
 import {
   UpsideSweepQuoteResponse,
   ZERO_EX_EXCHANGE_PROXY_BASE,
@@ -24,6 +24,7 @@ const ERC20_ABI = parseAbi([
 ]);
 
 interface UpsideOrderTicketProps {
+  bookQuery: UpsideBookQuery;
   chainId: number;
   seriesAddress: string;
   strikeFormatted: string;
@@ -39,6 +40,7 @@ interface UpsideOrderTicketProps {
 }
 
 export function UpsideOrderTicket({
+  bookQuery,
   chainId,
   seriesAddress,
   claimType,
@@ -76,7 +78,7 @@ export function UpsideOrderTicket({
   const { signTypedDataAsync } = useSignTypedData();
   const { sendTransactionAsync } = useSendTransaction();
   const { data: book, errorUpdatedAt: bookFailureRevision, isUnavailable: bookUnavailable } =
-    useUpsideOrderbook(chainId, seriesAddress, claimType);
+    bookQuery;
   const matchingLevels = ticketMode === "BUY" ? book?.asks : book?.bids;
   const hasMatchingLiquidity = !!matchingLevels?.length;
   // Refresh when the executable side changes, not on every identical book poll.

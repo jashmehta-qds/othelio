@@ -14,8 +14,8 @@ import styles from "./RiskSplitMarkets.module.css";
 
 function MarketCard({ market }: { market: RiskSplitMarket }) {
   const { series, asset } = market;
-  const protectedBook = useRiskSplitBook(series.seriesAddress, "protected");
-  const upsideBook = useRiskSplitBook(series.seriesAddress, "upside");
+  const protectedBook = useRiskSplitBook(series.seriesAddress, "protected", "preview");
+  const upsideBook = useRiskSplitBook(series.seriesAddress, "upside", "preview");
   return (
     <article className={styles.simpleMarketCard}>
       <div className={styles.simpleMarketHead}>

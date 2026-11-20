@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useChainId } from "wagmi";
+import { bookPollingOptions, type BookPollingMode } from "../markets/bookPolling";
 
 export interface BookLevel {
   priceUsd: string;
@@ -37,15 +38,16 @@ export interface BookDepthResponse {
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
 
-export function useRiskSplitBook(seriesAddress: string, claimType: "protected" | "upside") {
+export function useRiskSplitBook(seriesAddress: string, claimType: "protected" | "upside", mode: BookPollingMode = "live") {
   const chainId = useChainId();
 
   const query = useQuery<BookDepthResponse>({
     queryKey: ["risksplit-book", chainId, seriesAddress?.toLowerCase(), claimType],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!seriesAddress) throw new Error("Series address is required");
       const res = await fetch(
-        `${API_BASE}/v1/risksplit/series/${seriesAddress.toLowerCase()}/books/${claimType}?chainId=${chainId}`
+        `${API_BASE}/v1/risksplit/series/${seriesAddress.toLowerCase()}/books/${claimType}?chainId=${chainId}`,
+        { signal },
       );
       if (!res.ok) {
         throw new Error(`Failed to load order book (${res.status})`);
@@ -53,9 +55,7 @@ export function useRiskSplitBook(seriesAddress: string, claimType: "protected" |
       return res.json();
     },
     enabled: Boolean(seriesAddress),
-    retry: false,
-    refetchInterval: 15_000,
-    staleTime: 15_000,
+    ...bookPollingOptions(mode),
   });
 
   const usableBook = query.isError ? null : query.data ?? null;
