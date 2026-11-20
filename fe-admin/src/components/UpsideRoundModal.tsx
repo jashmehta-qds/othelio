@@ -32,7 +32,6 @@ export function UpsideRoundModal({
   const [selectedAsset, setSelectedAsset] = useState<string>('');
   const [expiryDays, setExpiryDays] = useState<number>(1);
   const [customExpectedMove, setCustomExpectedMove] = useState<string>('');
-  const [allowPublicCreation, setAllowPublicCreation] = useState<boolean>(false);
 
   const [preview, setPreview] = useState<AdminUpsideRoundPreviewResponse | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(false);
@@ -74,7 +73,6 @@ export function UpsideRoundModal({
           underlying,
           expiryTimestamp: date.getTime() / 1000,
           expectedMove: customExpectedMove ? parseUnits(customExpectedMove, 8).toString() : undefined,
-          publicCreationEnabled: allowPublicCreation,
         });
         if (active) setPreview(response);
       } catch (err) {
@@ -85,7 +83,7 @@ export function UpsideRoundModal({
     };
     void load();
     return () => { active = false; };
-  }, [isOpen, underlying, expiryDays, customExpectedMove, allowPublicCreation, chainId, registerHash]);
+  }, [isOpen, underlying, expiryDays, customExpectedMove, chainId, registerHash]);
 
   if (!isOpen) return null;
 
@@ -205,19 +203,6 @@ export function UpsideRoundModal({
             />
           </div>
 
-          <div className="flex items-center space-x-3 pt-5">
-            <input
-              type="checkbox"
-              id="publicCreation"
-              checked={allowPublicCreation}
-              onChange={(e) => setAllowPublicCreation(e.target.checked)}
-              disabled={launchBusy}
-              className="h-4 w-4 rounded border-[#292a27] bg-[#10110f] text-[#ff5729] focus:ring-0"
-            />
-            <label htmlFor="publicCreation" className="text-xs font-mono text-zinc-300">
-              Allow Public Strike Creation
-            </label>
-          </div>
         </div>
 
         {/* Preview State */}

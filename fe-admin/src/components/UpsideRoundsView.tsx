@@ -6,10 +6,7 @@ import {
   AdminUpsideRoundItem,
 } from '@othelio/shared';
 import { UpsideRoundModal } from './UpsideRoundModal';
-import { adminApi } from '../lib/api';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
-import { upsideFactoryAbi } from '@othelio/shared';
-import { decodeFunctionData } from 'viem';
 import { deployPresetStrikes } from '../lib/upside-launch';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
@@ -31,7 +28,6 @@ export function UpsideRoundsView({
   chainId,
 }: UpsideRoundsViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [togglingRoundId, setTogglingRoundId] = useState<number | null>(null);
   const [resuming, setResuming] = useState<number | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -39,34 +35,6 @@ export function UpsideRoundsView({
   const { address } = useAccount();
   const publicClient = usePublicClient({ chainId });
   const { writeContractAsync } = useWriteContract();
-
-  const handleTogglePublicCreation = async (round: AdminUpsideRoundItem) => {
-    if (!isOwner || !publicClient || !address) return;
-    const targetState = !round.publicCreationEnabled;
-    setTogglingRoundId(round.roundId);
-
-    try {
-      const tx = await adminApi.togglePublicCreation({ chainId, roundId: round.roundId, enabled: targetState });
-      if (!tx.data || tx.target.toLowerCase() !== round.factoryAddress.toLowerCase()) throw new Error('Round is not on the configured factory.');
-      const decoded = decodeFunctionData({ abi: upsideFactoryAbi, data: tx.data });
-      if (decoded.functionName !== 'setPublicCreationEnabled') throw new Error('Invalid toggle calldata.');
-      const { request } = await publicClient.simulateContract({
-        address: tx.target,
-        abi: upsideFactoryAbi,
-        functionName: 'setPublicCreationEnabled',
-        args: decoded.args,
-        account: address,
-      });
-      const hash = await writeContractAsync(request);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== 'success') throw new Error('Public creation transaction reverted.');
-      onRefresh();
-    } catch (err: any) {
-      alert(`Failed to update public creation setting: ${err?.message || err}`);
-    } finally {
-      setTogglingRoundId(null);
-    }
-  };
 
   const resume = async (round: AdminUpsideRoundItem) => {
     const factory = contracts?.upside;
@@ -124,7 +92,7 @@ export function UpsideRoundsView({
                 <th className="py-3 px-4">Expected Move ±</th>
                 <th className="py-3 px-4">Expiry</th>
                 <th className="py-3 px-4">Strikes</th>
-                <th className="py-3 px-4">Public Creation</th>
+                <th className="py-3 px-4">Creation Policy</th>
                 <th className="py-3 px-4">Status</th>
               </tr>
             </thead>
@@ -163,27 +131,7 @@ export function UpsideRoundsView({
                       )}
                     </td>
                     <td className="py-3.5 px-4">
-                      {isOwner ? (
-                        <button
-                          onClick={() => handleTogglePublicCreation(round)}
-                          disabled={togglingRoundId === round.roundId}
-                          className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
-                            round.publicCreationEnabled
-                              ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800 hover:bg-emerald-900/60'
-                              : 'bg-zinc-800/40 text-zinc-400 border-zinc-700 hover:bg-zinc-700'
-                          }`}
-                        >
-                          {togglingRoundId === round.roundId
-                            ? 'Updating...'
-                            : round.publicCreationEnabled
-                            ? 'Enabled'
-                            : 'Admin Only'}
-                        </button>
-                      ) : (
-                        <span className="text-zinc-500">
-                          {round.publicCreationEnabled ? 'Enabled' : 'Admin Only'}
-                        </span>
-                      )}
+                      <span className="text-zinc-500">Owner only</span>
                     </td>
                     <td className="py-3.5 px-4">
                       {round.isSettled ? (

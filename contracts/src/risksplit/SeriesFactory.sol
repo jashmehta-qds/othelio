@@ -10,12 +10,20 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 contract SeriesFactory is ISeriesFactory {
     address public override owner;
     address public override pendingOwner;
-    bool public override publicCreationEnabled;
 
     address[] public override allSeries;
     mapping(address => bool) public override isSeries;
     mapping(bytes32 => address) public override seriesByTermKey;
     mapping(address => mapping(uint256 => bool)) public override approvedExpiry;
+
+    mapping(address => mapping(address => bool)) public override approvedAdapter;
+
+    function setApprovedAdapter(address underlying, address adapter, bool approved) external override onlyOwner {
+        if (underlying == address(0) || adapter == address(0)) revert ZeroAddress();
+        if (approved && adapter.code.length == 0) revert InvalidAdapter();
+        approvedAdapter[underlying][adapter] = approved;
+        emit AdapterApprovalUpdated(underlying, adapter, approved);
+    }
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert Unauthorized();
@@ -41,11 +49,6 @@ contract SeriesFactory is ISeriesFactory {
         emit OwnershipTransferred(oldOwner, msg.sender);
     }
 
-    function setPublicCreationEnabled(bool enabled) external override onlyOwner {
-        publicCreationEnabled = enabled;
-        emit PublicCreationToggled(enabled);
-    }
-
     function setApprovedExpiry(address underlying, uint256 timestamp, bool approved) external override onlyOwner {
         if (underlying == address(0)) revert ZeroAddress();
         approvedExpiry[underlying][timestamp] = approved;
@@ -62,12 +65,12 @@ contract SeriesFactory is ISeriesFactory {
         uint256 capPrice,
         uint256 expiry,
         address settlementAdapter
-    ) external override returns (address seriesAddress) {
-        if (!publicCreationEnabled && msg.sender != owner) revert Unauthorized();
+    ) external override onlyOwner returns (address seriesAddress) {
         if (underlying == address(0) || settlementAdapter == address(0)) revert ZeroAddress();
         if (floorPrice >= capPrice || floorPrice == 0) revert InvalidPriceRange();
         if (expiry <= block.timestamp) revert ExpiryInPast();
         if (!approvedExpiry[underlying][expiry]) revert UnapprovedExpiry();
+        if (!approvedAdapter[underlying][settlementAdapter]) revert InvalidAdapter();
 
         bytes32 termKey = keccak256(abi.encode(underlying, floorPrice, capPrice, expiry, settlementAdapter));
         if (seriesByTermKey[termKey] != address(0)) revert DuplicateSeriesTerms();

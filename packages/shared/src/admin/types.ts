@@ -66,7 +66,6 @@ export interface AdminOverviewResponse {
       address: string | null;
       owner: string | null;
       pendingOwner?: string | null;
-      publicCreationEnabled: boolean;
     };
   };
 }
@@ -269,7 +268,6 @@ export interface AdminUpsideRoundPreviewRequest {
   strikeTick?: string;
   minStrike?: string;
   maxStrike?: string;
-  publicCreationEnabled?: boolean;
 }
 
 export interface AdminUpsideRoundPreviewResponse {
@@ -297,7 +295,6 @@ export interface AdminUpsideRoundPreviewResponse {
   minStrike: string;
   maxStrike: string;
   strikeTick: string;
-  publicCreationEnabled: boolean;
   factoryAddress: string;
   transactions: AdminTransactionPreview[];
 }
@@ -334,7 +331,6 @@ export interface AdminUpsideRoundItem {
   isExpired: boolean;
   isSettled: boolean;
   marketsCount: number;
-  publicCreationEnabled: boolean;
   markets: AdminUpsideMarketItem[];
   createdAt: string;
 }

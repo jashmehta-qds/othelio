@@ -169,24 +169,19 @@ export class AdminOverviewService {
     const factoryAddress = adminContracts(chainId).riskSplit;
     let factoryOwner: string | null = null;
     let pendingOwner: string | null = null;
-    let publicCreationEnabled = false;
 
     try {
       const rpcUrl = rpcUrlForChain(chainId);
       if (rpcUrl && factoryAddress) {
         const client = createPublicClient({ transport: http(rpcUrl) });
-        const [ownerRes, pendingOwnerRes, pubCreationRes] = await Promise.all([
+        const [ownerRes, pendingOwnerRes] = await Promise.all([
           client.readContract({ address: factoryAddress, abi: seriesFactoryAbi, functionName: 'owner' }).catch(() => null),
           client.readContract({ address: factoryAddress, abi: seriesFactoryAbi, functionName: 'pendingOwner' }).catch(() => null),
-          client.readContract({ address: factoryAddress, abi: seriesFactoryAbi, functionName: 'publicCreationEnabled' }).catch(() => null),
         ]);
 
         if (ownerRes) factoryOwner = (ownerRes as string).toLowerCase();
         if (pendingOwnerRes && pendingOwnerRes !== '0x0000000000000000000000000000000000000000') {
           pendingOwner = (pendingOwnerRes as string).toLowerCase();
-        }
-        if (pubCreationRes !== null && pubCreationRes !== undefined) {
-          publicCreationEnabled = Boolean(pubCreationRes);
         }
       }
     } catch (err) {
@@ -205,7 +200,6 @@ export class AdminOverviewService {
           address: factoryAddress,
           owner: factoryOwner,
           pendingOwner,
-          publicCreationEnabled,
         },
       },
     };

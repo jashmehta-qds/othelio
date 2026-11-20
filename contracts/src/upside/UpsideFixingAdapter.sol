@@ -140,7 +140,7 @@ contract UpsideFixingAdapter is IUpsideFixingAdapter {
         if (target.referenceFeed() != address(priceFeed)) revert MismatchedFeed();
 
         uint256 expiry = target.expiry();
-        if (block.timestamp < expiry) revert ExpiryNotReached();
+        if (block.timestamp <= expiry) revert ExpiryNotReached();
         if (target.isSettled()) revert AlreadySettled();
 
         FixingData memory fixing = verifyFixingRound(expiry, roundId);
@@ -154,6 +154,7 @@ contract UpsideFixingAdapter is IUpsideFixingAdapter {
     function settleSeries(address series) external override returns (uint256 price, uint256 updatedAt) {
         if (series == address(0)) revert ZeroAddress();
         uint256 expiry = IUpsideSeries(series).expiry();
+        if (block.timestamp <= expiry) revert ExpiryNotReached();
         FixingData memory fixing = getFixingRound(expiry);
         return settleSeries(series, fixing.roundId);
     }

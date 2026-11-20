@@ -74,6 +74,7 @@ contract RiskSplitSecurityTest is Test {
 
         expiry = block.timestamp + 7 days;
         factory.setApprovedExpiry(address(stock), expiry, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
 
         address seriesAddr = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
 
@@ -93,6 +94,7 @@ contract RiskSplitSecurityTest is Test {
     function test_Security_ReentrancyBlocked() public {
         MaliciousReentrantToken badToken = new MaliciousReentrantToken();
         factory.setApprovedExpiry(address(badToken), expiry, true);
+        factory.setApprovedAdapter(address(badToken), address(adapter), true);
         address seriesAddr = factory.createSeries(address(badToken), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
         RiskSplitSeries badSeries = RiskSplitSeries(seriesAddr);
         badToken.setTarget(seriesAddr);
@@ -112,6 +114,7 @@ contract RiskSplitSecurityTest is Test {
     function test_Security_FeeOnTransferRejected() public {
         DeceptiveFeeToken feeToken = new DeceptiveFeeToken();
         factory.setApprovedExpiry(address(feeToken), expiry, true);
+        factory.setApprovedAdapter(address(feeToken), address(adapter), true);
         address seriesAddr = factory.createSeries(address(feeToken), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
         RiskSplitSeries feeSeries = RiskSplitSeries(seriesAddr);
 

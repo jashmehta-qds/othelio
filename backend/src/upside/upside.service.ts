@@ -298,7 +298,6 @@ export class UpsideService {
             strikeTick: row.strike_tick ? row.strike_tick.toString() : '0',
             minStrike: row.min_strike ? row.min_strike.toString() : '0',
             maxStrike: row.max_strike ? row.max_strike.toString() : '0',
-            publicCreationEnabled: Boolean(row.public_creation_enabled),
             createdBlock: Number(row.created_block),
             createdTx: row.created_tx.trim(),
             createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),

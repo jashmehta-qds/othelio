@@ -105,11 +105,4 @@ describe('AdminUpsideService', () => {
     await expect(service.previewRound({ ...dto, expiryTimestamp: expiry + 3600 })).rejects.toThrow('close window');
     expect(readContract).not.toHaveBeenCalled();
   });
-
-  it('prepares toggles only for the configured factory and a valid round', () => {
-    expect(service.togglePublicCreationTx(8453, 1, true)).toMatchObject({ target: factory, args: [1, true] });
-    expect(() => service.togglePublicCreationTx(8453, 0, true)).toThrow('valid round ID');
-    vi.stubEnv('UPSIDE_FACTORY_ADDRESS', undefined);
-    expect(() => service.togglePublicCreationTx(8453, 1, true)).toThrow('not configured');
-  });
 });

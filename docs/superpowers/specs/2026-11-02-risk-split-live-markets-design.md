@@ -19,7 +19,7 @@ This is separate from baskets. The admin overview may count basket activity and 
 
 ## Decisions for this plan
 
-- Add `publicCreationEnabled`, initially `false`. Only `owner()` (the deployer wallet for this release) can create series or change the flag. Use two-step ownership transfer so a Safe can own it later. Public creation can be enabled only by an owner transaction. Existing deployments cannot be mutated in place; deploy a new factory if one exists.
+- Only `owner()` can create series. Use two-step ownership transfer so a Safe can own it later. Existing deployments cannot be mutated in place; deploy a new factory if one exists.
 - Use a separate admin frontend deployment from the same monorepo, sharing types, wallet infrastructure and app styling. Backend admin endpoints use wallet challenge/signature sessions and recheck onchain authority. The browser never holds an operator private key; transactions are signed by the connected deployer wallet.
 - Admin creation is an explicit review-and-sign flow. No scheduler or unattended key launches series. A “round” means one immutable series with an expiry, not a mutable round inside a reusable vault.
 - Two order books per series: `Protected/USDC` and `Upside/USDC`, with visible bids, asks, depth, fills and owner orders. The first implementation should use an existing verified ERC-20 limit-order settlement primitive, with Othelio owning the offchain book, relay and matching logic. The preferred spike is direct 0x v4 limit-order settlement on Base; 0x Swap API alone does not supply Othelio's visible resting book. Do not integrate Clober by assumption. If the spike fails the acceptance tests below, select another reviewed primitive and revise the venue design before writing a bespoke settlement contract.
@@ -62,7 +62,7 @@ The venue spike must prove Base deployment, token compatibility (including B20 s
 
 ## Contract and oracle invariants
 
-- Only the factory owner creates while public creation is disabled; all other callers revert. Flag changes and ownership transfers emit events. Market terms are immutable and duplicate term keys are rejected or deliberately versioned.
+- Only the factory owner creates; all other callers revert. Ownership transfers emit events. Market terms are immutable and duplicate term keys are rejected or deliberately versioned.
 - Each series accepts only an approved underlying and a feed whose token identity and decimal scale have been verified. Creation records source, reference round/price, normalized price and formula version in a verifiable event or immutable state. Profile labels use that record, not current spot.
 - Only the factory can initialize a vault's claim addresses, exactly once; each claim's vault is that series, tokens differ, and all contracts are validated. Do not require ordinary bytecode for Base B20 precompile-backed assets.
 - For every state, vault collateral covers outstanding joint claims. Before settlement, equal claim supply is backed by equal raw underlying. After settlement, all redemptions combined cannot exceed held collateral; no rounding scheme permanently strands material funds or lets one side overclaim. Define zero-price allocation so the raw underlying remains claimable.

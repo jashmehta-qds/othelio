@@ -127,7 +127,6 @@ export class AdminUpsideService {
       strikeTick: tick,
       minStrike,
       maxStrike,
-      publicCreationEnabled: dto.publicCreationEnabled === true,
     };
     const formatted = (amount: bigint) => (Number(amount) / 1e8).toFixed(2);
     return {
@@ -150,7 +149,6 @@ export class AdminUpsideService {
       minStrike: minStrike.toString(),
       maxStrike: maxStrike.toString(),
       strikeTick: tick.toString(),
-      publicCreationEnabled: config.publicCreationEnabled,
       factoryAddress,
       transactions: [{
         description: `Register ${symbol} Upside round`,
@@ -228,7 +226,6 @@ export class AdminUpsideService {
               isExpired: nowSecs >= expiry,
               isSettled: Boolean(row.is_settled),
               marketsCount: Number(row.markets_count || 0),
-              publicCreationEnabled: Boolean(row.public_creation_enabled),
               markets,
               createdAt: new Date(row.created_at).toISOString(),
             });
@@ -279,27 +276,5 @@ export class AdminUpsideService {
     }
 
     return [];
-  }
-
-  togglePublicCreationTx(chainId: number, roundId: number, enabled: boolean): AdminTransactionPreview {
-    if (!Number.isSafeInteger(roundId) || roundId <= 0 || typeof enabled !== 'boolean') {
-      throw new BadRequestException('A valid round ID and boolean state are required.');
-    }
-    const factoryAddress = this.getFactoryAddress(chainId);
-    const txData = encodeFunctionData({
-      abi: upsideFactoryAbi,
-      functionName: 'setPublicCreationEnabled',
-      args: [BigInt(roundId), enabled],
-    });
-
-    return {
-      description: `${enabled ? 'Enable' : 'Disable'} public strike creation for Round #${roundId}`,
-      target: factoryAddress,
-      chainId,
-      method: 'setPublicCreationEnabled',
-      data: txData,
-      args: [roundId, enabled],
-      expectedState: `Round #${roundId} publicCreationEnabled == ${enabled}`,
-    };
   }
 }

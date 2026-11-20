@@ -6,6 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IOthelioEvents} from "../interfaces/IOthelioEvents.sol";
 import {IOthelioAccountCapabilities} from "../interfaces/IOthelioAccountCapabilities.sol";
+import {OthelioAssetRegistry} from "../registry/OthelioAssetRegistry.sol";
 import {BasketOracle} from "../oracle/BasketOracle.sol";
 
 interface ISafe {
@@ -28,6 +29,7 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
     using SafeERC20 for IERC20;
 
     BasketOracle public immutable oracle;
+    OthelioAssetRegistry internal immutable assetRegistry;
     address public immutable factorySetter;
     address public factory;
 
@@ -43,6 +45,7 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
     constructor(address oracle_) {
         require(oracle_ != address(0), "ZERO_ORACLE");
         oracle = BasketOracle(oracle_);
+        assetRegistry = BasketOracle(oracle_).registry();
         factorySetter = msg.sender;
     }
 
@@ -85,7 +88,7 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
     /// appropriate only for executable infrastructure such as Safes, routers, and price feeds.
     function _validateSupportedAsset(address asset) internal view {
         require(asset != address(0), "ZERO_TOKEN");
-        require(oracle.registry().isSupported(block.chainid, asset), "UNSUPPORTED_ASSET");
+        require(assetRegistry.isSupported(block.chainid, asset), "UNSUPPORTED_ASSET");
     }
 
     function _validateBasketTokens(address[] memory basketTokens) internal view {

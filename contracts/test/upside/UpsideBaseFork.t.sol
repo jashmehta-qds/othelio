@@ -98,8 +98,7 @@ contract UpsideBaseForkTest is Test {
             provenanceHash: keccak256("fork-round-1"),
             strikeTick: 1e8,
             minStrike: 400e8,
-            maxStrike: 600e8,
-            publicCreationEnabled: false
+            maxStrike: 600e8
         });
 
         uint256 roundId = factory.registerRound(cfg);

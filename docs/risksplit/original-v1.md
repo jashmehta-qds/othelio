@@ -8,7 +8,7 @@
 
 ## Actual V1 mechanism
 
-A series has immutable underlying, floor `F`, cap `C`, expiry, adapter, feed and creation reference. Depositing one underlying token mints one **PROT** and one **UP** ERC-20 (both use the underlying's decimals). Holding both and burning the pair retrieves one underlying token. The series is nonupgradeable. The factory currently has an owner, two-step owner transfer, an initially disabled public-creation flag and owner-approved exact expiries. The settlement adapter nominates a feed fixing; redemption is in the underlying token, not guaranteed USDC.
+A series has immutable underlying, floor `F`, cap `C`, expiry, adapter, feed and creation reference. Depositing one underlying token mints one **PROT** and one **UP** ERC-20 (both use the underlying's decimals). Holding both and burning the pair retrieves one underlying token. The series is nonupgradeable. The factory currently has an owner, two-step owner transfer, owner-only creation and owner-approved exact expiries. The settlement adapter nominates a feed fixing; redemption is in the underlying token, not guaranteed USDC.
 
 `RiskSplitSeries._applySettlement` computes claim fractions from settlement price `S`. Ignoring integer truncation, the **economic values per one deposited token** are:
 
