@@ -80,7 +80,8 @@ export function MarketsView({ markets, assets, isLoading, onRefresh, isOwner }: 
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="px-4 py-1.5 rounded bg-[#ff5729] hover:bg-[#ff6f47] text-black font-semibold text-xs font-mono tracking-wider uppercase transition-colors"
+            disabled={!isOwner}
+            className="px-4 py-1.5 rounded bg-[#ff5729] hover:bg-[#ff6f47] text-black font-semibold text-xs font-mono tracking-wider uppercase transition-colors disabled:opacity-50"
           >
             + Create Series
           </button>
@@ -224,7 +225,7 @@ export function MarketsView({ markets, assets, isLoading, onRefresh, isOwner }: 
       </div>
 
       {/* Creation Modal */}
-      <CreateMarketModal
+      {isOwner && <CreateMarketModal
         assets={assets}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -233,7 +234,7 @@ export function MarketsView({ markets, assets, isLoading, onRefresh, isOwner }: 
           onRefresh();
         }}
         isOwner={isOwner}
-      />
+      />}
     </div>
   );
 }
