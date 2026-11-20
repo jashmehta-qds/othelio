@@ -1,11 +1,11 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { addressSchema, assetRegistryAbi, chainIdSchema, CONTRACT_B20_TOKENS } from '@othelio/shared';
+import { addressSchema, chainIdSchema, CONTRACT_B20_TOKENS } from '@othelio/shared';
 import { createPortfolioOnlyCapabilities, BasketDetail, BasketSummary, PortfolioOverview, Freshness, Holding, ActivityEvent, AssetCatalogItem, basketDetailSchema, basketSummarySchema, portfolioOverviewSchema, assetCatalogItemSchema, activityPageSchema } from '@othelio/shared';
 import { DatabaseService } from '../database/database.service';
 import { BasketQuotePlannerService, BasketQuoteRequest } from './basket-quote-planner.service';
 import { LendingEventRequest, LendingEventService } from './lending-event.service';
 import { CoinbaseTokenMetadataService } from './coinbase-token-metadata.service';
-import { reviewedB20Additions } from '../config/reviewed-b20-feeds';
+import { describeReviewedB20, reviewedB20FeedAdditions } from '../config/reviewed-b20-feeds';
 import { createPublicClient, getAddress, http, isAddress } from 'viem';
 import { rpcUrlForChain } from '../config/network-runtime';
 import { hasApprovedBasketRoute, resolveBasketRouteRegistry } from '../dex/basket-route-readiness';
@@ -839,24 +839,25 @@ export class BasketsService {
       LEFT JOIN indexer_worker_state worker ON worker.chain_id=apo.chain_id AND worker.worker_name='prices'
       WHERE apo.chain_id=$1 ORDER BY LOWER(apo.asset_address), apo.block_number DESC`, [chainId]);
     const coinbase = await this.coinbaseMetadata.getAll();
-    const additions = new Map(reviewedB20Additions(chainId, coinbase).map((config) => [config.tokenAddress.toLowerCase(), config]));
-    const approved = new Set<string>();
+    const reviewedFeeds = reviewedB20FeedAdditions(chainId);
     const registry = process.env.ASSET_REGISTRY_ADDRESS || process.env.OTHELIO_ASSET_REGISTRY;
-    const indexedAdditions = result.rows.filter((row) => row.status === 'FRESH' && row.price_usd_e8 != null)
-      .map((row) => additions.get(String(row.asset_address).trim().toLowerCase()))
-      .filter((asset) => asset !== undefined);
-    if (indexedAdditions.length && registry && isAddress(registry)) {
-      const client = createPublicClient({ transport: http(rpcUrlForChain(chainId)) });
+    const registryAddress = registry && isAddress(registry) ? getAddress(registry) : null;
+    const client = reviewedFeeds.size && registryAddress
+      ? createPublicClient({ transport: http(rpcUrlForChain(chainId)) }) : null;
+    const reviewedAssets = await Promise.all(Array.from(reviewedFeeds, ([token, feed]) =>
+      describeReviewedB20(chainId, getAddress(token), feed, client, registryAddress, coinbase.get(token))));
+    const additions = new Map(reviewedAssets.filter((asset) => asset !== null)
+      .map((config) => [config.tokenAddress.toLowerCase(), config]));
+    const approved = new Set<string>();
+    const indexedAdditions = result.rows.flatMap((row) => {
+      const asset = additions.get(String(row.asset_address).trim().toLowerCase());
+      return row.status === 'FRESH' && row.price_usd_e8 != null && asset?.registryEnabled ? [asset] : [];
+    });
+    if (client && indexedAdditions.length) {
       const routeRegistry = await resolveBasketRouteRegistry(client);
       if (routeRegistry) {
         await Promise.allSettled(indexedAdditions.map(async (asset) => {
-          const config = await client.readContract({
-            address: getAddress(registry), abi: assetRegistryAbi, functionName: 'getAsset',
-            args: [BigInt(chainId), asset.tokenAddress],
-          });
-          if (config.supported && config.isCoinbaseB20 && config.priceFeed.toLowerCase() === asset.feedAddress.toLowerCase() &&
-              config.tokenDecimals === asset.tokenDecimals && config.feedDecimals === asset.feedDecimals &&
-              await hasApprovedBasketRoute(client, routeRegistry, chainId, asset.tokenAddress)) {
+          if (await hasApprovedBasketRoute(client, routeRegistry, chainId, asset.tokenAddress)) {
             approved.add(asset.tokenAddress.toLowerCase());
           }
         }));
@@ -864,13 +865,15 @@ export class BasketsService {
     }
     const projectAsset = (row: Record<string, any>): AssetCatalogItem => {
       const address = String(row.asset_address).trim().toLowerCase();
-      const fallback = this.assetMetadata(address) ?? additions.get(address);
+      const addition = additions.get(address);
+      const builtin = this.assetMetadata(address);
+      const fallback = builtin ?? addition;
       const metadata = fallback ? coinbase.get(address) : null;
       return assetCatalogItemSchema.parse({
         chainId, assetAddress: address,
         symbol: metadata?.symbol ?? fallback?.symbol ?? row.symbol,
         name: metadata?.name ?? fallback?.name ?? row.name,
-        decimals: metadata?.decimals ?? (fallback && 'decimals' in fallback ? fallback.decimals : undefined) ??
+        decimals: addition?.tokenDecimals ?? metadata?.decimals ?? builtin?.decimals ??
           (row.decimals == null ? null : Number(row.decimals)),
         isin: metadata?.isin ?? null,
         description: metadata?.description ?? null,
@@ -886,7 +889,7 @@ export class BasketsService {
         priceObservedAt: row.observed_at ? this.iso(row.observed_at) : null,
         status: row.status,
         tradeable: row.status !== 'UNAVAILABLE' && row.price_usd_e8 != null &&
-          (additions.has(address) ? approved.has(address) : Boolean(fallback)),
+          (reviewedFeeds.has(address) ? approved.has(address) : Boolean(builtin)),
       });
     };
     const indexed = result.rows.map(projectAsset);

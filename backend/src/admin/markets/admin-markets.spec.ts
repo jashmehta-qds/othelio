@@ -4,6 +4,7 @@ import { AdminMarketsService } from './admin-markets.service';
 import { validateExpiryCalendar } from './calendar.util';
 
 let adapterFeed = '0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c';
+let registeredFeed: string | undefined;
 vi.mock('viem', async (importOriginal) => {
   const actual = await importOriginal<typeof import('viem')>();
   return {
@@ -14,7 +15,11 @@ vi.mock('viem', async (importOriginal) => {
       readContract: async ({ functionName }: { functionName: string }) =>
         functionName === 'latestRoundData'
           ? [1n, 50000000000n, 0n, BigInt(Math.floor(Date.now() / 1000)), 1n]
-          : functionName === 'priceFeed' ? adapterFeed : false,
+          : functionName === 'priceFeed' ? adapterFeed
+          : functionName === 'symbol' ? 'NEWc'
+          : functionName === 'getAsset' && registeredFeed
+            ? { supported: true, isCoinbaseB20: true, priceFeed: registeredFeed, tokenDecimals: 8, feedDecimals: 8 }
+            : false,
     }),
   };
 });
@@ -70,6 +75,29 @@ describe('AdminMarketsService & Calendar Utilities', () => {
       })).rejects.toBeInstanceOf(BadRequestException);
     } finally {
       adapterFeed = '0xeB10A6c9aa7E537aEd766C08c35Dae35B321b18c';
+    }
+  });
+
+  it('previews a newly enabled asset without consulting Coinbase', async () => {
+    const token = '0xb200000000000000000000000000000000000999';
+    vi.stubEnv('ASSET_REGISTRY_ADDRESS', '0x2222222222222222222222222222222222222222');
+    vi.stubEnv('B20_REVIEWED_FEEDS_JSON', JSON.stringify({ [token]: adapterFeed }));
+    const fetch = vi.fn().mockRejectedValue(new Error('Metadata unavailable'));
+    vi.stubGlobal('fetch', fetch);
+    try {
+      const service = new AdminMarketsService();
+      const params = {
+        underlying: token, floorPercent: 80, capPercent: 120,
+        expiryTimestamp: Math.floor(new Date('2026-11-20T21:00:00Z').getTime() / 1000), chainId: 8453,
+      };
+      await expect(service.previewMarket(params)).rejects.toThrow('registry-enabled');
+      registeredFeed = adapterFeed;
+      await expect(service.previewMarket(params)).resolves.toMatchObject({ underlying: { symbol: 'NEWc', decimals: 8 } });
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      registeredFeed = undefined;
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
     }
   });
 

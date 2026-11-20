@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { RiskSplitService } from '../../risksplit/risksplit.service';
-import { CoinbaseTokenMetadataService } from '../../baskets/coinbase-token-metadata.service';
-import { reviewedB20Additions, reviewedB20FeedAdditions } from '../../config/reviewed-b20-feeds';
+import { describeReviewedB20, reviewedB20FeedAdditions } from '../../config/reviewed-b20-feeds';
 import {
   AdminMarketItem,
   AdminMarketPreviewRequest,
@@ -14,7 +13,7 @@ import {
   seriesFactoryAbi,
   TOKEN_FEED_REGISTRY,
 } from '@othelio/shared';
-import { createPublicClient, encodeAbiParameters, http, isAddress, keccak256, parseAbiParameters } from 'viem';
+import { createPublicClient, encodeAbiParameters, getAddress, http, isAddress, keccak256, parseAbiParameters } from 'viem';
 import { rpcUrlForChain } from '../../config/network-runtime';
 import { validateExpiryCalendar } from './calendar.util';
 import { adminContracts, settlementAdapterForFeed } from '../admin-deployment';
@@ -38,7 +37,6 @@ const AGGREGATOR_ABI = [
 @Injectable()
 export class AdminMarketsService {
   private readonly logger = new Logger(AdminMarketsService.name);
-  private readonly coinbase = new CoinbaseTokenMetadataService();
 
   constructor(
     @Optional() private readonly db?: DatabaseService,
@@ -135,7 +133,7 @@ export class AdminMarketsService {
     }
     const underlyingNorm = params.underlying.toLowerCase();
 
-    const factoryAddress = adminContracts(chainId).riskSplit;
+    const { riskSplit: factoryAddress, assetRegistry } = adminContracts(chainId);
     if (!factoryAddress) {
       throw new BadRequestException('Risk Split factory is not deployed/configured. Set RISK_SPLIT_FACTORY_ADDRESS.');
     }
@@ -144,13 +142,18 @@ export class AdminMarketsService {
     }
 
     // 1. Identify underlying asset and feed
-    const config = Object.values(TOKEN_FEED_REGISTRY).find(
+    const rpcUrl = rpcUrlForChain(chainId);
+    if (!rpcUrl) throw new BadRequestException(`No RPC configured for chain ${chainId}.`);
+    const client = createPublicClient({ transport: http(rpcUrl) });
+    const builtIn = Object.values(TOKEN_FEED_REGISTRY).find(
       (c) => c.tokenAddress.toLowerCase() === underlyingNorm
-    ) ?? (reviewedB20FeedAdditions(chainId).has(underlyingNorm)
-      ? reviewedB20Additions(chainId, await this.coinbase.getAll()).find((asset) => asset.tokenAddress.toLowerCase() === underlyingNorm)
-      : undefined);
+    );
+    const reviewedFeed = builtIn ? undefined : reviewedB20FeedAdditions(chainId).get(underlyingNorm);
+    const config = builtIn ?? (reviewedFeed
+      ? await describeReviewedB20(chainId, getAddress(params.underlying), reviewedFeed, client, assetRegistry)
+      : null);
     if (!config) {
-      throw new BadRequestException(`Underlying asset ${params.underlying} is not in the reviewed token catalog.`);
+      throw new BadRequestException(`Underlying asset ${params.underlying} has no reviewed, registry-enabled feed.`);
     }
     const settlementAdapter = settlementAdapterForFeed(config.feedAddress, 'RISK_SPLIT_SETTLEMENT_ADAPTERS_JSON',
       'RISK_SPLIT_SETTLEMENT_ADAPTER', 'RISK_SPLIT_SETTLEMENT_ADAPTER_ADDRESS');
@@ -172,11 +175,8 @@ export class AdminMarketsService {
     let refRoundIdStr: string;
     let refUpdatedAtIso: string;
 
-    const rpcUrl = rpcUrlForChain(chainId);
-    if (!rpcUrl) throw new BadRequestException(`No RPC configured for chain ${chainId}.`);
     {
       try {
-        const client = createPublicClient({ transport: http(rpcUrl) });
         const [factoryCode, adapterCode, adapterFeed, headBlock] = await Promise.all([
           client.getBytecode({ address: factoryAddress }),
           client.getBytecode({ address: settlementAdapter }),

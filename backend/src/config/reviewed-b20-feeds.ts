@@ -1,5 +1,5 @@
-import { BASE_MAINNET_CHAIN_ID, TOKEN_FEED_REGISTRY } from '@othelio/shared';
-import { getAddress, isAddress, zeroAddress, type Address } from 'viem';
+import { assetRegistryAbi, BASE_MAINNET_CHAIN_ID, TOKEN_FEED_REGISTRY } from '@othelio/shared';
+import { getAddress, isAddress, parseAbi, zeroAddress, type Address, type PublicClient } from 'viem';
 import type { CoinbaseTokenMetadata } from '../baskets/coinbase-token-metadata.service';
 
 export function reviewedB20FeedAdditions(chainId: number): Map<string, Address> {
@@ -21,12 +21,33 @@ export function reviewedB20FeedAdditions(chainId: number): Map<string, Address> 
   return entries;
 }
 
-export function reviewedB20Additions(chainId: number, metadata: Map<string, CoinbaseTokenMetadata>) {
-  return Array.from(reviewedB20FeedAdditions(chainId)).flatMap(([token, feedAddress]) => {
-    const asset = metadata.get(token);
-    return asset ? [{
-      tokenAddress: getAddress(token), feedAddress, symbol: asset.symbol, name: asset.name,
-      tokenDecimals: asset.decimals, feedDecimals: 8,
-    }] : [];
-  });
+const labelsAbi = parseAbi(['function symbol() view returns (string)', 'function name() view returns (string)']);
+
+export async function describeReviewedB20(
+  chainId: number,
+  tokenAddress: Address,
+  feedAddress: Address,
+  client: PublicClient | null,
+  registry: Address | null,
+  metadata?: CoinbaseTokenMetadata,
+) {
+  const feedDecimals = 8;
+  const asset = client && registry ? await client.readContract({
+    address: registry, abi: assetRegistryAbi, functionName: 'getAsset', args: [BigInt(chainId), tokenAddress],
+  }).catch(() => null) : null;
+  const enabled = asset?.supported && asset.isCoinbaseB20 && asset.priceFeed.toLowerCase() === feedAddress.toLowerCase()
+    && asset.feedDecimals === feedDecimals && asset.tokenDecimals <= 18 ? asset : null;
+  const tokenDecimals = enabled?.tokenDecimals ?? metadata?.decimals;
+  if (tokenDecimals === undefined) return null;
+
+  const [symbol, name] = metadata ? [metadata.symbol, metadata.name] : await Promise.all([
+    client?.readContract({ address: tokenAddress, abi: labelsAbi, functionName: 'symbol' }).catch(() => null),
+    client?.readContract({ address: tokenAddress, abi: labelsAbi, functionName: 'name' }).catch(() => null),
+  ]);
+  return {
+    tokenAddress, feedAddress, feedDecimals,
+    symbol: symbol || tokenAddress, name: name || symbol || tokenAddress,
+    tokenDecimals,
+    registryEnabled: enabled !== null,
+  };
 }

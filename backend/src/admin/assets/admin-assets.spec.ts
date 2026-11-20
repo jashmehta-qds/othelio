@@ -6,6 +6,7 @@ const newToken = '0xb200000000000000000000000000000000000999';
 const newFeed = '0x3333333333333333333333333333333333333333';
 let initialized = true;
 let feedAge = 60n;
+let enabledAddition = false;
 const now = BigInt(Math.floor(Date.now() / 1000));
 vi.mock('viem', async (importOriginal) => {
   const actual = await importOriginal<typeof import('viem')>();
@@ -13,9 +14,13 @@ vi.mock('viem', async (importOriginal) => {
     ...actual,
     createPublicClient: () => ({
       getBlock: async () => ({ number: 1n, timestamp: now }),
-      readContract: async ({ functionName }: { functionName: string }) => {
+      readContract: async ({ functionName, args }: { functionName: string; args?: [bigint, string] }) => {
         switch (functionName) {
-          case 'getAsset': return { supported: false, isCoinbaseB20: false };
+          case 'getAsset': return enabledAddition && args?.[1].toLowerCase() === newToken
+            ? { supported: true, isCoinbaseB20: true, priceFeed: newFeed, tokenDecimals: 8, feedDecimals: 8 }
+            : { supported: false, isCoinbaseB20: false };
+          case 'symbol': return 'NEWc';
+          case 'name': return 'New Stock';
           case 'isB20': return true;
           case 'isB20Initialized': return initialized;
           case 'decimals': return 8;
@@ -37,6 +42,7 @@ describe('AdminAssetsService', () => {
     vi.stubEnv('B20_REVIEWED_FEEDS_JSON', undefined);
     initialized = true;
     feedAge = 60n;
+    enabledAddition = false;
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -135,5 +141,19 @@ describe('AdminAssetsService', () => {
     initialized = true;
     feedAge = 86401n;
     await expect(service.previewEnableAsset(newToken)).rejects.toThrow('fresh');
+  });
+
+  it('keeps enabled additions in market selectors but requires Coinbase metadata to onboard', async () => {
+    vi.stubEnv('B20_REVIEWED_FEEDS_JSON', JSON.stringify({ [newToken]: newFeed }));
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Metadata unavailable')));
+    const service = new AdminAssetsService();
+    expect((await service.getAssets()).data.some((asset) => asset.address.toLowerCase() === newToken)).toBe(false);
+
+    enabledAddition = true;
+    const { data } = await service.getAssets();
+    expect(data.find((asset) => asset.address.toLowerCase() === newToken)).toMatchObject({
+      symbol: 'NEWc', name: 'New Stock', decimals: 8, registryStatus: { isSupported: true },
+    });
+    await expect(service.previewEnableAsset(newToken)).rejects.toThrow('matching Coinbase catalog entry');
   });
 });

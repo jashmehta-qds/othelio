@@ -49,6 +49,8 @@ This runbook guides operators through the deployment and launch verification of 
 2. Sign in with the asset registry owner and open **Assets**. Enter the token address and review the verified token/feed pair before signing the registry transaction.
 3. Check the registry and wait for price indexing. The asset can back markets after its market-specific settlement adapter is configured. Basket trading remains off for new assets until a reviewed route is configured in the quote planner and separately approved by the route registry owner; the panel does not approve routes.
 
+Coinbase metadata is required for initial enablement, not for assets already enabled with a matching reviewed feed. Risk Split settlement verifies the adapter against the feed recorded when the series was created.
+
 ## 5. Indexer Operations & Legacy Risk Split Switch
 
 - `RISK_SPLIT_INDEXING_ENABLED` (default: `true`):

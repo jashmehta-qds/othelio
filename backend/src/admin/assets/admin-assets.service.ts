@@ -13,7 +13,7 @@ import { rpcUrlForChain } from '../../config/network-runtime';
 import { RiskSplitService } from '../../risksplit/risksplit.service';
 import { hasApprovedBasketRoute, resolveBasketRouteRegistry } from '../../dex/basket-route-readiness';
 import { CoinbaseTokenMetadataService } from '../../baskets/coinbase-token-metadata.service';
-import { reviewedB20Additions, reviewedB20FeedAdditions } from '../../config/reviewed-b20-feeds';
+import { describeReviewedB20, reviewedB20FeedAdditions } from '../../config/reviewed-b20-feeds';
 import { adminTokenAbi, readAdminFeed } from '../admin-oracle';
 import { adminContracts } from '../admin-deployment';
 
@@ -101,9 +101,14 @@ export class AdminAssetsService {
     const client = rpcUrl ? createPublicClient({ transport: http(rpcUrl) }) : null;
     const registryAddress = adminContracts(chainId).assetRegistry;
     const routeRegistryAddress = client ? await resolveBasketRouteRegistry(client) : null;
-    const additions = reviewedB20FeedAdditions(chainId).size
-      ? reviewedB20Additions(chainId, await this.coinbase.getAll()) : [];
-    const candidates = [...Object.values(TOKEN_FEED_REGISTRY), ...additions];
+    const reviewedFeeds = reviewedB20FeedAdditions(chainId);
+    const metadata = reviewedFeeds.size ? await this.coinbase.getAll() : null;
+    const additions = await Promise.all(Array.from(reviewedFeeds, ([token, feed]) =>
+      describeReviewedB20(chainId, getAddress(token), feed, client, registryAddress, metadata?.get(token))));
+    const candidates = [
+      ...Object.values(TOKEN_FEED_REGISTRY).map((asset) => ({ ...asset, registryEnabled: null })),
+      ...additions.filter((asset) => asset !== null),
+    ];
 
     const assetItems: AdminAssetItem[] = await Promise.all(candidates.map(async (config) => {
       const normAddr = config.tokenAddress.toLowerCase();
@@ -136,8 +141,8 @@ export class AdminAssetsService {
       }
 
       // Check registry status
-      let isSupportedInRegistry = false;
-      if (client && registryAddress) {
+      let isSupportedInRegistry = config.registryEnabled ?? false;
+      if (config.registryEnabled === null && client && registryAddress) {
         try {
           const res = await client.readContract({
             address: registryAddress,
@@ -200,10 +205,12 @@ export class AdminAssetsService {
     }
     const norm = assetAddress.toLowerCase();
     const reviewed = Object.values(TOKEN_FEED_REGISTRY).find((c) => c.tokenAddress.toLowerCase() === norm);
-    const additions = reviewedB20FeedAdditions(chainId);
-    const config = reviewed ?? (additions.has(norm)
-      ? reviewedB20Additions(chainId, await this.coinbase.getAll()).find((asset) => asset.tokenAddress.toLowerCase() === norm)
-      : undefined);
+    const feed = reviewed ? undefined : reviewedB20FeedAdditions(chainId).get(norm);
+    const metadata = feed ? (await this.coinbase.getAll()).get(norm) : undefined;
+    const config = reviewed ?? (feed && metadata ? {
+      tokenAddress: getAddress(norm), feedAddress: feed, symbol: metadata.symbol,
+      tokenDecimals: metadata.decimals, feedDecimals: 8,
+    } : null);
     if (!config) throw new BadRequestException('This token needs a reviewed B20 feed and a matching Coinbase catalog entry before enablement.');
 
     const registryAddress = this.getRegistryAddress(chainId);
