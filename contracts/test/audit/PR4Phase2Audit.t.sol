@@ -412,6 +412,31 @@ contract PR4Phase2BasketAuditTest is Test {
         });
     }
 
+    function _prepareChain(uint256 legCount, uint256 numerator, uint256 denominator)
+        internal
+        returns (Phase2Token[] memory tokens, AerodromeRoute[] memory routes)
+    {
+        tokens = new Phase2Token[](legCount + 1);
+        routes = new AerodromeRoute[](legCount);
+        for (uint256 i; i < tokens.length; ++i) {
+            tokens[i] = new Phase2Token("Leg", 18);
+            _configureAsset(tokens[i], feed, 18);
+        }
+
+        uint256 amountIn = 1 ether;
+        tokens[0].mint(address(safe), amountIn);
+        for (uint256 i; i < legCount; ++i) {
+            uint256 amountOut = amountIn * numerator / denominator;
+            routeRegistry.setPoolApproval(
+                block.chainid, address(tokens[i]), address(tokens[i + 1]), 1, address(poolFactory), true
+            );
+            tokens[i + 1].mint(address(router), amountOut);
+            router.addLeg(address(tokens[i]), address(tokens[i + 1]), amountOut);
+            routes[i] = _route(address(tokens[i]), address(tokens[i + 1]), amountIn, amountOut);
+            amountIn = amountOut;
+        }
+    }
+
     function test_Fix_StaleFeedDoesNotBlockOwnerInKindExit() public {
         _setupModule();
         Phase2Token token = new Phase2Token("Asset", 18);
@@ -474,26 +499,9 @@ contract PR4Phase2BasketAuditTest is Test {
 
     function test_Fix_SixteenThreePercentLegsRevertOnAggregateCap() public {
         _setupModule();
-        Phase2Token[] memory tokens = new Phase2Token[](17);
         feed = new Phase2Feed(1e8, block.timestamp);
-        for (uint256 i; i < tokens.length; ++i) {
-            tokens[i] = new Phase2Token("Leg", 18);
-            _configureAsset(tokens[i], feed, 18);
-        }
-        uint256 amountIn = 1 ether;
-        tokens[0].mint(address(safe), amountIn);
-        AerodromeRoute[] memory routes = new AerodromeRoute[](16);
-        for (uint256 i; i < routes.length; ++i) {
-            uint256 amountOut = amountIn * 9701 / 10000;
-            routeRegistry.setPoolApproval(
-                block.chainid, address(tokens[i]), address(tokens[i + 1]), 1, address(poolFactory), true
-            );
-            tokens[i + 1].mint(address(router), amountOut);
-            router.addLeg(address(tokens[i]), address(tokens[i + 1]), amountOut);
-            routes[i] = _route(address(tokens[i]), address(tokens[i + 1]), amountIn, amountOut);
-            amountIn = amountOut;
-        }
-        vm.expectRevert(OthelioPortfolioModule.TotalValueLossExceeded.selector);
+        (Phase2Token[] memory tokens, AerodromeRoute[] memory routes) = _prepareChain(16, 9701, 10000);
+        vm.expectRevert(abi.encodeWithSelector(OthelioPortfolioModule.TotalValueLossExceeded.selector, 1_000_000, 615_267));
         module.rebalanceAerodromePortfolio(address(safe), routes, block.timestamp + 1);
 
         assertEq(tokens[0].balanceOf(address(safe)), 1 ether);
@@ -520,27 +528,10 @@ contract PR4Phase2BasketAuditTest is Test {
 
     function test_Fix_RebalanceAtThreePointOnePercentReverts() public {
         _setupModule();
-        Phase2Token[] memory tokens = new Phase2Token[](3);
         feed = new Phase2Feed(1e8, block.timestamp);
-        for (uint256 i; i < tokens.length; ++i) {
-            tokens[i] = new Phase2Token("Leg", 18);
-            _configureAsset(tokens[i], feed, 18);
-        }
-        uint256 amountIn = 1 ether;
-        tokens[0].mint(address(safe), amountIn);
-        AerodromeRoute[] memory routes = new AerodromeRoute[](2);
-        for (uint256 i; i < routes.length; ++i) {
-            uint256 amountOut = amountIn * 984 / 1000;
-            routeRegistry.setPoolApproval(
-                block.chainid, address(tokens[i]), address(tokens[i + 1]), 1, address(poolFactory), true
-            );
-            tokens[i + 1].mint(address(router), amountOut);
-            router.addLeg(address(tokens[i]), address(tokens[i + 1]), amountOut);
-            routes[i] = _route(address(tokens[i]), address(tokens[i + 1]), amountIn, amountOut);
-            amountIn = amountOut;
-        }
+        (Phase2Token[] memory tokens, AerodromeRoute[] memory routes) = _prepareChain(2, 984, 1000);
 
-        vm.expectRevert(OthelioPortfolioModule.TotalValueLossExceeded.selector);
+        vm.expectRevert(abi.encodeWithSelector(OthelioPortfolioModule.TotalValueLossExceeded.selector, 1_000_000, 968_256));
         module.rebalanceAerodromePortfolio(address(safe), routes, block.timestamp + 1);
         assertEq(tokens[0].balanceOf(address(safe)), 1 ether);
         assertEq(tokens[2].balanceOf(address(safe)), 0);
