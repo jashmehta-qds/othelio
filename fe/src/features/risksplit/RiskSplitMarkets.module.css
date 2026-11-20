@@ -1,5 +1,29 @@
 /* Risk Split Markets CSS */
 
+.simpleMarketGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 18px; }
+.simpleMarketCard { border: 1px solid var(--line); background: var(--panel); border-radius: 16px; padding: 22px; }
+.simpleMarketHead { display: flex; align-items: center; gap: 10px; }
+.simpleMarketHead h2 { margin: 0; font-size: 18px; }
+.simpleMarketHead p { margin: 3px 0 0; color: var(--muted-ink); font-size: 12px; }
+.simpleMarketHead > strong { margin-left: auto; text-align: right; font-size: 17px; }
+.simpleMarketHead small { display: block; font-size: 10px; font-weight: 400; color: var(--muted-ink); margin-top: 4px; }
+.simpleMarketMeta { color: var(--muted-ink); font-size: 12px; margin: 20px 0 12px; }
+.simpleMarketSides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.simpleMarketSides a { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); padding: 14px 12px; color: var(--ink); text-decoration: none; }
+.simpleMarketSides a:hover { border-color: var(--accent); }
+.simpleMarketSides a > span { display: flex; justify-content: space-between; font-size: 13px; }
+.simpleMarketSides strong { font-size: 13px; color: var(--accent); }
+.simpleMarketSides small { font-size: 10px; color: var(--muted-ink); }
+.simpleTerms { margin-top: 16px; font-size: 11px; color: var(--muted-ink); line-height: 1.6; }
+.simpleTerms summary { cursor: pointer; }
+.simpleFilter { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-ink); }
+.simpleFilter select { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-width: 180px; }
+.scenarioPresets { display: flex; gap: 8px; margin: 16px 0; }
+.scenarioPresets button { flex: 1; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted-ink); font-size: 11px; cursor: pointer; }
+.scenarioPresets strong { display: block; margin-top: 5px; color: var(--ink); font-size: 14px; }
+.scenarioPresets button[aria-pressed="true"] { border-color: var(--accent); }
+@media (max-width: 600px) { .simpleFilter { width: 100%; } }
+
 .page {
   max-width: 1320px;
   margin: 0 auto;
@@ -2132,4 +2156,13 @@
     transition: none !important;
     transform: none !important;
   }
+}
+/* Keep the explanation before the trade on narrow screens as well. */
+@media (max-width: 800px) {
+  .marketViewTabs { order: 1; }
+  .marketTabPanel { order: 2; }
+  .ticketColumn { order: 3; }
+  .marketTabPanel .claimChoiceSection { display: block; }
+  .mobileClaimPick { display: none; }
+  .filters { flex-wrap: wrap; }
 }

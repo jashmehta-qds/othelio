@@ -39,7 +39,7 @@ function formatRelativeExpiry(timestamp: number, nowSeconds: number) {
   return "Expires soon";
 }
 
-export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string }) {
+export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected" }: { seriesAddress: string; initialClaim?: "protected" | "upside" }) {
   const {
     activeSeries,
     underlyingDecimals,
@@ -51,7 +51,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
 
   const { assets } = useRiskSplitMarkets();
 
-  const [selectedClaim, setSelectedClaim] = useState<"protected" | "upside">("protected");
+  const [selectedClaim, setSelectedClaim] = useState<"protected" | "upside">(initialClaim);
   const [marketTab, setMarketTab] = useState<"overview" | "positions">("overview");
   const [walletTab, setWalletTab] = useState<"trade" | "manage">("trade");
   const [manageTab, setManageTab] = useState<"deposit" | "claim">("deposit");
@@ -84,7 +84,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
             <div className={styles.skeletonIdentity}><span className={styles.skeletonHeading} /><span className={`${styles.skeletonText} ${styles.detailSub}`} /></div>
           </div>
           <div className={styles.detailMeta}>
-            <div className={styles.detailExpiry}><span>Expiry fixing</span><strong><span className={styles.skeletonDate} /></strong></div>
+            <div className={styles.detailExpiry}><span>Ends</span><strong><span className={styles.skeletonDate} /></strong></div>
           </div>
         </header>
         <div className={styles.workGrid}>
@@ -92,7 +92,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
             <div className={styles.marketViewTabs} aria-hidden="true"><span className={styles.marketViewTabActive}>Overview</span><span>Positions</span></div>
             <div className={styles.marketTabPanel}>
               <section className={styles.claimChoiceSection}>
-                <div className={styles.claimChoiceHead}><h2>Choose a side</h2><p>Two claims on one stock token</p></div>
+                <div className={styles.claimChoiceHead}><h2>1. Choose your side</h2><p>Two parts of the same stock</p></div>
                 <div className={styles.claimSides}>
                   {(["Protected", "Upside"] as const).map((claim) => <div key={claim} className={`${styles.claimSideCard} ${styles.skeletonClaim}`}><span className={styles.claimSideName}>{claim}</span><span className={styles.skeletonText} /><div className={styles.claimSideBottom}><span className={styles.claimSideQuote}>Buy from<b><span className={styles.numberSkeleton} /></b></span><span className={styles.claimSideQuote}>Sell at<b><span className={styles.numberSkeleton} /></b></span></div></div>)}
                 </div>
@@ -261,36 +261,38 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
               upsideError={upsideBook.isError}
               stockSymbol={symbol}
             />
-            <OrderBook
-              claimType={selectedClaim}
-              bids={activeBook.bids}
-              asks={activeBook.asks}
-              recentTrades={activeBook.recentTrades}
-              spreadUsd={activeBook.spreadUsd}
-              selectedOrderHash={activeSelectedOrder?.orderHash}
-              onSelectOrder={handleSelectBookOrder}
-              isLoading={activeBook.isLoading}
-              isError={activeBook.isError}
-              onRetry={() => void activeBook.refetch()}
-              sequence={activeBook.sequence}
+            <RiskSplitScenario
+              scenarioPrice={scenarioPrice}
+              onChangeScenarioPrice={setChosenScenarioPrice}
+              selectedClaim={selectedClaim}
+              floorE8={floorE8}
+              capE8={capE8}
+              stockSymbol={symbol}
+              stockName={name}
+              referencePrice={stockPriceUsd}
+              maxAxis={Math.max(1, Math.ceil(stockPriceUsd * 2), Math.ceil(cap * 2.2))}
             />
+            <details className={styles.disclosureItem}>
+              <summary>Order book · choose a specific offer</summary>
+              <OrderBook
+                claimType={selectedClaim}
+                bids={activeBook.bids}
+                asks={activeBook.asks}
+                recentTrades={activeBook.recentTrades}
+                spreadUsd={activeBook.spreadUsd}
+                selectedOrderHash={activeSelectedOrder?.orderHash}
+                onSelectOrder={handleSelectBookOrder}
+                isLoading={activeBook.isLoading}
+                isError={activeBook.isError}
+                onRetry={() => void activeBook.refetch()}
+                sequence={activeBook.sequence}
+              />
+            </details>
           </div>
           <div id="market-positions-panel" role="tabpanel" aria-labelledby="market-positions-tab" hidden={marketTab !== "positions"} className={styles.marketTabPanel}>
             <RiskSplitActionPanel seriesAddress={seriesAddress} underlyingSymbol={symbol} view="positions" />
             <MyOrders seriesAddress={seriesAddress} claimDecimals={unitsCompatible ? underlyingDecimals : null} />
           </div>
-
-          <RiskSplitScenario
-            scenarioPrice={scenarioPrice}
-            onChangeScenarioPrice={setChosenScenarioPrice}
-            selectedClaim={selectedClaim}
-            floorE8={floorE8}
-            capE8={capE8}
-            stockSymbol={symbol}
-            stockName={name}
-            maxAxis={Math.max(1600, Math.ceil(stockPriceUsd * 2.5), Math.ceil(cap * 2.2))}
-          />
-
           {/* Disclosures: Payoff & Terms, Contract Details */}
           <section className={styles.disclosureSection} aria-label="Technical details and terms">
             <details className={styles.disclosureItem}>
@@ -341,7 +343,7 @@ export function RiskSplitMarketDetail({ seriesAddress }: { seriesAddress: string
                   <button type="button" aria-pressed={selectedClaim === "protected"} className={selectedClaim === "protected" ? styles.mobileClaimActive : ""} onClick={() => handleSelectClaim("protected")}>Protected</button>
                   <button type="button" aria-pressed={selectedClaim === "upside"} className={selectedClaim === "upside" ? styles.mobileClaimActive : ""} onClick={() => handleSelectClaim("upside")}>Upside</button>
                 </div>
-                <p>{selectedClaim === "protected" ? "More stock value at lower prices. Loss is still possible." : "More stock value as the price rises."}</p>
+                <p>{selectedClaim === "protected" ? "First share at lower stock prices. You can still lose money." : "More value as the stock rises. Can finish at zero."}</p>
               </div>
               <OrderTicket
                 seriesAddress={seriesAddress}

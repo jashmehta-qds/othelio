@@ -29,7 +29,7 @@ function renderQuote(
   }
   if (isError) return "—";
   if (!level) return fallback;
-  return level.priceUsd;
+  return `${level.priceUsd} USDC`;
 }
 
 export function RiskSplitClaimCards({
@@ -51,8 +51,8 @@ export function RiskSplitClaimCards({
   return (
     <section className={styles.claimChoiceSection} aria-labelledby="claim-choice-heading">
       <div className={styles.claimChoiceHead}>
-        <h2 id="claim-choice-heading">Choose a side</h2>
-        <p>Two claims on one {stockSymbol} token</p>
+        <h2 id="claim-choice-heading">1. Choose your side</h2>
+        <p>Which part of {stockSymbol} do you want?</p>
       </div>
 
       <div className={styles.claimSides} role="group" aria-label="Choose claim">
@@ -68,12 +68,12 @@ export function RiskSplitClaimCards({
           </div>
 
           <p className={styles.claimSideDesc}>
-            More stock value at lower prices. Still carries loss risk.
+            First share at lower stock prices. Give up some growth, not all risk.
           </p>
 
           <div className={styles.claimSideBottom}>
             <span className={styles.claimSideQuote}>
-              Buy from{" "}
+              Buy for{" "}
               <b>
                 {renderQuote(
                   protectedBestAsk,
@@ -84,7 +84,7 @@ export function RiskSplitClaimCards({
               </b>
             </span>
             <span className={styles.claimSideQuote}>
-              Sell at{" "}
+              Sell for{" "}
               <b>
                 {renderQuote(
                   protectedBestBid,
@@ -109,12 +109,12 @@ export function RiskSplitClaimCards({
           </div>
 
           <p className={styles.claimSideDesc}>
-            More stock value as the price rises.
+            More value as the stock rises. Can finish with nothing.
           </p>
 
           <div className={styles.claimSideBottom}>
             <span className={styles.claimSideQuote}>
-              Buy from{" "}
+              Buy for{" "}
               <b>
                 {renderQuote(
                   upsideBestAsk,
@@ -125,7 +125,7 @@ export function RiskSplitClaimCards({
               </b>
             </span>
             <span className={styles.claimSideQuote}>
-              Sell at{" "}
+              Sell for{" "}
               <b>
                 {renderQuote(
                   upsideBestBid,

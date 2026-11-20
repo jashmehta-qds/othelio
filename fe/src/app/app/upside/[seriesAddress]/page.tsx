@@ -6,5 +6,5 @@ export default async function UpsideSeriesPage({
   params: Promise<{ seriesAddress: string }>;
 }) {
   const { seriesAddress } = await params;
-  return <UpsideMarketDetail seriesAddress={seriesAddress} />;
+  return <UpsideMarketDetail key={seriesAddress} seriesAddress={seriesAddress} />;
 }

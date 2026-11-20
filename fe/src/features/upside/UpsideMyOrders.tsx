@@ -35,7 +35,6 @@ export function UpsideMyOrders({
 
   const {
     data: positionsData,
-    isLoading: isLoadingPositions,
     refetch: refetchPositions,
   } = useUpsideUserPositions(chainId, address);
 
@@ -88,9 +87,9 @@ export function UpsideMyOrders({
       // 3. Invalidate queries
       queryClient.invalidateQueries({ queryKey: ['upside-user-orders'] });
       queryClient.invalidateQueries({ queryKey: ['upside-orderbook'] });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Cancel order failed:', err);
-      alert(`Cancel order failed: ${err?.message || err}`);
+      alert(`Cancel order failed: ${err instanceof Error ? err.message : 'Please try again.'}`);
     } finally {
       setCancellingHash(null);
     }
@@ -142,8 +141,8 @@ export function UpsideMyOrders({
                   return (
                     <tr key={pos.seriesAddress}>
                       <td className="font-mono text-zinc-300">{shortSeries}</td>
-                      <td className="font-semibold text-emerald-400">{upFormatted} UP</td>
-                      <td className="font-semibold text-amber-400">{resFormatted} RES</td>
+                      <td className="font-semibold text-emerald-400">{upFormatted} Upside</td>
+                      <td className="font-semibold text-amber-400">{resFormatted} Remaining value</td>
                       <td className="text-zinc-400">{mintedFormatted} tokens</td>
                       <td>
                         <span
@@ -206,7 +205,7 @@ export function UpsideMyOrders({
                           {ord.side}
                         </span>
                       </td>
-                      <td className="font-semibold text-zinc-300">{ord.claimType}</td>
+                      <td className="font-semibold text-zinc-300">{ord.claimType === 'UPSIDE' ? 'Upside' : 'Remaining value'}</td>
                       <td className="font-bold text-white">${ord.priceUsd}</td>
                       <td>{remainingClaims}</td>
                       <td className="text-zinc-400">{expiryDate}</td>

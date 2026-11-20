@@ -26,7 +26,6 @@ export function UpsideVaultPanel({
   underlyingAddress,
   symbol,
   isSettled,
-  settledPriceFormatted,
   onSuccess,
 }: UpsideVaultPanelProps) {
   const [activeTab, setActiveTab] = useState<'MINT' | 'COMBINE' | 'REDEEM'>('MINT');
@@ -82,8 +81,8 @@ export function UpsideVaultPanel({
         setStatusMessage(null);
         if (onSuccess) onSuccess();
       }, 1500);
-    } catch (err: any) {
-      alert(`Mint failed: ${err?.message || err}`);
+    } catch (err: unknown) {
+      alert(`Mint failed: ${err instanceof Error ? err.message : 'Please try again.'}`);
       setStatusMessage(null);
     } finally {
       setIsPending(false);
@@ -114,8 +113,8 @@ export function UpsideVaultPanel({
         setStatusMessage(null);
         if (onSuccess) onSuccess();
       }, 1500);
-    } catch (err: any) {
-      alert(`Combine failed: ${err?.message || err}`);
+    } catch (err: unknown) {
+      alert(`Combine failed: ${err instanceof Error ? err.message : 'Please try again.'}`);
       setStatusMessage(null);
     } finally {
       setIsPending(false);
@@ -146,8 +145,8 @@ export function UpsideVaultPanel({
         setStatusMessage(null);
         if (onSuccess) onSuccess();
       }, 1500);
-    } catch (err: any) {
-      alert(`Redemption failed: ${err?.message || err}`);
+    } catch (err: unknown) {
+      alert(`Redemption failed: ${err instanceof Error ? err.message : 'Please try again.'}`);
       setStatusMessage(null);
     } finally {
       setIsPending(false);
@@ -158,9 +157,9 @@ export function UpsideVaultPanel({
     <div className={styles.vaultPanel}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-base font-bold text-white">Stockholder Vault Actions</h2>
+          <h2 className="text-base font-bold text-white">Manage your stock</h2>
           <span className="text-xs font-mono text-zinc-400">
-            Deposit underlying to mint claim pairs, combine to exit, or redeem settled claims.
+            Turn stock into both claims, combine both back into stock, or collect a settled payout.
           </span>
         </div>
 
@@ -171,14 +170,14 @@ export function UpsideVaultPanel({
             onClick={() => setActiveTab('MINT')}
             className={`${styles.bookTab} ${activeTab === 'MINT' ? styles.bookTabActive : ''}`}
           >
-            Mint Pair
+            Create both claims
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('COMBINE')}
             className={`${styles.bookTab} ${activeTab === 'COMBINE' ? styles.bookTabActive : ''}`}
           >
-            Combine & Burn
+            Get stock back
           </button>
           {isSettled && (
             <button
@@ -186,7 +185,7 @@ export function UpsideVaultPanel({
               onClick={() => setActiveTab('REDEEM')}
               className={`${styles.bookTab} ${activeTab === 'REDEEM' ? styles.bookTabActive : ''}`}
             >
-              Post-Settlement Redeem
+              Collect payout
             </button>
           )}
         </div>
@@ -197,10 +196,10 @@ export function UpsideVaultPanel({
           <label>
             <span>
               {activeTab === 'MINT'
-                ? `Collateral to Deposit (${symbol})`
+                ? `Stock to deposit (${symbol})`
                 : activeTab === 'COMBINE'
-                ? 'Claim Pairs to Burn (UP + RES)'
-                : 'Claims to Redeem'}
+                ? 'Pairs to combine (Upside + Remaining value)'
+                : 'Claims to redeem'}
             </span>
             <span>Amount</span>
           </label>
@@ -234,7 +233,7 @@ export function UpsideVaultPanel({
             disabled={isPending}
             className={styles.actionButton}
           >
-            {isPending ? 'Processing...' : `Deposit ${amount} ${symbol} → Mint 1 UP + 1 RES`}
+            {isPending ? 'Processing...' : `Deposit ${amount} ${symbol} → Create ${amount} of each claim`}
           </button>
         ) : activeTab === 'COMBINE' ? (
           <button
@@ -243,7 +242,7 @@ export function UpsideVaultPanel({
             disabled={isPending}
             className={styles.actionButton}
           >
-            {isPending ? 'Processing...' : `Burn ${amount} UP + ${amount} RES → Retrieve ${symbol}`}
+            {isPending ? 'Processing...' : `Combine ${amount} pairs → Get ${symbol} back`}
           </button>
         ) : (
           <div className="grid grid-cols-2 gap-3">
@@ -253,7 +252,7 @@ export function UpsideVaultPanel({
               disabled={isPending}
               className={styles.actionButton}
             >
-              Redeem UP Claims
+              Collect Upside
             </button>
             <button
               type="button"
@@ -261,7 +260,7 @@ export function UpsideVaultPanel({
               disabled={isPending}
               className={styles.actionButton}
             >
-              Redeem RES Claims
+              Collect remaining value
             </button>
           </div>
         )}

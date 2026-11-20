@@ -16,6 +16,7 @@ import { parseUnits, formatUnits, getAddress, parseAbi, maxUint256 } from "viem"
 import { BookLevel } from "./useRiskSplitBook";
 import { computeSingleOrderTrade, formatSignedDifference } from "./tradeTicketLogic";
 import styles from "./RiskSplitMarkets.module.css";
+import { WalletConnectModal } from "@/components/WalletConnectModal";
 
 const ERC20_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
@@ -365,6 +366,7 @@ export function OrderTicket({
     }
   };
 
+  const [showConnect, setShowConnect] = useState(false);
   const isBusy = isSigning || isTxPending || isWaitingReceipt;
 
   return (
@@ -390,13 +392,13 @@ export function OrderTicket({
       </div>
 
       <h2 className={styles.ticketTitle}>
-        {claimLabel}
+        3. {isBuy ? "Buy" : "Sell"} {claimLabel}
       </h2>
       <div className={styles.ticketModeRow}>
         <span>Order type</span>
         <div className={styles.ticketModeToggle} role="group" aria-label="Order type">
-          <button type="button" className={!isLimitMode ? styles.ticketModeActive : ""} aria-pressed={!isLimitMode} onClick={() => { setIsLimitMode(false); setErrorMessage(null); }}>Market</button>
-          <button type="button" className={isLimitMode ? styles.ticketModeActive : ""} aria-pressed={isLimitMode} onClick={() => { setIsLimitMode(true); setErrorMessage(null); }}>Limit</button>
+          <button type="button" className={!isLimitMode ? styles.ticketModeActive : ""} aria-pressed={!isLimitMode} onClick={() => { setIsLimitMode(false); setErrorMessage(null); }}>Trade now</button>
+          <button type="button" className={isLimitMode ? styles.ticketModeActive : ""} aria-pressed={isLimitMode} onClick={() => { setIsLimitMode(true); setErrorMessage(null); }}>Set my price</button>
         </div>
       </div>
       {/* Available Balance in Wallet */}
@@ -407,32 +409,10 @@ export function OrderTicket({
         </b>
       </div>
 
-      {/* Selected Order Info (in fill mode) */}
-      {!isLimitMode && (
-        <div className={styles.selectedOrderBanner}>
-          {selectedOrder ? (
-            <div className={styles.selectedOrderContent}>
-              <span>
-                <b>{selectedOrder.amountClaim} claims</b> at <b>${selectedOrder.priceUsd}</b>
-              </span>
-              <span className={styles.selectedOrderTip}>Fills one order. Select another in the book.</span>
-            </div>
-          ) : isBookLoading ? (
-            <div className={styles.ticketOrderSkeleton} role="status" aria-label="Loading best available price">
-              <span className={styles.numberSkeleton} /><span className={styles.numberSkeletonShort} />
-            </div>
-          ) : (
-            <div className={styles.noOrderBanner}>
-              <span>{isBookError ? "Book offline. Market orders unavailable." : `No ${isBuy ? "offers" : "bids"}. Try a limit order.`}</span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Amount Input */}
       <div className={styles.ticketField}>
         <div className={styles.ticketFieldHeader}>
-          <label htmlFor="ticket-amount">Amount</label>
+          <label htmlFor="ticket-amount">How many claims?</label>
           <button type="button" onClick={handleMax} className={styles.maxLink}>
             Max
           </button>
@@ -484,6 +464,7 @@ export function OrderTicket({
         </div>
       )}
 
+      {!isLimitMode && !selectedOrder && <p className={styles.limitDisclaimer} role="status">{isBookLoading ? "Finding available prices…" : isBookError ? "Prices unavailable. Try again shortly." : `No ${isBuy ? "offers" : "bids"} yet. Choose Set my price to leave an order.`}</p>}
       {/* Financial Summary */}
       <div className={styles.ticketSummary}>
         <div className={styles.summaryRow}>
@@ -495,7 +476,7 @@ export function OrderTicket({
           <b>{totalDisplay}</b>
         </div>
         <div className={`${styles.summaryRow} ${styles.summaryHighlight}`}>
-          <span>Value at ${scenarioPrice.toFixed(0)}</span>
+          <span>Value if stock ends at ${scenarioPrice.toFixed(2)}</span>
           <b>{scenarioDisplay}</b>
         </div>
         <div className={styles.summaryRow}>
@@ -525,7 +506,7 @@ export function OrderTicket({
       {/* Primary Action Button */}
       <div className={styles.ticketActionArea}>
         {!isConnected ? (
-          <div className={styles.disconnectedNote}>Connect wallet to trade</div>
+          <button type="button" className={`ui-button ${styles.primaryActionBtn}`} onClick={() => setShowConnect(true)}>Connect wallet</button>
         ) : needsApproval ? (
           <button
             type="button"
@@ -574,6 +555,7 @@ export function OrderTicket({
         )}
       </div>
 
+      <WalletConnectModal isOpen={showConnect} onClose={() => setShowConnect(false)} />
     </aside>
   );
 }

@@ -1,246 +1,336 @@
-'use client';
+"use client";
 
-import React, { useState, useMemo } from 'react';
-import Link from 'next/link';
-import styles from './UpsideMarkets.module.css';
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import StockLogo from "@/components/StockLogo";
+import styles from "./UpsideMarkets.module.css";
 import {
   useUpsideAssets,
   useUpsideRounds,
   useUpsideMarkets,
-} from './useUpside';
-import { UpsideChart } from './UpsideChart';
-import { UpsideOrderBook } from './UpsideOrderBook';
-import { UpsideOrderTicket } from './UpsideOrderTicket';
-import { UpsideVaultPanel } from './UpsideVaultPanel';
-import { UpsideMyOrders } from './UpsideMyOrders';
-import { useChainId } from 'wagmi';
+} from "./useUpside";
+import { UpsideChart } from "./UpsideChart";
+import { UpsideOrderBook } from "./UpsideOrderBook";
+import { UpsideOrderTicket } from "./UpsideOrderTicket";
+import { UpsideVaultPanel } from "./UpsideVaultPanel";
+import { UpsideMyOrders } from "./UpsideMyOrders";
+import { upsideScenario } from "./upsideScenario";
+import { useChainId } from "wagmi";
 
-interface UpsideMarketDetailProps {
+export function UpsideMarketDetail({
+  seriesAddress,
+}: {
   seriesAddress: string;
-}
-
-const TARGET_PRESETS = [
-  { label: 'Starting Price', desc: 'Reference baseline' },
-  { label: 'Reach', desc: '+0.5σ Target' },
-  { label: 'Strong Move', desc: '+1.0σ Target' },
-  { label: 'Long Shot', desc: '+2.0σ Target' },
-];
-
-export function UpsideMarketDetail({ seriesAddress: initialSeriesAddress }: UpsideMarketDetailProps) {
+}) {
   const chainId = useChainId();
-  const [selectedSeriesAddress, setSelectedSeriesAddress] = useState<string>(initialSeriesAddress);
-
-  const { data: assetsData, isLoading: isLoadingAssets } = useUpsideAssets(chainId);
-  const { data: roundsData, isLoading: isLoadingRounds } = useUpsideRounds(chainId);
-  const { data: marketsData, isLoading: isLoadingMarkets, refetch: refetchMarkets } = useUpsideMarkets(chainId);
-
-  const assets = assetsData?.assets || [];
-  const rounds = roundsData?.data || [];
-  const markets = marketsData?.data || [];
-
-  // Active market
-  const activeMarket = useMemo(() => {
-    return (
-      markets.find(
-        (m) => m.seriesAddress.toLowerCase() === selectedSeriesAddress.toLowerCase(),
-      ) ||
-      markets.find(
-        (m) => m.seriesAddress.toLowerCase() === initialSeriesAddress.toLowerCase(),
-      )
-    );
-  }, [markets, selectedSeriesAddress, initialSeriesAddress]);
-
-  // Round for active market
-  const activeRound = useMemo(() => {
-    if (!activeMarket) return null;
-    return rounds.find((r) => r.roundId === activeMarket.roundId) || null;
-  }, [rounds, activeMarket]);
-
-  // All sibling markets for this round (targets)
-  const roundMarkets = useMemo(() => {
-    if (!activeRound) return [];
-    return markets
-      .filter((m) => m.roundId === activeRound.roundId)
-      .sort((a, b) => Number(a.strikePrice) - Number(b.strikePrice));
-  }, [markets, activeRound]);
-
-  // Underlying asset
-  const underlyingAsset = useMemo(() => {
-    if (!activeRound) return null;
-    return (
-      assets.find(
-        (a: any) => a.tokenAddress.toLowerCase() === activeRound.underlyingAddress.toLowerCase(),
-      ) || null
-    );
-  }, [assets, activeRound]);
-
-  const symbol = underlyingAsset?.symbol || 'STOCK';
-  const name = underlyingAsset?.name || 'Tokenized Stock';
-  const currentPrice = underlyingAsset?.currentPriceUsd || (activeRound ? Number(activeRound.referencePriceFormatted) : 0);
-
-  if (isLoadingMarkets || isLoadingRounds || isLoadingAssets) {
-    return (
-      <main className={`app-page-frame ${styles.page}`}>
-        <Link href="/app/upside" className={styles.backLink}>
-          ← Back to Upside Markets
-        </Link>
-        <div className="py-20 text-center font-mono text-zinc-500 animate-pulse">
-          Loading market details from Base...
-        </div>
-      </main>
-    );
-  }
-
-  if (!activeMarket) {
-    return (
-      <main className={`app-page-frame ${styles.page}`}>
-        <Link href="/app/upside" className={styles.backLink}>
-          ← Back to Upside Markets
-        </Link>
-        <div className="py-20 text-center border border-dashed border-[#292a27] rounded-xl p-8 space-y-4">
-          <h2 className="text-xl font-bold text-white">Market Not Found</h2>
-          <p className="text-zinc-400 text-sm max-w-md mx-auto">
-            The requested Upside series ({initialSeriesAddress.slice(0, 10)}...) is not recognized on Base chain {chainId}.
-          </p>
-          <Link
-            href="/app/upside"
-            className="inline-block px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold rounded-lg transition-colors"
-          >
-            Explore All Markets
-          </Link>
-        </div>
-      </main>
-    );
-  }
-
-  const strikeNum = Number(activeMarket.strikePriceFormatted);
-  const activeIndex = roundMarkets.findIndex(
-    (m) => m.seriesAddress.toLowerCase() === activeMarket.seriesAddress.toLowerCase(),
+  const [nowSeconds, setNowSeconds] = useState(() =>
+    Math.floor(Date.now() / 1000),
   );
-  const targetLabel =
-    activeIndex >= 0 && activeIndex < TARGET_PRESETS.length
-      ? TARGET_PRESETS[activeIndex].label
-      : `Target ${activeIndex + 1}`;
+  useEffect(() => {
+    const timer = setInterval(
+      () => setNowSeconds(Math.floor(Date.now() / 1000)),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, []);
+  const [selectedSeriesAddress, setSelectedSeriesAddress] =
+    useState(seriesAddress);
+  const [claimType, setClaimType] = useState<"UPSIDE" | "RESIDUAL">("UPSIDE");
+  const [chosenPrice, setChosenPrice] = useState<number | null>(null);
+  const assetsQuery = useUpsideAssets(chainId);
+  const roundsQuery = useUpsideRounds(chainId);
+  const marketsQuery = useUpsideMarkets(chainId);
+  const markets = marketsQuery.data?.data ?? [];
+  const activeMarket = markets.find(
+    (m) =>
+      m.seriesAddress.toLowerCase() === selectedSeriesAddress.toLowerCase(),
+  );
+  const activeRound = roundsQuery.data?.data.find(
+    (r) => r.roundId === activeMarket?.roundId,
+  );
+  const asset = assetsQuery.data?.assets.find(
+    (a) =>
+      a.tokenAddress.toLowerCase() ===
+      activeMarket?.underlyingAddress.toLowerCase(),
+  );
+  const symbol = asset?.symbol ?? "Stock";
+  const name = asset?.name ?? "Tokenized stock";
+  const currentPrice =
+    asset?.currentPriceUsd ?? Number(activeRound?.referencePriceFormatted ?? 0);
+  const roundMarkets = markets
+    .filter((m) => m.roundId === activeMarket?.roundId)
+    .sort(
+      (a, b) => Number(a.strikePriceFormatted) - Number(b.strikePriceFormatted),
+    );
+  const loading =
+    assetsQuery.isLoading || roundsQuery.isLoading || marketsQuery.isLoading;
+  const error =
+    assetsQuery.isError || roundsQuery.isError || marketsQuery.isError;
+  const back = (
+    <Link href="/app/upside" className={styles.backLink}>
+      ← All stocks
+    </Link>
+  );
 
-  const expiryDate = new Date(activeMarket.expiryTimestamp * 1000);
-  const expiryFormatted = expiryDate.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  if (loading || error || !activeMarket)
+    return (
+      <main className={`app-page-frame ${styles.page}`}>
+        {back}
+        <div className={styles.emptyStateText}>
+          <h1>
+            {loading
+              ? "Loading market…"
+              : error
+                ? "Market unavailable"
+                : "Market not found"}
+          </h1>
+          <p>
+            {loading
+              ? "Getting prices and targets."
+              : error
+                ? "We couldn’t load this market. Please try again."
+                : "Choose another stock to continue."}
+          </p>
+          {error && (
+            <button
+              type="button"
+              className={styles.assetChip}
+              onClick={() => {
+                void assetsQuery.refetch();
+                void roundsQuery.refetch();
+                void marketsQuery.refetch();
+              }}
+            >
+              Try again
+            </button>
+          )}
+        </div>
+      </main>
+    );
+
+  const strike = Number(activeMarket.strikePriceFormatted);
+  const scenarioPrice =
+    activeMarket.isSettled && activeMarket.settledPriceFormatted !== null
+      ? Number(activeMarket.settledPriceFormatted)
+      : (chosenPrice ?? Math.round((currentPrice || strike) * 100) / 100);
+  const payout = upsideScenario(strike, scenarioPrice);
+  const selectedPayout =
+    claimType === "UPSIDE" ? payout.upside : payout.residual;
+  const expired =
+    activeMarket.isSettled || activeMarket.expiryTimestamp <= nowSeconds;
+  const expiry = new Date(activeMarket.expiryTimestamp * 1000).toLocaleString(
+    "en-US",
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "UTC",
+      timeZoneName: "short",
+    },
+  );
 
   return (
     <main className={`app-page-frame ${styles.page}`}>
-      <Link href="/app/upside" className={styles.backLink}>
-        ← Back to Upside Markets
-      </Link>
-
-      {/* Header */}
+      {back}
       <header className={styles.detailHead}>
-        <div className={styles.detailIdentity}>
-          <h1>{symbol} Upside</h1>
-          <p>
-            {name} · Continuous upside vs residual value conservation
-          </p>
-          <div className={styles.detailPriceBlock}>
-            <span className={styles.detailPrice}>${currentPrice.toFixed(2)}</span>
-            <span className="text-xs font-mono text-zinc-500">Spot Oracle Observation</span>
+        <div className={styles.stockHeading}>
+          <StockLogo
+            symbol={symbol}
+            address={activeMarket.underlyingAddress}
+            size={46}
+          />
+          <div className={styles.detailIdentity}>
+            <h1>{symbol} Upside</h1>
+            <p>
+              {name} · Stock price ${Number(currentPrice).toFixed(2)}
+            </p>
           </div>
         </div>
-
-        <div className={styles.detailMeta}>
-          <div className={styles.expiryBadge}>
-            Expires {expiryFormatted}
-          </div>
-          {activeMarket.isSettled ? (
-            <div className="px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 text-xs font-semibold">
-              Settled at ${activeMarket.settledPriceFormatted}
-            </div>
-          ) : (
-            <div className="px-3 py-1.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800 text-xs font-semibold">
-              Active Trading
-            </div>
-          )}
+        <div className={styles.expiryBadge}>
+          {activeMarket.isSettled ? "Settled" : expired ? "Ended" : "Ends"}{" "}
+          {expiry}
         </div>
       </header>
-
-      {/* 4 Targets Chip Selector */}
-      <section className={styles.targetsContainer}>
-        <div className={styles.targetsTitle}>Select Target Strike:</div>
+      <section
+        className={styles.targetsContainer}
+        aria-label="Choose target price"
+      >
+        <h2 className={styles.sectionTitle}>1. Pick a target</h2>
+        <p className={styles.helperText}>
+          Upside receives only the stock’s value above this price at the end.
+        </p>
         <div className={styles.targetsGrid}>
-          {roundMarkets.map((m, idx) => {
-            const preset = TARGET_PRESETS[idx] || {
-              label: `Target ${idx + 1}`,
-              desc: 'Custom Strike',
-            };
-            const isCurrent = m.seriesAddress.toLowerCase() === activeMarket.seriesAddress.toLowerCase();
-
-            return (
-              <button
-                key={m.seriesAddress}
-                type="button"
-                onClick={() => setSelectedSeriesAddress(m.seriesAddress)}
-                className={`${styles.targetChip} ${isCurrent ? styles.targetChipActive : ''}`}
-              >
-                <div className={styles.targetChipLabel}>{preset.label}</div>
-                <div className={styles.targetChipStrike}>${m.strikePriceFormatted}</div>
-                <div className={styles.targetChipDesc}>{preset.desc}</div>
-              </button>
-            );
-          })}
+          {roundMarkets.map((m) => (
+            <button
+              key={m.seriesAddress}
+              type="button"
+              aria-pressed={m.seriesAddress === activeMarket.seriesAddress}
+              onClick={() => setSelectedSeriesAddress(m.seriesAddress)}
+              className={`${styles.targetChip} ${m.seriesAddress === activeMarket.seriesAddress ? styles.targetChipActive : ""}`}
+            >
+              <div className={styles.targetChipLabel}>Above</div>
+              <div className={styles.targetChipStrike}>
+                ${Number(m.strikePriceFormatted).toFixed(2)}
+              </div>
+            </button>
+          ))}
         </div>
       </section>
-
-      {/* Work Grid: 2 Columns */}
       <div className={styles.workGrid}>
-        {/* Left Column: Chart, OrderBook, My Orders */}
         <div>
-          <UpsideChart
-            chainId={chainId}
-            assetAddress={activeRound?.underlyingAddress || activeMarket.underlyingAddress}
-            symbol={symbol}
-            currentPrice={currentPrice}
-            strikePrice={strikeNum}
-          />
-
-          <UpsideOrderBook
-            chainId={chainId}
-            seriesAddress={activeMarket.seriesAddress}
-            strikeFormatted={activeMarket.strikePriceFormatted}
-          />
-
+          <section className={styles.choicePanel}>
+            <h2 className={styles.sectionTitle}>2. Choose your side</h2>
+            <div
+              className={styles.sideChoices}
+              role="group"
+              aria-label="Choose your side"
+            >
+              <button
+                type="button"
+                aria-pressed={claimType === "UPSIDE"}
+                onClick={() => setClaimType("UPSIDE")}
+              >
+                <strong>Upside ↗</strong>
+                <span>The growth above ${strike.toFixed(2)}.</span>
+                <small>At or below the target: zero.</small>
+              </button>
+              <button
+                type="button"
+                aria-pressed={claimType === "RESIDUAL"}
+                onClick={() => setClaimType("RESIDUAL")}
+              >
+                <strong>Remaining value</strong>
+                <span>The stock’s value up to ${strike.toFixed(2)}.</span>
+                <small>Still loses value if the stock falls.</small>
+              </button>
+            </div>
+            <div className={styles.scenarioBox}>
+              <h3>
+                {activeMarket.isSettled
+                  ? "Payout at the settled stock price"
+                  : "What could 1 claim be worth?"}
+              </h3>
+              {!activeMarket.isSettled && (
+                <div
+                  className={styles.scenarioPresets}
+                  role="group"
+                  aria-label="Example ending prices"
+                >
+                  {[
+                    { label: "Below target", price: strike * 0.8 },
+                    { label: "At target", price: strike },
+                    { label: "Above target", price: strike * 1.2 },
+                  ].map(({ label, price }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      aria-pressed={
+                        scenarioPrice === Math.round(price * 100) / 100
+                      }
+                      onClick={() =>
+                        setChosenPrice(Math.round(price * 100) / 100)
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <label className={styles.scenarioInput}>
+                If {symbol} ends at{" "}
+                <span>
+                  ${" "}
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={scenarioPrice}
+                    disabled={activeMarket.isSettled}
+                    onChange={(e) =>
+                      setChosenPrice(Math.max(0, Number(e.target.value)))
+                    }
+                    aria-label="Ending stock price"
+                  />
+                </span>
+              </label>
+              <div className={styles.payoutPair} aria-live="polite">
+                <div>
+                  <span>Upside receives</span>
+                  <strong>${payout.upside.toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span>Remaining value receives</span>
+                  <strong>${payout.residual.toFixed(2)}</strong>
+                </div>
+              </div>
+              <p className={styles.helperText}>
+                Value per claim before purchase cost. Paid in {symbol} tokens,
+                not cash.{" "}
+                {activeMarket.isSettled
+                  ? "Uses the settled price."
+                  : "An illustration, not a forecast."}
+              </p>
+            </div>
+          </section>
+          <details className={styles.advanced}>
+            <summary>Stock price history</summary>
+            <UpsideChart
+              chainId={chainId}
+              assetAddress={activeMarket.underlyingAddress}
+              symbol={symbol}
+              currentPrice={Number(currentPrice)}
+              strikePrice={strike}
+            />
+          </details>
+          <details className={styles.advanced}>
+            <summary>Order book · offers and bids</summary>
+            <UpsideOrderBook
+              chainId={chainId}
+              seriesAddress={activeMarket.seriesAddress}
+            />
+          </details>
           <UpsideMyOrders
             chainId={chainId}
             seriesAddress={activeMarket.seriesAddress}
           />
         </div>
-
-        {/* Right Column: Order Ticket & Vault Management */}
-        <div>
+        <div className={styles.tradeColumn}>
           <UpsideOrderTicket
+            key={`${chainId}-${activeMarket.seriesAddress}`}
             chainId={chainId}
             seriesAddress={activeMarket.seriesAddress}
             strikeFormatted={activeMarket.strikePriceFormatted}
-            targetLabel={targetLabel}
+            claimType={claimType}
+            symbol={symbol}
+            scenarioPrice={scenarioPrice}
+            scenarioPayout={selectedPayout}
+            tradingClosed={expired}
+            expiryTimestamp={activeMarket.expiryTimestamp}
             upsideTokenAddress={activeMarket.upsideTokenAddress}
             residualTokenAddress={activeMarket.residualTokenAddress}
             onTradeSuccess={() => {
-              refetchMarkets();
+              void marketsQuery.refetch();
             }}
           />
-
-          <UpsideVaultPanel
-            seriesAddress={activeMarket.seriesAddress}
-            underlyingAddress={activeRound?.underlyingAddress || activeMarket.underlyingAddress}
-            symbol={symbol}
-            isSettled={activeMarket.isSettled}
-            settledPriceFormatted={activeMarket.settledPriceFormatted}
-            onSuccess={() => {
-              refetchMarkets();
-            }}
-          />
+          <details className={styles.advanced}>
+            <summary>Manage stock & claims</summary>
+            <UpsideVaultPanel
+              seriesAddress={activeMarket.seriesAddress}
+              underlyingAddress={activeMarket.underlyingAddress}
+              symbol={symbol}
+              isSettled={activeMarket.isSettled}
+              settledPriceFormatted={activeMarket.settledPriceFormatted}
+              onSuccess={() => {
+                void marketsQuery.refetch();
+              }}
+            />
+          </details>
+          <p className={styles.helperText}>
+            Both sides can lose money. Together, one of each claim represents
+            one stock token. A payout is not the same as profit.
+          </p>
         </div>
       </div>
     </main>

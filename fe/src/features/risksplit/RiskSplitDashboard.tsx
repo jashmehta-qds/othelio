@@ -3,139 +3,85 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import StockLogo from "@/components/StockLogo";
+import { MarketIntro } from "@/features/markets/MarketIntro";
 import { RISK_PROFILES, type RiskProfile, usdFromE8 } from "./riskSplitMarket";
-import { useRiskSplitMarkets, type RiskSplitMarket } from "./useRiskSplitMarkets";
+import {
+  useRiskSplitMarkets,
+  type RiskSplitMarket,
+} from "./useRiskSplitMarkets";
 import { useRiskSplitBook } from "./useRiskSplitBook";
 import styles from "./RiskSplitMarkets.module.css";
 
-function expiryLabel(timestamp: number) {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC", timeZoneName: "short" }).format(timestamp * 1000);
-}
-
-function RiskSplitRow({ market }: { market: RiskSplitMarket }) {
-  const { series, asset, profile: profileKey } = market;
+function MarketCard({ market }: { market: RiskSplitMarket }) {
+  const { series, asset } = market;
   const protectedBook = useRiskSplitBook(series.seriesAddress, "protected");
   const upsideBook = useRiskSplitBook(series.seriesAddress, "upside");
-
-  const stockPriceUsd =
-    asset?.status === "FRESH" && asset?.priceUsdE8
-      ? Number(asset.priceUsdE8) / 1e8
-      : null;
-
-  const pBid = protectedBook.bestBid;
-  const pAsk = protectedBook.bestAsk;
-  const uBid = upsideBook.bestBid;
-  const uAsk = upsideBook.bestAsk;
-
-  let arbDisplay = <span className={styles.noQuote}>— <small>No executable quotes</small></span>;
-
-  if (stockPriceUsd !== null) {
-    if (pBid && uBid) {
-      const sumBids = (Number(pBid.rawPriceE6) + Number(uBid.rawPriceE6)) / 1e6;
-      if (sumBids > stockPriceUsd) {
-        const profit = sumBids - stockPriceUsd;
-        arbDisplay = (
-          <span>
-            <strong className="text-emerald-400">+{profit.toFixed(2)}</strong>
-            <small className="text-emerald-500">Mint & sell</small>
-          </span>
-        );
-      } else {
-        arbDisplay = <span>— <small>No spread arb</small></span>;
-      }
-    } else if (pAsk && uAsk) {
-      const sumAsks = (Number(pAsk.rawPriceE6) + Number(uAsk.rawPriceE6)) / 1e6;
-      if (stockPriceUsd > sumAsks) {
-        const profit = stockPriceUsd - sumAsks;
-        arbDisplay = (
-          <span>
-            <strong className="text-emerald-400">+{profit.toFixed(2)}</strong>
-            <small className="text-emerald-500">Buy & combine</small>
-          </span>
-        );
-      } else {
-        arbDisplay = <span>— <small>No spread arb</small></span>;
-      }
-    }
-  }
-
   return (
-    <tr key={series.seriesAddress}>
-      <td>
-        <div className={styles.stockCell}>
-          <StockLogo
-            symbol={asset?.symbol ?? "Stock"}
-            address={series.underlyingAddress}
-            size={30}
-          />
-          <div>
-            <strong>
-              {asset?.symbol ?? series.underlyingAddress.slice(0, 6) + "…"}
-            </strong>
-            <span>{asset?.name ?? "Tokenized stock"}</span>
-          </div>
+    <article className={styles.simpleMarketCard}>
+      <div className={styles.simpleMarketHead}>
+        <StockLogo
+          symbol={asset?.symbol ?? "Stock"}
+          address={series.underlyingAddress}
+          size={38}
+        />
+        <div>
+          <h2>{asset?.symbol ?? series.underlyingAddress.slice(0, 8)}</h2>
+          <p>{asset?.name ?? "Tokenized stock"}</p>
         </div>
-      </td>
-      <td>
-        <span className={styles.profileTag}>
-          {RISK_PROFILES.find((item) => item.key === profileKey)?.label}
-        </span>
-      </td>
-      <td>
-        <strong>{asset?.status === "FRESH" ? usdFromE8(asset.priceUsdE8) : "—"}</strong>
-        <small>
-          {asset?.status === "FRESH"
-            ? "Oracle reference"
-            : "Reference stale / unavailable"}
-        </small>
-      </td>
-      <td>
-        {protectedBook.isLoading ? (
-          <span className={styles.noQuote}>Loading…</span>
-        ) : pBid || pAsk ? (
-          <div>
+        <strong>
+          {asset?.status === "FRESH" ? usdFromE8(asset.priceUsdE8) : "—"}
+          <small>Stock price</small>
+        </strong>
+      </div>
+      <div className={styles.simpleMarketMeta}>
+        Ends{" "}
+        {new Date(series.expiryTimestamp * 1000).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "UTC",
+        })}
+      </div>
+      <div className={styles.simpleMarketSides}>
+        {(
+          [
+            ["protected", protectedBook],
+            ["upside", upsideBook],
+          ] as const
+        ).map(([side, book]) => (
+          <Link
+            key={side}
+            href={`/app/risk-split/${series.seriesAddress}?side=${side}`}
+          >
+            <span>
+              {side === "protected" ? "Protected" : "Upside"}{" "}
+              <span aria-hidden="true">↗</span>
+            </span>
             <strong>
-              {pBid?.priceUsd ?? "—"} / {pAsk?.priceUsd ?? "—"}
+              {book.isLoading
+                ? "Loading…"
+                : book.isError
+                  ? "Price unavailable"
+                  : book.bestAsk
+                    ? `${book.bestAsk.priceUsd} USDC`
+                    : "No offers yet"}
             </strong>
             <small>
-              {protectedBook.spreadUsd
-                ? `Spread ${protectedBook.spreadUsd}`
-                : "One-sided"}
+              {book.bestAsk ? "Buy price per claim" : "View market"}
             </small>
-          </div>
-        ) : (
-          <span className={styles.noQuote}>— <small>No open orders</small></span>
-        )}
-      </td>
-      <td>
-        {upsideBook.isLoading ? (
-          <span className={styles.noQuote}>Loading…</span>
-        ) : uBid || uAsk ? (
-          <div>
-            <strong>
-              {uBid?.priceUsd ?? "—"} / {uAsk?.priceUsd ?? "—"}
-            </strong>
-            <small>
-              {upsideBook.spreadUsd
-                ? `Spread ${upsideBook.spreadUsd}`
-                : "One-sided"}
-            </small>
-          </div>
-        ) : (
-          <span className={styles.noQuote}>— <small>No open orders</small></span>
-        )}
-      </td>
-      <td>{arbDisplay}</td>
-      <td className={styles.expiry}>{expiryLabel(series.expiryTimestamp)}</td>
-      <td>
-        <Link
-          className={styles.openLink}
-          href={"/app/risk-split/" + series.seriesAddress}
-        >
-          Open <span aria-hidden="true">↗</span>
-        </Link>
-      </td>
-    </tr>
+          </Link>
+        ))}
+      </div>
+      <details className={styles.simpleTerms}>
+        <summary>Payout settings</summary>
+        <p>
+          Lower allocation parameter: {usdFromE8(series.floorPrice)}. Upper
+          allocation parameter: {usdFromE8(series.capPrice)}. These set how the
+          stock is split, not guaranteed returns. Preview exact outcomes in the
+          market.
+        </p>
+      </details>
+    </article>
   );
 }
 
@@ -143,33 +89,96 @@ export function RiskSplitDashboard() {
   const { markets, isLoading, isError, refetch } = useRiskSplitMarkets();
   const [profile, setProfile] = useState<RiskProfile>("all");
   const [search, setSearch] = useState("");
-  const counts = useMemo(() => Object.fromEntries(RISK_PROFILES.map(({ key }) => [key, key === "all" ? markets.length : markets.filter((market) => market.profile === key).length])) as Record<RiskProfile, number>, [markets]);
-  const visible = useMemo(() => markets.filter((market) => {
-    if (profile !== "all" && market.profile !== profile) return false;
-    const query = search.trim().toLowerCase();
-    return !query || [market.asset?.symbol, market.asset?.name, market.series.underlyingAddress].join(" ").toLowerCase().includes(query);
-  }).sort((a, b) => a.series.expiryTimestamp - b.series.expiryTimestamp), [markets, profile, search]);
+  const visible = useMemo(
+    () =>
+      markets
+        .filter((market) => {
+          if (profile !== "all" && market.profile !== profile) return false;
+          const query = search.trim().toLowerCase();
+          return (
+            !query ||
+            [
+              market.asset?.symbol,
+              market.asset?.name,
+              market.series.underlyingAddress,
+            ]
+              .join(" ")
+              .toLowerCase()
+              .includes(query)
+          );
+        })
+        .sort((a, b) => a.series.expiryTimestamp - b.series.expiryTimestamp),
+    [markets, profile, search],
+  );
 
-  return <main className={`app-page-frame ${styles.page}`}>
-    <header className={styles.heading}>
-      <div><h1>Risk Split</h1><p>Protected and Upside claims for tokenized stocks.</p></div>
-    </header>
-    <section className={styles.marketsSection} aria-label="Markets">
-      <div className={styles.profileTabs} role="tablist" aria-label="Risk profile">
-        {RISK_PROFILES.map((item) => <button type="button" role="tab" aria-selected={profile === item.key} key={item.key} onClick={() => setProfile(item.key)}>
-          {item.label}<span>{counts[item.key]}</span>
-        </button>)}
-      </div>
-      <div className={styles.filters}>
-        <label className={styles.search}><span className={styles.srOnly}>Search markets</span><input className="ui-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search stock or token" /></label>
-      </div>
-      {isLoading ? <div className={`ui-panel ${styles.state}`}>Loading markets…</div>
-        : isError ? <div className={`ui-panel ${styles.state}`}><h3>Market data unavailable</h3><p>We could not load the series registry.</p><button type="button" onClick={refetch}>Try again</button></div>
-        : visible.length === 0 ? <div className={`ui-panel ${styles.state}`}><h3>{markets.length === 0 ? "No markets open yet" : "No markets match these filters"}</h3><p>{markets.length === 0 ? "New markets will appear here when they launch." : "Try another profile or search term."}</p></div>
-        : <div className={styles.tableScroll}><table className={styles.marketTable}>
-          <thead><tr><th>Stock / series</th><th>Profile</th><th>Stock reference</th><th>Protected bid / ask · USDC</th><th>Upside bid / ask · USDC</th><th>Pair arb</th><th>Expiry</th><th><span className={styles.srOnly}>Open</span></th></tr></thead>
-          <tbody>{visible.map((market) => <RiskSplitRow key={market.series.seriesAddress} market={market} />)}</tbody>
-        </table></div>}
-    </section>
-  </main>;
+  return (
+    <main className={`app-page-frame ${styles.page}`}>
+      <header className={styles.heading}>
+        <div>
+          <h1>Protected & Upside</h1>
+          <p>The same stock. A different balance of risk and reward.</p>
+        </div>
+      </header>
+      <MarketIntro kind="protected" />
+      <section className={styles.marketsSection} aria-label="Choose a stock">
+        <div className={styles.filters}>
+          <label className={styles.search}>
+            <span className={styles.srOnly}>Search markets</span>
+            <input
+              className="ui-search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search a stock"
+            />
+          </label>
+          <label className={styles.simpleFilter}>
+            Payout settings{" "}
+            <select
+              value={profile}
+              onChange={(event) =>
+                setProfile(event.target.value as RiskProfile)
+              }
+              aria-label="Filter by payout settings"
+            >
+              {RISK_PROFILES.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {isLoading ? (
+          <div className={`ui-panel ${styles.state}`}>Loading markets…</div>
+        ) : isError ? (
+          <div className={`ui-panel ${styles.state}`}>
+            <h3>Market data unavailable</h3>
+            <p>We couldn’t load markets right now.</p>
+            <button type="button" onClick={refetch}>
+              Try again
+            </button>
+          </div>
+        ) : visible.length === 0 ? (
+          <div className={`ui-panel ${styles.state}`}>
+            <h3>
+              {markets.length === 0
+                ? "No markets open yet"
+                : "No matching stocks"}
+            </h3>
+            <p>
+              {markets.length === 0
+                ? "New markets will appear here when they launch."
+                : "Try another stock or payout setting."}
+            </p>
+          </div>
+        ) : (
+          <div className={styles.simpleMarketGrid}>
+            {visible.map((market) => (
+              <MarketCard key={market.series.seriesAddress} market={market} />
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
+  );
 }

@@ -13,6 +13,7 @@ interface RiskSplitScenarioProps {
   stockSymbol: string;
   stockName: string;
   maxAxis?: number;
+  referencePrice?: number;
 }
 
 export function RiskSplitScenario({
@@ -24,6 +25,7 @@ export function RiskSplitScenario({
   stockSymbol,
   stockName,
   maxAxis = 1600,
+  referencePrice,
 }: RiskSplitScenarioProps) {
   const inputId = useId();
   const rangeId = useId();
@@ -54,10 +56,17 @@ export function RiskSplitScenario({
   return (
     <section className={styles.scenarioCard} aria-labelledby="scenario-heading">
       <div className={styles.scenarioHead}>
-        <h2 id="scenario-heading">What if {stockName} ends at…</h2>
-        <span className={styles.scenarioSubtitle}>Try a stock price</span>
+        <h2 id="scenario-heading">2. What could you receive?</h2>
+        <span className={styles.scenarioSubtitle}>Value of 1 claim, before cost</span>
       </div>
 
+      <p className={styles.scenarioNote}>Try a price for {stockName} at the end of this market.</p>
+      {referencePrice !== undefined && referencePrice > 0 && <div className={styles.scenarioPresets} role="group" aria-label="Example ending prices">
+        {[{ label: 'Falls 20%', multiple: 0.8 }, { label: 'Stays flat', multiple: 1 }, { label: 'Rises 20%', multiple: 1.2 }].map(({ label, multiple }) => {
+          const price = Math.round(referencePrice * multiple * 100) / 100;
+          return <button key={label} type="button" aria-pressed={scenarioPrice === price} onClick={() => onChangeScenarioPrice(price)}>{label}<strong>${price.toFixed(2)}</strong></button>;
+        })}
+      </div>}
       <div className={styles.scenarioControls}>
         <label htmlFor={inputId} className={styles.scenarioLabel}>
           Expiry stock price
@@ -69,7 +78,7 @@ export function RiskSplitScenario({
             type="number"
             min="0"
             max={maxAxis}
-            step="1"
+            step="0.01"
             value={scenarioPrice === 0 ? "" : scenarioPrice}
             onChange={handleInputChange}
             placeholder="0"
@@ -81,7 +90,7 @@ export function RiskSplitScenario({
           type="range"
           min="0"
           max={maxAxis}
-          step="1"
+          step="0.01"
           value={Math.min(maxAxis, scenarioPrice)}
           onChange={handleRangeChange}
           aria-label="Expiry stock price slider"
@@ -108,7 +117,7 @@ export function RiskSplitScenario({
       </div>
 
       <p className={styles.scenarioNote}>
-        Together they equal the stock’s value. <b>Redemption delivers {stockSymbol}, not dollars.</b> Dollar values use the entered expiry price.
+        Illustration, not a forecast or profit. Together they equal the stock’s value. <b>Redemption delivers {stockSymbol}, not dollars.</b> Dollar values use the entered expiry price.
       </p>
     </section>
   );
