@@ -667,11 +667,16 @@ contract PR4AttackerAuditTest is Test {
         _assertBothDiscoverAndSettle(feed, 10);
     }
 
-    function test_Both_LatestPostExpiryFallbackBeyondSuccessorScan() public {
+    function test_Both_LatestPostExpiryBeyondSuccessorScanFailsClosed() public {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(40, 40, 70e8, 2100, 2100, 40);
-        _assertBothDiscoverAndSettle(feed, 10);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
+        upsideAdapter.verifyFixingRound(2_000, 10);
+        vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
+        riskAdapter.verifyFixingRound(2_000, 10);
     }
 
     function test_Both_LatestCandidateWithoutSuccessorsSettles() public {
@@ -708,10 +713,25 @@ contract PR4AttackerAuditTest is Test {
         _assertBothDiscoverAndSettle(feed, successor);
     }
 
-    function test_Both_InvalidLatestWithoutValidSuccessorFailsClosed() public {
+    function test_Both_InvalidLatestWithinScannedRangeAcceptsCandidate() public {
         RoundFeedMock feed = new RoundFeedMock();
         feed.setRound(10, 10, 50e8, 1900, 1900, 10);
         feed.setRound(11, 11, 0, 1950, 1950, 11);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        assertEq(upsideAdapter.verifyFixingRound(2_000, 10).roundId, 10);
+        assertEq(riskAdapter.verifyFixingRound(2_000, 10).roundId, 10);
+    }
+
+    function test_Both_ValidPreExpiryBeyondScanWindowBlocksOldCandidate() public {
+        RoundFeedMock feed = new RoundFeedMock();
+        feed.setRound(10, 10, 50e8, 1500, 1500, 10);
+        for (uint80 roundId = 11; roundId <= 31; roundId++) {
+            feed.setRound(roundId, roundId, 0, 1600, 1600, roundId);
+        }
+        feed.setRound(32, 32, 60e8, 1900, 1900, 32);
+        feed.setRound(33, 33, 70e8, 2100, 2100, 33);
+
         UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
         SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
         vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);

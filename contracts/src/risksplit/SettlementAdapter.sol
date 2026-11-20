@@ -60,7 +60,7 @@ contract SettlementAdapter is ISettlementAdapter {
 
         if (!successor.valid) {
             RoundObservation memory latest = _readLatestRound();
-            if (latest.returnedId != roundId && !(latest.valid && latest.updatedAt > expiry)) {
+            if (!_latestRoundWasScanned(phaseId, aggRoundId, latest.returnedId)) {
                 revert NotLastPreExpiryRound();
             }
         }
@@ -187,6 +187,21 @@ contract SettlementAdapter is ISettlementAdapter {
             successor = _readRound(successorId);
             if (successor.valid) return successor;
         }
+    }
+
+    function _latestRoundWasScanned(uint16 phaseId, uint64 aggRoundId, uint80 latestRoundId)
+        private
+        pure
+        returns (bool)
+    {
+        if (latestRoundId == 0) return false;
+        uint16 latestPhaseId = uint16(latestRoundId >> 64);
+        uint64 latestAggRoundId = uint64(latestRoundId);
+        if (latestPhaseId == phaseId) {
+            return latestAggRoundId >= aggRoundId && latestAggRoundId - aggRoundId <= MAX_SUCCESSOR_SCAN;
+        }
+        return phaseId < type(uint16).max && latestPhaseId == phaseId + 1 && latestAggRoundId > 0
+            && latestAggRoundId <= MAX_SUCCESSOR_SCAN;
     }
 
     /// @notice Settles a series using a nominated, verifiable roundId
