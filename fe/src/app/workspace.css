@@ -159,7 +159,16 @@
   border-radius: 8px;
 }
 
-.ui-skip-link:focus {
+.ui-skip-link:not(:focus-visible) {
+  clip-path: inset(50%);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ui-skip-link:focus-visible {
   top: 16px;
 }
 

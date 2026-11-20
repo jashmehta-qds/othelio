@@ -28,7 +28,7 @@ export function UpsideVaultPanel({
   isSettled,
   onSuccess,
 }: UpsideVaultPanelProps) {
-  const [activeTab, setActiveTab] = useState<'MINT' | 'COMBINE' | 'REDEEM'>('MINT');
+  const [activeTab, setActiveTab] = useState<'MINT' | 'COMBINE' | 'REDEEM'>(isSettled ? 'REDEEM' : 'COMBINE');
   const [amount, setAmount] = useState<string>('1.0');
   const [isPending, setIsPending] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);

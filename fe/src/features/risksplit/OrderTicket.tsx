@@ -422,7 +422,7 @@ export function OrderTicket({
       </div>
 
       <h2 className={styles.ticketTitle}>
-        3. {isBuy ? "Buy" : "Sell"} {claimLabel}
+        {isBuy ? "Buy" : "Sell"} {claimLabel}
       </h2>
       <div className={styles.ticketModeRow}>
         <span>Order type</span>

@@ -714,6 +714,14 @@
 .advanced > summary:hover { color: var(--ink); }
 .advanced .chartPanel, .advanced .bookPanel, .advanced .vaultPanel { border: 0; margin: 0; border-radius: 0; }
 .tradeColumn { position: sticky; top: 24px; min-width: 0; }
+.tradeWorkspace { composes: panel from "@/components/ui/primitives.module.css"; min-width: 0; padding: 16px; }
+.tradeWorkspace .ticketPanel, .tradeWorkspace .vaultPanel { border: 0; border-radius: 0; padding: 0; background: transparent; }
+.tradeBody[hidden] { display: none; }
+.walletTabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas); }
+.walletTabs button { flex: 1; min-height: 44px; padding: 10px 14px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; font-weight: 650; color: var(--muted-ink); background: transparent; cursor: pointer; }
+.walletTabs button[aria-pressed="true"] { color: var(--ink); background: var(--panel-2); }
+.inputWrapper:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+:global(.bank-app) .inputWrapper input:focus-visible { outline: none; }
 .tradeIdentity { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; }
 .tradeIdentity strong { font-size: 20px; }
 .tradeIdentity span { font-size: 12px; color: var(--muted-ink); }

@@ -36,6 +36,7 @@ export function UpsideMarketDetail({
   const [selectedSeriesAddress, setSelectedSeriesAddress] =
     useState(seriesAddress);
   const [claimType, setClaimType] = useState<"UPSIDE" | "RESIDUAL">("UPSIDE");
+  const [walletAction, setWalletAction] = useState<"trade" | "redeem">("trade");
   const [chosenPrice, setChosenPrice] = useState<number | null>(null);
   const assetsQuery = useUpsideAssets(chainId);
   const roundsQuery = useUpsideRounds(chainId);
@@ -300,6 +301,12 @@ export function UpsideMarketDetail({
           />
         </div>
         <div className={styles.tradeColumn}>
+          <div className={styles.tradeWorkspace}>
+            <div className={styles.walletTabs} role="group" aria-label="Wallet action">
+              <button type="button" aria-pressed={walletAction === "trade"} onClick={() => setWalletAction("trade")}>Trade</button>
+              <button type="button" aria-pressed={walletAction === "redeem"} onClick={() => setWalletAction("redeem")}>Redeem / claim</button>
+            </div>
+            <div className={styles.tradeBody} hidden={walletAction !== "trade"}>
           <UpsideOrderTicket
             key={`${chainId}-${activeMarket.seriesAddress}`}
             chainId={chainId}
@@ -317,9 +324,10 @@ export function UpsideMarketDetail({
               void marketsQuery.refetch();
             }}
           />
-          <details className={styles.advanced}>
-            <summary>Redeem & manage claims</summary>
+            </div>
+            <div className={styles.tradeBody} hidden={walletAction !== "redeem"}>
             <UpsideVaultPanel
+              key={`${chainId}-${activeMarket.seriesAddress}`}
               seriesAddress={activeMarket.seriesAddress}
               underlyingAddress={activeMarket.underlyingAddress}
               symbol={symbol}
@@ -329,7 +337,8 @@ export function UpsideMarketDetail({
                 void marketsQuery.refetch();
               }}
             />
-          </details>
+            </div>
+          </div>
           <p className={styles.helperText}>
             Both sides can lose money. Together, one of each claim represents
             one stock token. A payout is not the same as profit.

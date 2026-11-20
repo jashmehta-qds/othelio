@@ -1474,6 +1474,9 @@
   font-variant-numeric: tabular-nums;
 }
 
+.ticketInputWrapper:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+:global(.bank-app) .ticketInputWrapper input:focus-visible { outline: none; }
+
 .ticketInputUnit {
   color: var(--muted-ink);
   font-size: 12px;

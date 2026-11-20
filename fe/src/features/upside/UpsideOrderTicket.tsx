@@ -433,7 +433,7 @@ export function UpsideOrderTicket({
 
   return (
     <div className={styles.ticketPanel}>
-      <h2 className={styles.sectionTitle}>3. Preview your trade</h2>
+      <h2 className={styles.sectionTitle}>{ticketMode === "BUY" ? "Buy" : "Sell"} {claimLabel}</h2>
       <div
         className={styles.ticketTypeTabs}
         role="group"
@@ -567,8 +567,7 @@ export function UpsideOrderTicket({
       )}
       {tradingClosed ? (
         <p className={styles.helperText}>
-          Trading has ended. After settlement, redeem below in Manage stock &
-          claims.
+          Trading has ended. After settlement, open Redeem / claim to collect your stock tokens.
         </p>
       ) : !isConnected ? (
         <button
