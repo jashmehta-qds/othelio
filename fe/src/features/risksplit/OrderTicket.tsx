@@ -434,9 +434,6 @@ export function OrderTicket({
       <div className={styles.ticketField}>
         <div className={styles.ticketFieldHeader}>
           <label htmlFor="ticket-amount">Quantity</label>
-          <button type="button" onClick={handleMax} className={styles.maxLink}>
-            Max
-          </button>
         </div>
         <div className={styles.ticketInputWrapper}>
           <input
@@ -450,6 +447,9 @@ export function OrderTicket({
             inputMode="decimal"
           />
           <span className={styles.ticketInputUnit}>{claimLabel} claims</span>
+          <button type="button" onClick={handleMax} className={styles.maxLink}>
+            Max
+          </button>
         </div>
       </div>
 
