@@ -761,6 +761,127 @@ contract PR4AttackerAuditTest is Test {
         riskAdapter.verifyFixingRound(2_000, candidate);
     }
 
+    function _assertBothNominateAndSettle(RoundFeedMock feed, uint80 candidate) internal {
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        assertEq(upsideAdapter.verifyFixingRound(2_000, candidate).roundId, candidate);
+        assertEq(riskAdapter.verifyFixingRound(2_000, candidate).roundId, candidate);
+        MockUpsideSettlementTarget upsideTarget = new MockUpsideSettlementTarget(address(feed), 2_000);
+        MockRiskSettlementTarget riskTarget = new MockRiskSettlementTarget(2_000);
+        vm.warp(3_000);
+        upsideAdapter.settleSeries(address(upsideTarget), candidate);
+        riskAdapter.settleSeries(address(riskTarget), candidate);
+        assertTrue(upsideTarget.isSettled());
+        assertTrue(riskTarget.isSettled());
+        assertEq(upsideTarget.settledRound(), candidate);
+        assertEq(riskTarget.settledRound(), candidate);
+    }
+
+    function _assertCrossPhaseHiddenRoundRejected(bool validLatest) internal {
+        RoundFeedMock feed = new RoundFeedMock();
+        uint80 candidate = (uint80(1) << 64) | 10;
+        feed.setRound(candidate, candidate, 50e8, 1500, 1500, candidate);
+        for (uint80 offset = 1; offset <= 20; offset++) {
+            uint80 invalidRound = candidate + offset;
+            feed.setRound(invalidRound, invalidRound, 0, 1600, 1600, invalidRound);
+        }
+        uint80 hiddenRound = candidate + 21;
+        feed.setRound(hiddenRound, hiddenRound, 60e8, 1900, 1900, hiddenRound);
+        uint80 latest = (uint80(2) << 64) | 20;
+        feed.setRound(latest, latest, validLatest ? int256(70e8) : int256(0), 2100, 2100, latest);
+
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
+        upsideAdapter.verifyFixingRound(2_000, candidate);
+        vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
+        riskAdapter.verifyFixingRound(2_000, candidate);
+
+        MockUpsideSettlementTarget upsideTarget = new MockUpsideSettlementTarget(address(feed), 2_000);
+        MockRiskSettlementTarget riskTarget = new MockRiskSettlementTarget(2_000);
+        vm.warp(3_000);
+        vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
+        upsideAdapter.settleSeries(address(upsideTarget), candidate);
+        vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
+        riskAdapter.settleSeries(address(riskTarget), candidate);
+        assertFalse(upsideTarget.isSettled());
+        assertFalse(riskTarget.isSettled());
+    }
+
+    function test_Both_CrossPhaseInvalidLatestCannotHideUnscannedPreExpiryRound() public {
+        _assertCrossPhaseHiddenRoundRejected(false);
+    }
+
+    function test_Both_CrossPhasePostExpirySuccessorCannotHideUnscannedPreExpiryRound() public {
+        _assertCrossPhaseHiddenRoundRejected(true);
+    }
+
+    function _rolloverFeed(uint80 aggRoundId, uint8 missingKind, bool validLatest)
+        internal
+        returns (RoundFeedMock feed, uint80 candidate)
+    {
+        feed = new RoundFeedMock();
+        candidate = (uint80(1) << 64) | aggRoundId;
+        feed.setRound(candidate, candidate, 50e8, 1900, 1900, candidate);
+        for (uint80 offset = 1; offset < 20; offset++) {
+            uint80 invalidRound = candidate + offset;
+            feed.setRound(invalidRound, invalidRound, 0, 1950, 1950, invalidRound);
+        }
+        uint80 missingRound = candidate + 20;
+        if (missingKind == 1) {
+            feed.setRound(missingRound, 0, 60e8, 1960, 1960, missingRound);
+        } else if (missingKind == 2) {
+            feed.setRound(missingRound, missingRound, 60e8, 1960, 0, missingRound);
+        }
+        uint80 latest = (uint80(2) << 64) | 20;
+        feed.setRound(latest, latest, validLatest ? int256(70e8) : int256(0), 2100, 2100, latest);
+    }
+
+    function test_Both_CrossPhaseInvalidLatestSettlesWithScannedPhaseEnd() public {
+        for (uint8 missingKind; missingKind < 3; missingKind++) {
+            (RoundFeedMock feed, uint80 candidate) = _rolloverFeed(100, missingKind, false);
+            _assertBothNominateAndSettle(feed, candidate);
+        }
+    }
+
+    function test_Both_CrossPhasePostExpirySuccessorSettlesWithScannedPhaseEnd() public {
+        for (uint8 missingKind; missingKind < 3; missingKind++) {
+            (RoundFeedMock feed, uint80 candidate) = _rolloverFeed(100, missingKind, true);
+            _assertBothNominateAndSettle(feed, candidate);
+        }
+    }
+
+    function test_Both_SamePhaseInvalidLatestAtScanBoundaryStillSettles() public {
+        RoundFeedMock feed = new RoundFeedMock();
+        feed.setRound(10, 10, 50e8, 1900, 1900, 10);
+        for (uint80 roundId = 11; roundId <= 30; roundId++) {
+            feed.setRound(roundId, roundId, 0, 1950, 1950, roundId);
+        }
+        _assertBothDiscoverAndSettle(feed, 10);
+    }
+
+    function test_RiskSplit_DiscoveryAcrossScannedPhaseEndStillSettles() public {
+        (RoundFeedMock feed, uint80 candidate) = _rolloverFeed(990, 0, true);
+        SettlementAdapter adapter = new SettlementAdapter(address(feed), 1_000);
+        assertEq(adapter.getFixingRound(2_000).roundId, candidate);
+        MockRiskSettlementTarget target = new MockRiskSettlementTarget(2_000);
+        vm.warp(3_000);
+        adapter.settleSeries(address(target));
+        assertTrue(target.isSettled());
+        assertEq(target.settledRound(), candidate);
+    }
+
+    function test_Upside_DiscoveryAcrossScannedPhaseEndStillSettles() public {
+        (RoundFeedMock feed, uint80 candidate) = _rolloverFeed(90, 0, true);
+        UpsideFixingAdapter adapter = new UpsideFixingAdapter(address(feed), 1_000);
+        assertEq(adapter.getFixingRound(2_000).roundId, candidate);
+        MockUpsideSettlementTarget target = new MockUpsideSettlementTarget(address(feed), 2_000);
+        vm.warp(3_000);
+        adapter.settleSeries(address(target));
+        assertTrue(target.isSettled());
+        assertEq(target.settledRound(), candidate);
+    }
+
     function test_Upside_NoEligibleRoundLeavesSingleSidedHolderLocked() public {
         vm.warp(1_000);
         RoundFeedMock feed = new RoundFeedMock();

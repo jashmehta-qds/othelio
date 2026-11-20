@@ -54,12 +54,12 @@ contract UpsideFixingAdapter is IUpsideFixingAdapter {
 
         uint16 phaseId = uint16(roundId >> 64);
         uint64 aggRoundId = uint64(roundId);
-        RoundObservation memory successor = _findFirstValidSuccessor(phaseId, aggRoundId);
+        (RoundObservation memory successor, bool phaseEnded) = _findFirstValidSuccessor(phaseId, aggRoundId);
         if (successor.valid && successor.updatedAt <= expiry) revert NotLastPreExpiryRound();
 
         if (!successor.valid) {
             RoundObservation memory latest = _readLatestRound();
-            if (!_latestRoundWasScanned(phaseId, aggRoundId, latest.returnedId)) {
+            if (!_latestRoundWasScanned(phaseId, aggRoundId, latest.returnedId, phaseEnded)) {
                 revert NotLastPreExpiryRound();
             }
         }
@@ -179,26 +179,27 @@ contract UpsideFixingAdapter is IUpsideFixingAdapter {
     function _findFirstValidSuccessor(uint16 phaseId, uint64 aggRoundId)
         private
         view
-        returns (RoundObservation memory successor)
+        returns (RoundObservation memory successor, bool phaseEnded)
     {
         for (uint256 offset = 1; offset <= MAX_SUCCESSOR_SCAN; offset++) {
             if (uint256(aggRoundId) + offset > type(uint64).max) break;
             uint80 successorId = (uint80(phaseId) << 64) | uint64(uint256(aggRoundId) + offset);
             successor = _readRound(successorId);
-            if (successor.valid) return successor;
+            if (successor.returnedId == 0 || successor.updatedAt == 0) phaseEnded = true;
+            if (successor.valid) return (successor, phaseEnded);
         }
 
-        if (phaseId == type(uint16).max) return successor;
+        if (!phaseEnded || phaseId == type(uint16).max) return (successor, phaseEnded);
         for (uint256 offset = 1; offset <= MAX_SUCCESSOR_SCAN; offset++) {
             uint80 successorId = (uint80(phaseId + 1) << 64) | uint64(offset);
             successor = _readRound(successorId);
-            if (successor.valid) return successor;
+            if (successor.valid) return (successor, phaseEnded);
         }
     }
 
-    function _latestRoundWasScanned(uint16 phaseId, uint64 aggRoundId, uint80 latestRoundId)
+    function _latestRoundWasScanned(uint16 phaseId, uint64 aggRoundId, uint80 latestRoundId, bool phaseEnded)
         private
-        view
+        pure
         returns (bool)
     {
         if (latestRoundId == 0) return false;
@@ -207,13 +208,8 @@ contract UpsideFixingAdapter is IUpsideFixingAdapter {
         if (latestPhaseId == phaseId) {
             return latestAggRoundId >= aggRoundId && latestAggRoundId - aggRoundId <= MAX_SUCCESSOR_SCAN;
         }
-        if (phaseId == type(uint16).max || latestPhaseId != phaseId + 1 || latestAggRoundId == 0
-            || latestAggRoundId > MAX_SUCCESSOR_SCAN) return false;
-        uint256 boundaryAggRoundId = uint256(aggRoundId) + MAX_SUCCESSOR_SCAN;
-        if (boundaryAggRoundId > type(uint64).max) return false;
-        uint80 boundaryRoundId = (uint80(phaseId) << 64) | uint64(boundaryAggRoundId);
-        RoundObservation memory boundary = _readRound(boundaryRoundId);
-        return boundary.updatedAt == 0;
+        return phaseEnded && phaseId < type(uint16).max && latestPhaseId == phaseId + 1 && latestAggRoundId > 0
+            && latestAggRoundId <= MAX_SUCCESSOR_SCAN;
     }
 
     function settleSeries(address series, uint80 roundId) public override returns (uint256 price, uint256 updatedAt) {
