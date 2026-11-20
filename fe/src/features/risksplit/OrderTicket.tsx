@@ -33,6 +33,7 @@ interface OrderTicketProps {
   claimDecimals: number | null;
   symbol: string;
   seriesExpiryTimestamp: number;
+  tradingClosed: boolean;
   scenarioPrice: number;
   scenarioPayoffPerClaim: number;
   selectedOrder: BookLevel | null;
@@ -50,6 +51,7 @@ export function OrderTicket({
   claimDecimals,
   symbol,
   seriesExpiryTimestamp,
+  tradingClosed,
   scenarioPrice,
   scenarioPayoffPerClaim,
   selectedOrder,
@@ -144,6 +146,14 @@ export function OrderTicket({
   const requiredUnits = isBuy ? totalUsdcUnits : claimUnits;
   const needsApproval = isConnected && userAllowance < requiredUnits && requiredUnits > BigInt(0);
 
+  const ensureTradingOpen = () => {
+    if (tradingClosed || Math.floor(Date.now() / 1000) >= seriesExpiryTimestamp) {
+      setErrorMessage("Trading has ended for this market.");
+      return false;
+    }
+    return true;
+  };
+
   const handleMax = () => {
     if (!isLimitMode && selectedOrder) {
       const availableInOrder = parseFloat(selectedOrder.amountClaim) || 0;
@@ -174,6 +184,7 @@ export function OrderTicket({
   };
 
   const handleApprove = async () => {
+    if (!ensureTradingOpen()) return;
     setErrorMessage(null);
     try {
       if (!publicClient) throw new Error("Wallet RPC is unavailable");
@@ -198,6 +209,7 @@ export function OrderTicket({
   };
 
   const handleFillOrder = async () => {
+    if (!ensureTradingOpen()) return;
     if (!address || !isConnected) {
       setErrorMessage("Please connect your wallet first.");
       return;
@@ -236,6 +248,7 @@ export function OrderTicket({
       }
 
       const fillData = await buildRes.json();
+      if (!ensureTradingOpen()) return;
       setStatusMessage("Confirming fill transaction in wallet…");
 
       const txHash = await writeContractAsync({
@@ -274,6 +287,7 @@ export function OrderTicket({
   };
 
   const handlePlaceLimitOrder = async () => {
+    if (!ensureTradingOpen()) return;
     if (!address || !isConnected) {
       setErrorMessage("Please connect your wallet first.");
       return;
@@ -336,6 +350,7 @@ export function OrderTicket({
         s: ("0x" + rawSig.slice(66, 130)) as `0x${string}`,
       };
 
+      if (!ensureTradingOpen()) return;
       setStatusMessage("Broadcasting order to order book…");
 
       const res = await fetch(`${API_BASE}/v1/orders`, {
@@ -368,6 +383,21 @@ export function OrderTicket({
 
   const [showConnect, setShowConnect] = useState(false);
   const isBusy = isSigning || isTxPending || isWaitingReceipt;
+
+  if (tradingClosed) {
+    return (
+      <aside className={styles.ticketCard} aria-label="Trade ticket">
+        <h2 className={styles.ticketTitle}>Trading ended</h2>
+        <p className={styles.ticketExplain}>
+          This market is no longer open for buying or selling. You can still explore
+          payout examples, or use Manage to check settlement and claim eligibility.
+        </p>
+        <button type="button" disabled className={`ui-button ${styles.primaryActionBtn}`}>
+          Trading ended
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside className={styles.ticketCard} aria-label="Trade ticket">

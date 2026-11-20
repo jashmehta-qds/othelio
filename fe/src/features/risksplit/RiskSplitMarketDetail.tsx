@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import StockLogo from "@/components/StockLogo";
 import { PayoffVisualizer } from "./PayoffVisualizer";
@@ -57,7 +57,11 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
   const [manageTab, setManageTab] = useState<"deposit" | "claim">("deposit");
   const [ticketSide, setTicketSide] = useState<"BUY" | "SELL">("BUY");
   const [selectedOrderHash, setSelectedOrderHash] = useState<string | undefined>();
-  const [nowSeconds] = useState(() => Math.floor(Date.now() / 1000));
+  const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const timer = setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Fetch real order books for both Protected and Upside to display live best quotes
   const protectedBook = useRiskSplitBook(seriesAddress, "protected");
@@ -235,7 +239,7 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
 
             <div className={styles.detailMeta}>
               <div className={styles.detailExpiry}>
-                <span>Expiry fixing</span>
+                <span>Ends</span>
                 <strong>{formatExpiry(activeSeries.expiryTimestamp)}</strong>
                 <span className={styles.expiryTag}>
                   {formatRelativeExpiry(activeSeries.expiryTimestamp, nowSeconds)}
@@ -352,6 +356,7 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
                 claimDecimals={unitsCompatible ? underlyingDecimals : null}
                 symbol={symbol}
                 seriesExpiryTimestamp={activeSeries.expiryTimestamp}
+                tradingClosed={settledOrExpired}
                 scenarioPrice={scenarioPrice}
                 scenarioPayoffPerClaim={scenarioPayoffPerClaim}
                 selectedOrder={activeSelectedOrder}
