@@ -198,7 +198,7 @@ contract UpsideFixingAdapter is IUpsideFixingAdapter {
 
     function _latestRoundWasScanned(uint16 phaseId, uint64 aggRoundId, uint80 latestRoundId)
         private
-        pure
+        view
         returns (bool)
     {
         if (latestRoundId == 0) return false;
@@ -207,8 +207,13 @@ contract UpsideFixingAdapter is IUpsideFixingAdapter {
         if (latestPhaseId == phaseId) {
             return latestAggRoundId >= aggRoundId && latestAggRoundId - aggRoundId <= MAX_SUCCESSOR_SCAN;
         }
-        return phaseId < type(uint16).max && latestPhaseId == phaseId + 1 && latestAggRoundId > 0
-            && latestAggRoundId <= MAX_SUCCESSOR_SCAN;
+        if (phaseId == type(uint16).max || latestPhaseId != phaseId + 1 || latestAggRoundId == 0
+            || latestAggRoundId > MAX_SUCCESSOR_SCAN) return false;
+        uint256 boundaryAggRoundId = uint256(aggRoundId) + MAX_SUCCESSOR_SCAN;
+        if (boundaryAggRoundId > type(uint64).max) return false;
+        uint80 boundaryRoundId = (uint80(phaseId) << 64) | uint64(boundaryAggRoundId);
+        RoundObservation memory boundary = _readRound(boundaryRoundId);
+        return boundary.updatedAt == 0;
     }
 
     function settleSeries(address series, uint80 roundId) public override returns (uint256 price, uint256 updatedAt) {

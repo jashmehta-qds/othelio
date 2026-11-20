@@ -740,6 +740,27 @@ contract PR4AttackerAuditTest is Test {
         riskAdapter.verifyFixingRound(2_000, 10);
     }
 
+    function test_Both_CrossPhaseLatestCannotSkipUnscannedOldPhaseRound() public {
+        RoundFeedMock feed = new RoundFeedMock();
+        uint80 candidate = (uint80(1) << 64) | 10;
+        uint80 latest = (uint80(2) << 64) | 1;
+        feed.setRound(candidate, candidate, 50e8, 1500, 1500, candidate);
+        for (uint64 aggRoundId = 11; aggRoundId <= 31; aggRoundId++) {
+            uint80 roundId = (uint80(1) << 64) | aggRoundId;
+            feed.setRound(roundId, roundId, 0, 1600, 1600, roundId);
+        }
+        uint80 oldPhasePreExpiry = (uint80(1) << 64) | 32;
+        feed.setRound(oldPhasePreExpiry, oldPhasePreExpiry, 60e8, 1900, 1900, oldPhasePreExpiry);
+        feed.setRound(latest, latest, 0, 2100, 2100, latest);
+
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
+        upsideAdapter.verifyFixingRound(2_000, candidate);
+        vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
+        riskAdapter.verifyFixingRound(2_000, candidate);
+    }
+
     function test_Upside_NoEligibleRoundLeavesSingleSidedHolderLocked() public {
         vm.warp(1_000);
         RoundFeedMock feed = new RoundFeedMock();
