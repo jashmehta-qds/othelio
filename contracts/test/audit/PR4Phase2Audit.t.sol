@@ -376,7 +376,7 @@ contract PR4Phase2BasketAuditTest is Test {
 
     function _setupModule() internal {
         registry = new OthelioAssetRegistry(address(this));
-        oracle = new BasketOracle(address(registry));
+        oracle = new BasketOracle(address(registry), address(0));
         poolFactory = new Phase2PoolFactory();
         routeRegistry = new OthelioAerodromeRouteRegistry(address(this), address(poolFactory));
         router = new Phase2DexRouter();
@@ -564,7 +564,7 @@ contract PR4Phase2BasketAuditTest is Test {
 
     function test_Registry_UsesConfiguredDecimalsWithoutCheckingTokenDecimals() public {
         registry = new OthelioAssetRegistry(address(this));
-        oracle = new BasketOracle(address(registry));
+        oracle = new BasketOracle(address(registry), address(0));
         Phase2Token sixDecimalToken = new Phase2Token("USDC", 6);
         feed = new Phase2Feed(1e8, block.timestamp);
         registry.configure(block.chainid, address(sixDecimalToken), address(feed), true, 18, 8, false);

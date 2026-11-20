@@ -47,7 +47,7 @@ contract OthelioPortfolioModuleTest is Test {
     function setUp() public {
         vm.startPrank(owner);
         registry = new OthelioAssetRegistry(owner);
-        oracle = new BasketOracle(address(registry));
+        oracle = new BasketOracle(address(registry), address(0));
         pool = new MockAavePool();
         adapter = new OthelioAaveV3Adapter(address(pool));
         router = new MockDEXRouter();

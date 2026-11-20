@@ -47,7 +47,7 @@ contract OthelioExecutionSafetyTest is Test {
 
     function setUp() public {
         registry = new OthelioAssetRegistry(address(this));
-        oracle = new BasketOracle(address(registry));
+        oracle = new BasketOracle(address(registry), address(0));
         MockAavePool pool = new MockAavePool();
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(address(pool));
         OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(address(this), address(pool));

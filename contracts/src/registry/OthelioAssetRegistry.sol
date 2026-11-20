@@ -27,6 +27,8 @@ contract OthelioAssetRegistry is Ownable2Step {
 
     mapping(uint256 chainId => mapping(address token => Asset)) public assets;
 
+    mapping(uint256 chainId => mapping(address token => uint256)) private _heartbeats;
+
     mapping(address pool => bool) public approvedLendingPools;
 
     // Track supported tokens per chainId for on-chain discovery
@@ -44,6 +46,8 @@ contract OthelioAssetRegistry is Ownable2Step {
     );
 
     event LendingPoolConfigured(address indexed pool, bool approved);
+
+    event HeartbeatUpdated(uint256 indexed chainId, address indexed token, uint256 maxStaleness);
 
     constructor(address owner_) Ownable(owner_) {}
 
@@ -155,6 +159,17 @@ contract OthelioAssetRegistry is Ownable2Step {
 
     function getAsset(uint256 chainId, address token) external view returns (Asset memory) {
         return assets[chainId][token];
+    }
+
+    function setHeartbeat(uint256 chainId, address token, uint256 maxStaleness) external onlyOwner {
+        require(token != address(0), "ZERO_TOKEN");
+        require(maxStaleness > 0 && maxStaleness <= 7 days, "INVALID_HEARTBEAT");
+        _heartbeats[chainId][token] = maxStaleness;
+        emit HeartbeatUpdated(chainId, token, maxStaleness);
+    }
+
+    function heartbeatOf(uint256 chainId, address token) external view returns (uint256) {
+        return _heartbeats[chainId][token];
     }
 
     /// @notice Returns all currently supported tokens for a given chainId.

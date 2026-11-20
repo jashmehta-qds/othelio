@@ -17,11 +17,20 @@ interface AggregatorV3Interface {
 
 contract BasketOracle {
     OthelioAssetRegistry public immutable registry;
-    uint256 public constant MAX_STALENESS = 7 days;
+    uint256 public constant DEFAULT_MAX_STALENESS = 3 days;
+    uint256 public constant SEQUENCER_GRACE_PERIOD = 1 hours;
+    address public immutable sequencerUptimeFeed;
 
-    constructor(address registry_) {
+    error SequencerDown();
+    error GracePeriodNotOver();
+    error InvalidSequencerTimestamp();
+    error InvalidSequencerAnswer();
+    error SequencerReadFailed();
+
+    constructor(address registry_, address sequencerUptimeFeed_) {
         require(registry_ != address(0), "ZERO_REGISTRY");
         registry = OthelioAssetRegistry(registry_);
+        sequencerUptimeFeed = sequencerUptimeFeed_;
     }
 
     /// @notice Calculates the aggregate Net Asset Value (NAV) in USDC (6 decimals)
@@ -33,6 +42,7 @@ contract BasketOracle {
         uint256[] calldata balances
     ) external view returns (uint256 totalNAV) {
         require(tokens.length == balances.length, "LENGTH_MISMATCH");
+        _checkSequencer();
         uint256 chainId = block.chainid;
 
         for (uint256 i = 0; i < tokens.length; i++) {
@@ -56,7 +66,9 @@ contract BasketOracle {
                 require(roundId > 0 && answeredInRound >= roundId, "INCOMPLETE_PRICE_ROUND");
                 require(price > 0, "INVALID_PRICE");
                 require(updatedAt > 0 && updatedAt <= block.timestamp, "INVALID_PRICE_TIME");
-                require(block.timestamp - updatedAt <= MAX_STALENESS, "STALE_PRICE");
+                uint256 maxStaleness = registry.heartbeatOf(chainId, tokens[i]);
+                if (maxStaleness == 0) maxStaleness = DEFAULT_MAX_STALENESS;
+                require(block.timestamp - updatedAt <= maxStaleness, "STALE_PRICE");
 
                 uint256 tokenScale = 10 ** asset.tokenDecimals;
                 uint256 feedScale = 10 ** asset.feedDecimals;
@@ -71,6 +83,26 @@ contract BasketOracle {
             } catch {
                 revert("PRICE_READ_FAILED");
             }
+        }
+    }
+
+    function _checkSequencer() private view {
+        if (sequencerUptimeFeed == address(0)) return;
+
+        try AggregatorV3Interface(sequencerUptimeFeed).latestRoundData() returns (
+            uint80,
+            int256 answer,
+            uint256 startedAt,
+            uint256,
+            uint80
+        ) {
+            if (answer == 1) revert SequencerDown();
+            if (answer != 0) revert InvalidSequencerAnswer();
+            if (startedAt == 0 || startedAt > block.timestamp) revert InvalidSequencerTimestamp();
+            if (block.timestamp - startedAt < SEQUENCER_GRACE_PERIOD) revert GracePeriodNotOver();
+        } catch (bytes memory reason) {
+            if (reason.length != 0) assembly { revert(add(reason, 32), mload(reason)) }
+            revert SequencerReadFailed();
         }
     }
 }

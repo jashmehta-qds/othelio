@@ -31,6 +31,7 @@ contract AerodromeSlipstreamForkTest is Test {
     address private constant BASE_AERODROME_QUOTER = 0x514c8B5f54112481E28028F1166Bd78501089259;
     address private constant BASE_AERODROME_FACTORY = 0xf8f2eB4940CFE7d13603DDDD87f123820Fc061Ef;
     address private constant BASE_USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
+    address private constant BASE_SEQUENCER_UPTIME_FEED = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
     address private constant BASE_AAPL = 0xb200000000000000000000C2e324d24d7eEcd1fb;
     address private constant BASE_GOOGL = 0xb2000000000000000000002D0BA3164cc74f58B7;
     uint256 private constant BASE_FORK_BLOCK = 51_166_844;
@@ -62,7 +63,7 @@ contract AerodromeSlipstreamForkTest is Test {
 
         vm.startPrank(owner);
         OthelioAssetRegistry registry = new OthelioAssetRegistry(owner);
-        BasketOracle oracle = new BasketOracle(address(registry));
+        BasketOracle oracle = new BasketOracle(address(registry), BASE_SEQUENCER_UPTIME_FEED);
         OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(owner, BASE_AERODROME_FACTORY);
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(address(0x1111)); // mock placeholder for lending
 
@@ -135,7 +136,7 @@ contract AerodromeSlipstreamForkTest is Test {
 
         vm.startPrank(owner);
         OthelioAssetRegistry registry = new OthelioAssetRegistry(owner);
-        BasketOracle oracle = new BasketOracle(address(registry));
+        BasketOracle oracle = new BasketOracle(address(registry), BASE_SEQUENCER_UPTIME_FEED);
         OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(owner, BASE_AERODROME_FACTORY);
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(address(0x1111));
 

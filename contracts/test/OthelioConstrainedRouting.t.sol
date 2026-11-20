@@ -49,7 +49,7 @@ contract OthelioConstrainedRoutingTest is Test {
     function setUp() public {
         vm.startPrank(owner);
         registry = new OthelioAssetRegistry(owner);
-        oracle = new BasketOracle(address(registry));
+        oracle = new BasketOracle(address(registry), address(0));
         MockAavePool pool = new MockAavePool();
         aaveAdapter = new OthelioAaveV3Adapter(address(pool));
 

@@ -55,7 +55,7 @@ contract BasketOracleTest is Test {
 
     function setUp() public {
         registry = new OthelioAssetRegistry(owner);
-        oracle = new BasketOracle(address(registry));
+        oracle = new BasketOracle(address(registry), address(0));
 
         feedNVDA = new MockV3Aggregator(8, 120 * 1e8); // $120.00
         feedUSDC = new MockV3Aggregator(8, 1 * 1e8);   // $1.00
@@ -131,7 +131,7 @@ contract BasketOracleTest is Test {
 
     function testRevertStalePrice() public {
         vm.warp(30 days);
-        feedUSDC.setUpdatedAt(block.timestamp - oracle.MAX_STALENESS() - 1);
+        feedUSDC.setUpdatedAt(block.timestamp - oracle.DEFAULT_MAX_STALENESS() - 1);
         address[] memory tokens = new address[](1);
         tokens[0] = tokenUSDC;
         uint256[] memory balances = new uint256[](1);

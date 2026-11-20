@@ -39,7 +39,7 @@ contract DeployLocalOthelio is Script {
         vm.startBroadcast(deployerPrivateKey);
         LocalMockAerodromeFactory canonicalFactory = new LocalMockAerodromeFactory();
         OthelioAssetRegistry registry = new OthelioAssetRegistry(deployer);
-        BasketOracle oracle = new BasketOracle(address(registry));
+        BasketOracle oracle = new BasketOracle(address(registry), address(0));
         OthelioAerodromeRouteRegistry routeRegistry = new OthelioAerodromeRouteRegistry(deployer, address(canonicalFactory));
         OthelioAaveV3Adapter aaveAdapter = new OthelioAaveV3Adapter(BASE_AAVE_V3_POOL);
         OthelioAerodromeSlipstreamAdapter aerodromeAdapter = new OthelioAerodromeSlipstreamAdapter(LOCAL_ROUTER, BASE_USDC, address(routeRegistry));
