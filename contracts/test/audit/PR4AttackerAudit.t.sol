@@ -812,6 +812,28 @@ contract PR4AttackerAuditTest is Test {
         _assertCrossPhaseHiddenRoundRejected(false);
     }
 
+    function test_Both_CrossPhaseGapCannotHideUnscannedPreExpiryRound() public {
+        RoundFeedMock feed = new RoundFeedMock();
+        uint80 candidate = (uint80(1) << 64) | 10;
+        feed.setRound(candidate, candidate, 50e8, 1500, 1500, candidate);
+        for (uint64 offset = 1; offset <= 20; offset++) {
+            if (offset == 3) continue;
+            uint80 roundId = candidate + offset;
+            feed.setRound(roundId, roundId, offset == 20 ? int256(60e8) : int256(0), 1600, 1600, roundId);
+        }
+        uint80 hiddenRound = candidate + 21;
+        feed.setRound(hiddenRound, hiddenRound, 60e8, 1900, 1900, hiddenRound);
+        uint80 latest = (uint80(2) << 64) | 1;
+        feed.setRound(latest, latest, 0, 2100, 2100, latest);
+
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
+        upsideAdapter.verifyFixingRound(2_000, candidate);
+        vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
+        riskAdapter.verifyFixingRound(2_000, candidate);
+    }
+
     function test_Both_CrossPhasePostExpirySuccessorCannotHideUnscannedPreExpiryRound() public {
         _assertCrossPhaseHiddenRoundRejected(true);
     }

@@ -185,8 +185,10 @@ contract UpsideFixingAdapter is IUpsideFixingAdapter {
             if (uint256(aggRoundId) + offset > type(uint64).max) break;
             uint80 successorId = (uint80(phaseId) << 64) | uint64(uint256(aggRoundId) + offset);
             successor = _readRound(successorId);
-            if (successor.returnedId == 0 || successor.updatedAt == 0) phaseEnded = true;
             if (successor.valid) return (successor, phaseEnded);
+            if (offset == MAX_SUCCESSOR_SCAN) {
+                phaseEnded = successor.returnedId == 0 || successor.updatedAt == 0;
+            }
         }
 
         if (!phaseEnded || phaseId == type(uint16).max) return (successor, phaseEnded);
