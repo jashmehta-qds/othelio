@@ -826,8 +826,8 @@ contract PR4AttackerAuditTest is Test {
         uint80 latest = (uint80(2) << 64) | 1;
         feed.setRound(latest, latest, 0, 2100, 2100, latest);
 
-        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000);
-        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000);
+        UpsideFixingAdapter upsideAdapter = new UpsideFixingAdapter(address(feed), 1_000, address(this));
+        SettlementAdapter riskAdapter = new SettlementAdapter(address(feed), 1_000, address(this));
         vm.expectRevert(IUpsideFixingAdapter.NotLastPreExpiryRound.selector);
         upsideAdapter.verifyFixingRound(2_000, candidate);
         vm.expectRevert(ISettlementAdapter.NotLastPreExpiryRound.selector);
