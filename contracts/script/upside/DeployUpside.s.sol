@@ -30,7 +30,9 @@ contract DeployUpside is Script {
 
         // 3. Deploy UpsideBatchFillRouter wrapping 0x ExchangeProxy
         address exchangeProxy = vm.envOr("ZERO_EX_EXCHANGE_PROXY", ZERO_EX_EXCHANGE_PROXY_BASE);
-        UpsideBatchFillRouter router = new UpsideBatchFillRouter(exchangeProxy);
+        bytes32 expectedExchangeCodeHash = vm.envBytes32("ZERO_EX_EXCHANGE_PROXY_CODE_HASH");
+        require(expectedExchangeCodeHash != bytes32(0), "ZERO_EX_EXCHANGE_PROXY_CODE_HASH_REQUIRED");
+        UpsideBatchFillRouter router = new UpsideBatchFillRouter(exchangeProxy, expectedExchangeCodeHash);
         routerAddr = address(router);
 
         console2.log("=== Upside Deployment Result ===");

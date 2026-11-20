@@ -46,7 +46,7 @@ contract UpsideBatchFillRouterTest is Test {
         taker = new RouterTestToken();
         maker = new RouterTestToken();
         exchange = new FeeChargingExchange();
-        router = new UpsideBatchFillRouter(address(exchange));
+        router = new UpsideBatchFillRouter(address(exchange), address(exchange).codehash);
         taker.mint(address(this), 1000);
         taker.mint(address(router), 7);
         maker.mint(address(exchange), 1000);

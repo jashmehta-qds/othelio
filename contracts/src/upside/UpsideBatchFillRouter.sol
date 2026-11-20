@@ -42,15 +42,23 @@ contract UpsideBatchFillRouter is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     address public immutable exchangeProxy;
+    bytes32 public immutable expectedExchangeCodeHash;
 
     error IncompleteFill(uint256 orderIndex, uint128 expected, uint128 actual);
     error ZeroLengthArray();
     error LengthMismatch();
     error ZeroAddress();
+    error InvalidExchangeCodeHash(bytes32 expected, bytes32 actual);
 
-    constructor(address exchangeProxy_) {
+    constructor(address exchangeProxy_, bytes32 expectedExchangeCodeHash_) {
         if (exchangeProxy_ == address(0)) revert ZeroAddress();
+        if (expectedExchangeCodeHash_ == bytes32(0)) revert InvalidExchangeCodeHash(expectedExchangeCodeHash_, bytes32(0));
+        bytes32 actualCodeHash = exchangeProxy_.codehash;
+        if (actualCodeHash != expectedExchangeCodeHash_) {
+            revert InvalidExchangeCodeHash(expectedExchangeCodeHash_, actualCodeHash);
+        }
         exchangeProxy = exchangeProxy_;
+        expectedExchangeCodeHash = expectedExchangeCodeHash_;
     }
 
     function batchFillLimitOrders(
@@ -66,6 +74,10 @@ contract UpsideBatchFillRouter is ReentrancyGuard {
         uint256 count = orders.length;
         if (count == 0) revert ZeroLengthArray();
         if (count != signatures.length || count != takerTokenFillAmounts.length) revert LengthMismatch();
+        bytes32 actualCodeHash = exchangeProxy.codehash;
+        if (actualCodeHash != expectedExchangeCodeHash) {
+            revert InvalidExchangeCodeHash(expectedExchangeCodeHash, actualCodeHash);
+        }
 
         takerTokenFilledAmounts = new uint128[](count);
         makerTokenFilledAmounts = new uint128[](count);

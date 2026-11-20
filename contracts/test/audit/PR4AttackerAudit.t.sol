@@ -252,7 +252,7 @@ contract PR4AttackerAuditTest is Test {
         maker = new AuditToken("Maker");
         taker = new AuditToken("Taker");
         exchange = new RealisticZeroExMock();
-        router = new UpsideBatchFillRouter(address(exchange));
+        router = new UpsideBatchFillRouter(address(exchange), address(exchange).codehash);
         maker.mint(makerAccount, 10_000);
         taker.mint(attacker, 10_000);
         vm.prank(makerAccount);
@@ -433,24 +433,16 @@ contract PR4AttackerAuditTest is Test {
         assertEq(taker.balanceOf(attacker), 10_000);
     }
 
-    function test_Router_LyingProxyCanDrainItsPreexistingMakerBalance() public {
+    function test_Router_LyingProxyCannotBeWiredWithWrongCodeHash() public {
         LyingZeroExMock badProxy = new LyingZeroExMock(100);
-        UpsideBatchFillRouter badRouter = new UpsideBatchFillRouter(address(badProxy));
-        maker.mint(address(badRouter), 100);
-        taker.mint(attacker, 100);
-        vm.prank(attacker);
-        taker.approve(address(badRouter), 100);
-        LimitOrder[] memory orders = new LimitOrder[](1);
-        orders[0] = _order(address(maker), address(taker), 100, 100);
-        Signature[] memory signatures = new Signature[](1);
-        uint128[] memory fills = new uint128[](1);
-        fills[0] = 100;
-
-        vm.prank(attacker);
-        badRouter.batchFillLimitOrders(orders, signatures, fills, true);
-
-        assertEq(maker.balanceOf(attacker), 100, "attacker drained untransferred maker output");
-        assertEq(maker.balanceOf(address(badRouter)), 0);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                UpsideBatchFillRouter.InvalidExchangeCodeHash.selector,
+                address(exchange).codehash,
+                address(badProxy).codehash
+            )
+        );
+        new UpsideBatchFillRouter(address(badProxy), address(exchange).codehash);
     }
 
     function test_Router_CannotPullFromVictimWithoutMsgSenderAllowance() public {
