@@ -49,7 +49,7 @@ export function OperationsView({ operations, isLoading, onRefresh }: OperationsV
       setAttempt({ series: item.seriesAddress, message: 'Settlement confirmed onchain.', confirmed: true });
     } catch (error) {
       const message = error instanceof BaseError ? error.shortMessage : error instanceof Error ? error.message : 'Settlement failed.';
-      setAttempt({ series: item.seriesAddress, message: message.split('\n', 1)[0].slice(0, 240), confirmed: false });
+      setAttempt({ series: item.seriesAddress, message: message.replace(/\s+/g, ' ').trim().slice(0, 240) || 'Settlement failed.', confirmed: false });
     } finally {
       setIsWaitingReceipt(false);
       onRefresh();
