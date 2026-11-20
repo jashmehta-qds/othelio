@@ -50,5 +50,7 @@ This runbook guides operators through the deployment and launch verification of 
   When set to `false`, the indexer omits Risk Split filter addresses, skips state loading and log processing for Risk Split, while continuing to index baskets, price feeds, and Upside markets without interruption.
   Risk Split retains its own independent resume cursor in `indexer_worker_state` (`worker_name = 'risksplit'`).
   When re-enabled, it resumes from its last indexed block and catches up independently without rewinding the basket or Upside event cursors.
+- `NEXT_PUBLIC_RISK_SPLIT_NAV_ENABLED` (default: `true`):
+  Shows Risk Split in the public app navigation. Setting it to `false` hides the navigation item while direct URLs, backend routes and admin tools remain available. Keep it `true` for the current Base development profile. After a future indexing pause, re-enable indexing and verify catch-up and API freshness before restoring public navigation. Rebuild or restart the frontend after changing this `NEXT_PUBLIC_` value.
 - `UPSIDE_FACTORY_ADDRESS`:
   Configure this with the deployed `UpsideFactory` address to index Upside rounds, series markets, mints, pair withdrawals, ERC20 claim transfers, fixing settlement, and redemptions.

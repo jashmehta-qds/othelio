@@ -387,7 +387,7 @@ export class OrderbookService {
       throw new ServiceUnavailableException('Live market state unavailable');
     }
     const freshness = await this.riskSplitService.getIndexerFreshness(chainId);
-    if (!freshness.isFresh) {
+    if (process.env.NODE_ENV === 'production' && !freshness.isFresh) {
       throw new ServiceUnavailableException('Risk Split indexer is stale');
     }
     const asOfBlock = freshness.lastIndexedBlock;
@@ -584,7 +584,9 @@ export class OrderbookService {
       throw new BadRequestException('Order has expired');
     }
     const freshness = await this.riskSplitService?.getIndexerFreshness(chainId);
-    if (!freshness?.isFresh) throw new ServiceUnavailableException('Risk Split indexer is stale');
+    if (process.env.NODE_ENV === 'production' && !freshness?.isFresh) {
+      throw new ServiceUnavailableException('Risk Split indexer is stale');
+    }
     const series = await this.riskSplitService?.getSeries(chainId, row.series_address);
     if (!series || series.isSettled || series.expiryTimestamp <= Math.floor(Date.now() / 1000)) {
       throw new BadRequestException('Series is no longer open');

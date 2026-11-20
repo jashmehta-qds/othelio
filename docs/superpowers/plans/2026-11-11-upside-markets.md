@@ -13,8 +13,9 @@
 ## Global Constraints
 
 - **Order is mandatory:** verify, document, commit and push `feature/risk-split` first; then create a new `feature/upside-markets` branch. Do not develop Upside on the unpushed V1 tree.
-- Preserve deployed V1 contracts, `contracts/deployments/base-mainnet-risksplit.json`, ABI meaning, DB meaning, backend/admin direct access and public direct URLs. Hide only its AppShell nav item in the Upside branch.
+- Preserve deployed V1 contracts, `contracts/deployments/base-mainnet-risksplit.json`, ABI meaning, DB meaning, backend/admin direct access and public direct URLs. Keep its AppShell navigation item on by default alongside Upside; `NEXT_PUBLIC_RISK_SPLIT_NAV_ENABLED=false` may hide only that item later.
 - Add `RISK_SPLIT_INDEXING_ENABLED` to the indexer on the Upside branch. Default `true` preserves V1; explicit `false` stops Risk Split scanning/projection without stopping baskets, prices or Upside. Re-enable must backfill from a separate Risk Split cursor, since the current shared event checkpoint advances while Risk Split is off. Never delete V1 rows or misrepresent paused data as current.
+- Set both Risk Split switches explicitly `true` in the current Base development profile. Backend Risk Split routes remain available; verify fresh indexed data before restoring public visibility after any future indexing pause.
 - First-release payoff is continuous `max(S-K,0)` Upside plus `min(S,K)` Residual, delivered in underlying tokens. No fixed-dollar YES tickets, cash promise, public expiry choice, or one-active-expiry rule.
 - Admin approves every expiry/feed/underlying/round policy. On Base launch `publicCreationEnabled=false` and admin chooses strikes. The contract must support later flag-on user strikes inside approved min/max/tick; same validation for admin and user.
 - Four default weekly targets are `P0 + {0, 0.5, 1, 2} × M`, rounded to the admin-approved tick; labels Starting price, Reach, Strong move, Long shot. Source `P0` from a verified feed round, `M` from recorded options IV or sourced manual input. Reject duplicate rounded strikes.
@@ -149,13 +150,13 @@ The following paths are the intended owners; add narrowly scoped supporting file
 
 ## Phase 3: operator controls and public journey
 
-### Task 10: Admin round and strike management; hide only V1 nav
+### Task 10: Admin round and strike management; preserve V1 navigation
 
 **Files:** Create `backend/src/admin/upside/*`, `fe-admin/src/components/{UpsideRoundsView,UpsideRoundModal,UpsideMarketsView}.tsx` and tests; modify `fe/src/components/app-shell/AppShell.tsx` and its nav test; keep `fe/src/app/app/risk-split/*`.
 
 **Interfaces:** Admin Overview shows chain/owner, registry and worker health, Risk Split indexing status/last block/lag, pending actions and settlement queue. Assets shows the same basket registry. Round creation guides asset → reference/calendar/expected move → exact four-strike review → simulation/signature → receipt/indexed reconciliation. Markets lists active/empty/expired/settled series and opens a detail with supply, collateral, bids/asks, trades, fixing and redemption. Operations owns the public-creation flag and indexed failure states. Owner writes require the right chain; nonowners can inspect. Legacy Risk Split admin tools remain accessible.
 
-- [ ] Write failing tests for onchain registry token enumeration (including an asset absent from static `TOKEN_FEED_REGISTRY`), registry disable/reenable, owner check, wrong chain/RPC, stale feed/IV snapshot, holiday/early close, duplicate rounded strikes, admin strike out of bounds, flag-on/off behavior, visible Risk Split indexing-paused/last-block status and V1 direct route still loading after nav removal.
+- [ ] Write failing tests for onchain registry token enumeration (including an asset absent from static `TOKEN_FEED_REGISTRY`), registry disable/reenable, owner check, wrong chain/RPC, stale feed/IV snapshot, holiday/early close, duplicate rounded strikes, admin strike out of bounds, flag-on/off behavior, visible Risk Split indexing-paused/last-block status and V1 navigation on by default with its direct route still loading when navigation is off.
 - [ ] Run backend/admin/FE target tests; implement preview/sign/reconcile flow and nav flag. Use Othelio's existing app/admin colors, typography, spacing and surfaces. Verify clear transaction states, specific fetch/RPC errors, read-only nonowner views, old Risk Split address pin, direct route and admin functionality. Commit.
 
 ### Task 11: Public Upside marketplace and stockholder flow

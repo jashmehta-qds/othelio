@@ -2,6 +2,7 @@
 
 import { useState, useId } from "react";
 import styles from "./RiskSplitComponents.module.css";
+import { riskSplitPayoff, riskSplitStockFractions } from "./riskSplitPayoff";
 
 interface PayoffVisualizerProps {
   floorPrice: number;
@@ -16,36 +17,17 @@ export function PayoffVisualizer({ floorPrice = 45, capPrice = 55 }: PayoffVisua
   const C = capPrice;
   const S = simPrice;
 
-  // Exact math computation
-  let protectedVal = 0;
-  let upsideVal = 0;
-  let protectedFrac = 0;
-  let upsideFrac = 0;
+  // Exact math computation using canonical riskSplitPayoff helper
+  const fE8 = BigInt(Math.round(F * 1e8));
+  const cE8 = BigInt(Math.round(C * 1e8));
+  const sE8 = BigInt(Math.round(S * 1e8));
+  const payoff = riskSplitPayoff(fE8, cE8, sE8);
+  const fractions = riskSplitStockFractions(fE8, cE8, sE8);
 
-  if (S === 0) {
-    protectedVal = 0;
-    upsideVal = 0;
-  } else if (S < F) {
-    protectedVal = S;
-    upsideVal = 0;
-    protectedFrac = 1;
-    upsideFrac = 0;
-  } else if (S < 2 * F) {
-    protectedVal = F;
-    upsideVal = S - F;
-    protectedFrac = F / S;
-    upsideFrac = 1 - protectedFrac;
-  } else if (S < 2 * C) {
-    protectedVal = S / 2;
-    upsideVal = S / 2;
-    protectedFrac = 0.5;
-    upsideFrac = 0.5;
-  } else {
-    protectedVal = C;
-    upsideVal = S - C;
-    protectedFrac = C / S;
-    upsideFrac = 1 - protectedFrac;
-  }
+  const protectedVal = Number(payoff.protectedValueE8) / 1e8;
+  const upsideVal = Number(payoff.upsideValueE8) / 1e8;
+  const protectedFrac = Number(fractions.protectedFractionWad) / 1e18;
+  const upsideFrac = Number(fractions.upsideFractionWad) / 1e18;
 
   // Show both payoff transition points, including the 2 × cap boundary.
   const maxAxis = Math.max(1, Math.ceil(capPrice * 2.4), Math.ceil(simPrice * 1.1));
@@ -67,21 +49,10 @@ export function PayoffVisualizer({ floorPrice = 45, capPrice = 55 }: PayoffVisua
     const x = toX(p);
     stockPath += ` L ${x} ${toY(p)}`;
 
-    let pVal = 0;
-    let uVal = 0;
-    if (p < F) {
-      pVal = p;
-      uVal = 0;
-    } else if (p < 2 * F) {
-      pVal = F;
-      uVal = p - F;
-    } else if (p < 2 * C) {
-      pVal = p / 2;
-      uVal = p / 2;
-    } else {
-      pVal = C;
-      uVal = p - C;
-    }
+    const pE8 = BigInt(Math.round(p * 1e8));
+    const stepPayoff = riskSplitPayoff(fE8, cE8, pE8);
+    const pVal = Number(stepPayoff.protectedValueE8) / 1e8;
+    const uVal = Number(stepPayoff.upsideValueE8) / 1e8;
 
     protPath += ` L ${x} ${toY(pVal)}`;
     upPath += ` L ${x} ${toY(uVal)}`;

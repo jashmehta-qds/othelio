@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useAccount, useChainId, usePublicClient, useSignTypedData, useReadContract, useWriteContract } from "wagmi";
 import {
-  BASE_CHAIN_ID,
   BASE_USDC_ADDRESS,
   LIMIT_ORDER_EIP712_TYPES,
   ZERO_EX_EIP712_DOMAIN,
@@ -14,6 +13,9 @@ import {
   toZeroExAbiOrder,
 } from "@othelio/shared";
 import { parseUnits, formatUnits, getAddress, parseAbi, maxUint256 } from "viem";
+import { BookLevel } from "./useRiskSplitBook";
+import { computeSingleOrderTrade, formatSignedDifference } from "./tradeTicketLogic";
+import styles from "./RiskSplitMarkets.module.css";
 
 const ERC20_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
@@ -30,9 +32,13 @@ interface OrderTicketProps {
   claimDecimals: number | null;
   symbol: string;
   seriesExpiryTimestamp: number;
-  initialPrice?: string;
-  initialSide?: "BUY" | "SELL";
-  initialOrderHash?: string;
+  scenarioPrice: number;
+  scenarioPayoffPerClaim: number;
+  selectedOrder: BookLevel | null;
+  isBookLoading: boolean;
+  isBookError: boolean;
+  side: "BUY" | "SELL";
+  onChangeSide: (newSide: "BUY" | "SELL") => void;
   onOrderCreated?: () => void;
 }
 
@@ -43,9 +49,13 @@ export function OrderTicket({
   claimDecimals,
   symbol,
   seriesExpiryTimestamp,
-  initialPrice = "",
-  initialSide = "BUY",
-  initialOrderHash,
+  scenarioPrice,
+  scenarioPayoffPerClaim,
+  selectedOrder,
+  isBookLoading,
+  isBookError,
+  side,
+  onChangeSide,
   onOrderCreated,
 }: OrderTicketProps) {
   const { address, isConnected } = useAccount();
@@ -54,34 +64,15 @@ export function OrderTicket({
   const { signTypedDataAsync, isPending: isSigning } = useSignTypedData();
   const { writeContractAsync, isPending: isTxPending } = useWriteContract();
 
-  const [orderMode, setOrderMode] = useState<"LIMIT" | "FILL">("LIMIT");
-  const [side, setSide] = useState<"BUY" | "SELL">(initialSide);
-  const [priceUsd, setPriceUsd] = useState<string>(initialPrice);
-  const [selectedOrderHash, setSelectedOrderHash] = useState<string | undefined>(initialOrderHash);
-  const [amountClaims, setAmountClaims] = useState<string>("");
+  const [isLimitMode, setIsLimitMode] = useState(false);
+  const [limitPriceInput, setLimitPriceInput] = useState("");
+  const [amountClaimsInput, setAmountClaimsInput] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isWaitingReceipt, setIsWaitingReceipt] = useState(false);
 
-  useEffect(() => {
-    if (initialPrice) setPriceUsd(initialPrice);
-  }, [initialPrice]);
-
-  useEffect(() => {
-    if (initialSide) setSide(initialSide);
-  }, [initialSide]);
-
-  useEffect(() => {
-    if (initialOrderHash) {
-      setSelectedOrderHash(initialOrderHash);
-      setOrderMode("FILL");
-    }
-  }, [initialOrderHash]);
-
-  // Determine token that user must spend
-  // BUY: user spends USDC (6 dec)
-  // SELL: user spends claims in the underlying token's decimal scale.
   const isBuy = side === "BUY";
+  const claimLabel = claimType === "protected" ? "Protected" : "Upside";
   const userToken = isBuy ? BASE_USDC_ADDRESS : claimTokenAddress;
   const userDecimals = isBuy ? 6 : (claimDecimals ?? 0);
 
@@ -102,47 +93,180 @@ export function OrderTicket({
     query: { enabled: Boolean(address && userToken) },
   });
 
-  const userBalance = balanceData && (isBuy || claimDecimals !== null) ? formatUnits(balanceData, userDecimals) : "—";
+  const userBalanceStr = balanceData && (isBuy || claimDecimals !== null)
+    ? formatUnits(balanceData, userDecimals)
+    : "0";
   const userAllowance = allowanceData ?? BigInt(0);
 
-  // Calculations
-  const claimAmtNum = parseFloat(amountClaims || "0");
-  const priceNum = parseFloat(priceUsd || "0");
-  let claimUnits = BigInt(0);
-  let priceE6 = BigInt(0);
-  try {
-    if (claimDecimals !== null && claimDecimals >= 0 && claimDecimals <= 36) {
-      claimUnits = parseUnits(amountClaims || "0", claimDecimals);
-    }
-    priceE6 = parseUnits(priceUsd || "0", 6);
-  } catch {
-    // Invalid precision or input is shown as a disabled ticket below.
-  }
-  const totalUsdcUnits = claimDecimals === null ? BigInt(0) : claimUnits * priceE6 / (BigInt(10) ** BigInt(claimDecimals));
-  const totalUsdcNum = Number(formatUnits(totalUsdcUnits, 6));
-  const requiredUnits = isBuy ? totalUsdcUnits : claimUnits;
+  // Metrics for Immediate Fill mode
+  const fillMetrics = computeSingleOrderTrade({
+    side,
+    requestedAmountClaims: amountClaimsInput,
+    selectedOrder,
+    scenarioPayoffPerClaim,
+  });
 
+  // Metrics for Limit Order mode
+  const limitPriceNum = parseFloat(limitPriceInput) || 0;
+  const requestedAmtNum = parseFloat(amountClaimsInput) || 0;
+  const limitTotalUsdc = requestedAmtNum * limitPriceNum;
+  const limitScenarioWorth = requestedAmtNum * scenarioPayoffPerClaim;
+  const limitDiff = isBuy ? limitScenarioWorth - limitTotalUsdc : limitScenarioWorth;
+  const hasLimitQuote = requestedAmtNum > 0 && limitPriceNum > 0;
+  const totalDisplay = isLimitMode
+    ? hasLimitQuote ? `$${limitTotalUsdc.toFixed(2)}` : "—"
+    : fillMetrics.isValid ? `$${fillMetrics.totalUsdc.toFixed(2)}` : "—";
+  const scenarioDisplay = isLimitMode
+    ? hasLimitQuote ? `$${limitScenarioWorth.toFixed(2)}` : "—"
+    : fillMetrics.isValid ? `$${fillMetrics.scenarioWorth.toFixed(2)}` : "—";
+
+  // Compute required units for onchain approval and fill
+  let claimUnits = BigInt(0);
+  let totalUsdcUnits = BigInt(0);
+  const activeAmountStr = isLimitMode ? amountClaimsInput : fillMetrics.effectiveAmountClaims;
+  const activePriceStr = isLimitMode ? limitPriceInput : fillMetrics.priceUsd;
+
+  try {
+    if (claimDecimals !== null && claimDecimals >= 0 && claimDecimals <= 36 && activeAmountStr) {
+      claimUnits = parseUnits(activeAmountStr, claimDecimals);
+    }
+    if (activePriceStr) {
+      const priceE6 = parseUnits(activePriceStr, 6);
+      if (claimDecimals !== null) {
+        totalUsdcUnits = (claimUnits * priceE6) / (BigInt(10) ** BigInt(claimDecimals));
+      }
+    }
+  } catch {
+    // handled gracefully via validation checks
+  }
+
+  const requiredUnits = isBuy ? totalUsdcUnits : claimUnits;
   const needsApproval = isConnected && userAllowance < requiredUnits && requiredUnits > BigInt(0);
+
+  const handleMax = () => {
+    if (!isLimitMode && selectedOrder) {
+      const availableInOrder = parseFloat(selectedOrder.amountClaim) || 0;
+      if (!isBuy) {
+        const userBal = parseFloat(userBalanceStr) || 0;
+        const maxFill = Math.min(userBal, availableInOrder);
+        setAmountClaimsInput(maxFill.toString());
+      } else {
+        const orderPrice = parseFloat(fillMetrics.priceUsd) || 0;
+        const userUsdc = parseFloat(userBalanceStr) || 0;
+        if (orderPrice > 0) {
+          const maxAfford = userUsdc / orderPrice;
+          const maxFill = Math.min(maxAfford, availableInOrder);
+          setAmountClaimsInput(maxFill.toFixed(4));
+        } else {
+          setAmountClaimsInput(selectedOrder.amountClaim);
+        }
+      }
+    } else {
+      if (!isBuy) {
+        setAmountClaimsInput(userBalanceStr);
+      } else if (limitPriceNum > 0) {
+        const userUsdc = parseFloat(userBalanceStr) || 0;
+        const maxClaims = userUsdc / limitPriceNum;
+        setAmountClaimsInput(maxClaims.toFixed(4));
+      }
+    }
+  };
 
   const handleApprove = async () => {
     setErrorMessage(null);
     try {
       if (!publicClient) throw new Error("Wallet RPC is unavailable");
-      const maxApproval = maxUint256;
       const hash = await writeContractAsync({
         address: userToken as `0x${string}`,
         abi: ERC20_ABI,
         functionName: "approve",
-        args: [ZERO_EX_EXCHANGE_PROXY_BASE, maxApproval],
+        args: [ZERO_EX_EXCHANGE_PROXY_BASE, maxUint256],
       });
       setIsWaitingReceipt(true);
-      setStatusMessage("Waiting for approval confirmation...");
+      setStatusMessage("Waiting for approval confirmation…");
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") throw new Error("Token approval reverted");
       await refetchAllowance();
       setStatusMessage("Approval confirmed");
-    } catch (err: any) {
-      setErrorMessage(err?.message || "Token approval failed");
+      setTimeout(() => setStatusMessage(null), 3500);
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Token approval failed");
+    } finally {
+      setIsWaitingReceipt(false);
+    }
+  };
+
+  const handleFillOrder = async () => {
+    if (!address || !isConnected) {
+      setErrorMessage("Please connect your wallet first.");
+      return;
+    }
+    if (!selectedOrder?.orderHash) {
+      setErrorMessage("No fillable order selected. Choose an available order in the book.");
+      return;
+    }
+    if (claimDecimals === null || claimUnits <= BigInt(0) || totalUsdcUnits <= BigInt(0)) {
+      setErrorMessage("Please enter a valid claim amount to fill.");
+      return;
+    }
+
+    setErrorMessage(null);
+    setStatusMessage("Preparing fill transaction…");
+
+    try {
+      if (!publicClient) throw new Error("Wallet RPC is unavailable");
+      const takerFillUnits = isBuy ? totalUsdcUnits : claimUnits;
+
+      const buildRes = await fetch(
+        `${API_BASE}/v1/orders/${selectedOrder.orderHash}/build-fill?chainId=${chainId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            takerAddress: address,
+            takerTokenFillAmount: takerFillUnits.toString(),
+          }),
+        }
+      );
+
+      if (!buildRes.ok) {
+        const errJson = await buildRes.json().catch(() => ({}));
+        throw new Error(errJson.message || "Failed to build fill transaction");
+      }
+
+      const fillData = await buildRes.json();
+      setStatusMessage("Confirming fill transaction in wallet…");
+
+      const txHash = await writeContractAsync({
+        address: fillData.target as `0x${string}`,
+        abi: ZERO_EX_LIMIT_ORDER_ABI,
+        functionName: "fillLimitOrder",
+        args: [toZeroExAbiOrder(fillData.args[0]), fillData.args[1], BigInt(fillData.args[2])],
+      });
+
+      setIsWaitingReceipt(true);
+      setStatusMessage(`Waiting for onchain fill ${txHash.slice(0, 10)}…`);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status !== "success") throw new Error("Order fill reverted");
+
+      const reconcileRes = await fetch(`${API_BASE}/v1/orders/${selectedOrder.orderHash}/reconcile-fill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ txHash }),
+      });
+      if (!reconcileRes.ok) {
+        const errorJson = await reconcileRes.json().catch(() => ({}));
+        throw new Error(errorJson.message || "Fill confirmed, but book reconciliation failed");
+      }
+
+      setStatusMessage("Fill confirmed and book reconciled!");
+      setAmountClaimsInput("");
+      await Promise.all([refetchBalance(), refetchAllowance()]);
+      onOrderCreated?.();
+      setTimeout(() => setStatusMessage(null), 4000);
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Fill execution failed");
+      setStatusMessage(null);
     } finally {
       setIsWaitingReceipt(false);
     }
@@ -153,23 +277,20 @@ export function OrderTicket({
       setErrorMessage("Please connect your wallet first.");
       return;
     }
-
-    if (claimDecimals === null || claimUnits <= BigInt(0) || priceE6 <= BigInt(0) || totalUsdcUnits <= BigInt(0)) {
-      setErrorMessage("Enter a valid claim amount and USDC price after token decimals load.");
+    if (claimDecimals === null || claimUnits <= BigInt(0) || totalUsdcUnits <= BigInt(0)) {
+      setErrorMessage("Enter a valid claim amount and limit price.");
       return;
     }
 
     setErrorMessage(null);
-    setStatusMessage("Preparing signed limit order...");
+    setStatusMessage("Preparing signed limit order…");
 
     try {
       const takerAmountUnits = isBuy ? claimUnits : totalUsdcUnits;
-
       const orderExpiry = Math.min(
-        Math.floor(Date.now() / 1000) + 7 * 86400, // 7 days or series expiry
+        Math.floor(Date.now() / 1000) + 7 * 86400,
         seriesExpiryTimestamp
       );
-
       const salt = BigInt(Math.floor(Date.now() * 1000 + Math.random() * 1000)).toString();
 
       const order: ZeroExLimitOrder = {
@@ -187,12 +308,8 @@ export function OrderTicket({
         salt,
       };
 
-      // The local Base fork talks to Base's forked 0x deployment, whose
-      // domain separator remains bound to Base chain ID 8453.
-      const domain = ZERO_EX_EIP712_DOMAIN;
-
       const rawSig = await signTypedDataAsync({
-        domain,
+        domain: ZERO_EX_EIP712_DOMAIN,
         types: LIMIT_ORDER_EIP712_TYPES,
         primaryType: "LimitOrder",
         message: {
@@ -218,7 +335,7 @@ export function OrderTicket({
         s: ("0x" + rawSig.slice(66, 130)) as `0x${string}`,
       };
 
-      setStatusMessage("Broadcasting order to Othelio book...");
+      setStatusMessage("Broadcasting order to order book…");
 
       const res = await fetch(`${API_BASE}/v1/orders`, {
         method: "POST",
@@ -237,290 +354,226 @@ export function OrderTicket({
         throw new Error(errorJson.message || "Failed to post order to book");
       }
 
-      setStatusMessage("Order posted successfully!");
-      setAmountClaims("");
-      setTimeout(() => setStatusMessage(null), 3000);
+      setStatusMessage("Order posted successfully to the book!");
+      setAmountClaimsInput("");
+      setLimitPriceInput("");
+      setTimeout(() => setStatusMessage(null), 3500);
       onOrderCreated?.();
-    } catch (err: any) {
-      setErrorMessage(err?.message || "Failed to sign or submit order");
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Failed to sign or submit order");
       setStatusMessage(null);
     }
   };
 
-  const handleFillOrder = async () => {
-    if (!address || !isConnected) {
-      setErrorMessage("Please connect your wallet first.");
-      return;
-    }
-    if (!selectedOrderHash) {
-      setErrorMessage("No resting order selected. Click an order in the book to fill it.");
-      return;
-    }
-    if (claimDecimals === null || claimUnits <= BigInt(0) || totalUsdcUnits <= BigInt(0)) {
-      setErrorMessage("Please enter a valid claim amount to fill.");
-      return;
-    }
-
-    setErrorMessage(null);
-    setStatusMessage("Preparing onchain fill transaction...");
-
-    try {
-      if (!publicClient) throw new Error("Wallet RPC is unavailable");
-      // 0x takerTokenFillAmount:
-      // If BUYing claims: taker pays USDC -> takerTokenFillAmount is total USDC (6 decimals)
-      // If SELLing claims: taker pays Claim -> takerTokenFillAmount is Claims (8 decimals)
-      const takerFillUnits = isBuy ? totalUsdcUnits : claimUnits;
-
-      const buildRes = await fetch(
-        `${API_BASE}/v1/orders/${selectedOrderHash}/build-fill?chainId=${chainId}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            takerAddress: address,
-            takerTokenFillAmount: takerFillUnits.toString(),
-          }),
-        }
-      );
-
-      if (!buildRes.ok) {
-        const errJson = await buildRes.json().catch(() => ({}));
-        throw new Error(errJson.message || "Failed to build fill transaction");
-      }
-
-      const fillData = await buildRes.json();
-
-      setStatusMessage("Confirming fill transaction in wallet...");
-
-      const txHash = await writeContractAsync({
-        address: fillData.target as `0x${string}`,
-        abi: ZERO_EX_LIMIT_ORDER_ABI,
-        functionName: "fillLimitOrder",
-        args: [toZeroExAbiOrder(fillData.args[0]), fillData.args[1], BigInt(fillData.args[2])],
-      });
-
-      setIsWaitingReceipt(true);
-      setStatusMessage(`Waiting for fill ${txHash.slice(0, 10)}…`);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-      if (receipt.status !== "success") throw new Error("Order fill reverted");
-      const reconcileRes = await fetch(`${API_BASE}/v1/orders/${selectedOrderHash}/reconcile-fill`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ txHash }),
-      });
-      if (!reconcileRes.ok) {
-        const errorJson = await reconcileRes.json().catch(() => ({}));
-        throw new Error(errorJson.message || "Fill confirmed, but book reconciliation failed");
-      }
-      setStatusMessage("Fill confirmed and book reconciled");
-      setAmountClaims("");
-      await Promise.all([refetchBalance(), refetchAllowance()]);
-      onOrderCreated?.();
-    } catch (err: any) {
-      setErrorMessage(err?.message || "Fill execution failed");
-      setStatusMessage(null);
-    } finally {
-      setIsWaitingReceipt(false);
-    }
-  };
+  const isBusy = isSigning || isTxPending || isWaitingReceipt;
 
   return (
-    <div className="bg-[#161715] border border-[#292a27] rounded-lg p-5 space-y-4 text-xs font-mono">
-      {/* Mode & Side Selectors */}
-      <div className="flex flex-col gap-3 pb-3 border-b border-[#292a27]">
-        <div className="flex justify-between items-center">
-          <div className="flex space-x-1 bg-[#10110f] p-1 rounded border border-[#292a27]">
-            <button
-              type="button"
-              onClick={() => setOrderMode("LIMIT")}
-              className={`px-3 py-1 rounded text-xs transition-colors ${
-                orderMode === "LIMIT"
-                  ? "bg-[#292a27] text-white font-semibold"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Limit Order
-            </button>
-            <button
-              type="button"
-              onClick={() => setOrderMode("FILL")}
-              className={`px-3 py-1 rounded text-xs transition-colors ${
-                orderMode === "FILL"
-                  ? "bg-[#292a27] text-white font-semibold"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Fill Resting
-            </button>
-          </div>
+    <aside className={styles.ticketCard} aria-label="Trade ticket">
+      {/* Side Toggle: Buy / Sell */}
+      <div className={styles.ticketSideToggle} role="group" aria-label="Trade direction">
+        <button
+          type="button"
+          onClick={() => onChangeSide("BUY")}
+          className={`${styles.ticketSideBtn} ${isBuy ? styles.ticketSideBtnActive : ""}`}
+          aria-pressed={isBuy}
+        >
+          Buy
+        </button>
+        <button
+          type="button"
+          onClick={() => onChangeSide("SELL")}
+          className={`${styles.ticketSideBtn} ${!isBuy ? styles.ticketSideBtnActive : ""}`}
+          aria-pressed={!isBuy}
+        >
+          Sell
+        </button>
+      </div>
 
-          <div className="flex space-x-1">
-            <button
-              type="button"
-              onClick={() => setSide("BUY")}
-              className={`px-3 py-1 rounded text-xs transition-colors ${
-                side === "BUY"
-                  ? "bg-emerald-600 text-black font-semibold"
-                  : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              Buy
-            </button>
-            <button
-              type="button"
-              onClick={() => setSide("SELL")}
-              className={`px-3 py-1 rounded text-xs transition-colors ${
-                side === "SELL"
-                  ? "bg-red-600 text-white font-semibold"
-                  : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              Sell
-            </button>
-          </div>
+      <h2 className={styles.ticketTitle}>
+        {claimLabel}
+      </h2>
+      <div className={styles.ticketModeRow}>
+        <span>Order type</span>
+        <div className={styles.ticketModeToggle} role="group" aria-label="Order type">
+          <button type="button" className={!isLimitMode ? styles.ticketModeActive : ""} aria-pressed={!isLimitMode} onClick={() => { setIsLimitMode(false); setErrorMessage(null); }}>Market</button>
+          <button type="button" className={isLimitMode ? styles.ticketModeActive : ""} aria-pressed={isLimitMode} onClick={() => { setIsLimitMode(true); setErrorMessage(null); }}>Limit</button>
         </div>
-
-        {orderMode === "FILL" && (
-          <div className="p-2 bg-[#121310] border border-[#292a27] rounded text-[11px] text-zinc-400 flex justify-between items-center">
-            <span>
-              {selectedOrderHash
-                ? `Order: ${selectedOrderHash.slice(0, 8)}…${selectedOrderHash.slice(-6)}`
-                : "Click any book order to target"}
-            </span>
-            {selectedOrderHash && (
-              <button
-                type="button"
-                onClick={() => setSelectedOrderHash(undefined)}
-                className="text-zinc-500 hover:text-zinc-300 ml-2"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        )}
+      </div>
+      {/* Available Balance in Wallet */}
+      <div className={styles.ticketBalanceRow}>
+        <span>In wallet:</span>
+        <b>
+          {userBalanceStr} {isBuy ? "USDC" : `${claimLabel} claims`}
+        </b>
       </div>
 
-      {/* Balance helper */}
-      <div className="flex justify-between text-zinc-500 text-[11px]">
-        <span>Available:</span>
-        <span className="text-zinc-300">
-          {userBalance} {isBuy ? "USDC" : `${symbol} Claims`}
-        </span>
-      </div>
+      {/* Selected Order Info (in fill mode) */}
+      {!isLimitMode && (
+        <div className={styles.selectedOrderBanner}>
+          {selectedOrder ? (
+            <div className={styles.selectedOrderContent}>
+              <span>
+                <b>{selectedOrder.amountClaim} claims</b> at <b>${selectedOrder.priceUsd}</b>
+              </span>
+              <span className={styles.selectedOrderTip}>Fills one order. Select another in the book.</span>
+            </div>
+          ) : isBookLoading ? (
+            <div className={styles.ticketOrderSkeleton} role="status" aria-label="Loading best available price">
+              <span className={styles.numberSkeleton} /><span className={styles.numberSkeletonShort} />
+            </div>
+          ) : (
+            <div className={styles.noOrderBanner}>
+              <span>{isBookError ? "Book offline. Market orders unavailable." : `No ${isBuy ? "offers" : "bids"}. Try a limit order.`}</span>
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Price input */}
-      <div className="space-y-1">
-        <label className="text-zinc-400 uppercase tracking-wider block text-[11px]">
-          {orderMode === "FILL" ? "Execution Price (USDC)" : "Limit Price (USDC per claim)"}
-        </label>
-        <input
-          type="number"
-          placeholder="0.00"
-          value={priceUsd}
-          onChange={(e) => setPriceUsd(e.target.value)}
-          readOnly={orderMode === "FILL" && Boolean(selectedOrderHash)}
-          step="0.01"
-          className="w-full bg-[#10110f] border border-[#292a27] rounded px-3 py-2 text-white focus:outline-none focus:border-[#ff5729] read-only:opacity-80"
-        />
-      </div>
-
-      {/* Amount input */}
-      <div className="space-y-1">
-        <div className="flex justify-between items-center text-[11px]">
-          <label className="text-zinc-400 uppercase tracking-wider">
-            Claim Amount
-          </label>
-          <button
-            type="button"
-            onClick={() => {
-              if (!isBuy) {
-                setAmountClaims(userBalance);
-              } else if (priceNum > 0) {
-                const maxClaims = parseFloat(userBalance) / priceNum;
-                setAmountClaims(maxClaims.toFixed(4));
-              }
-            }}
-            className="text-[#ff5729] hover:underline"
-          >
+      {/* Amount Input */}
+      <div className={styles.ticketField}>
+        <div className={styles.ticketFieldHeader}>
+          <label htmlFor="ticket-amount">Amount</label>
+          <button type="button" onClick={handleMax} className={styles.maxLink}>
             Max
           </button>
         </div>
-        <input
-          type="number"
-          placeholder="0.0000"
-          value={amountClaims}
-          onChange={(e) => setAmountClaims(e.target.value)}
-          step="0.0001"
-          className="w-full bg-[#10110f] border border-[#292a27] rounded px-3 py-2 text-white focus:outline-none focus:border-[#ff5729]"
-        />
+        <div className={styles.ticketInputWrapper}>
+          <input
+            id="ticket-amount"
+            type="number"
+            min="0.0001"
+            step="0.01"
+            placeholder="0.00"
+            value={amountClaimsInput}
+            onChange={(e) => setAmountClaimsInput(e.target.value)}
+            inputMode="decimal"
+          />
+          <span className={styles.ticketInputUnit}>claims</span>
+        </div>
       </div>
 
-      {/* Total calculation */}
-      <div className="p-3 bg-[#10110f] border border-[#292a27] rounded flex justify-between items-center">
-        <span className="text-zinc-500">Total (USDC):</span>
-        <span className="font-semibold text-white">${totalUsdcNum.toFixed(2)}</span>
-      </div>
-
-      {/* Status & Error Messages */}
-      {statusMessage && (
-        <div className="p-2 bg-emerald-950/40 border border-emerald-900 rounded text-emerald-400 text-[11px]">
-          {statusMessage}
+      {/* Capped Warning if user asks for more than selected order */}
+      {!isLimitMode && fillMetrics.isCapped && (
+        <div className={styles.cappedNotice} role="note">
+          Limited to {fillMetrics.availableInOrder} claims in this order.
         </div>
       )}
 
-      {errorMessage && (
-        <div className="p-2 bg-red-950/40 border border-red-900 rounded text-red-400 text-[11px]">
-          {errorMessage}
+      {/* Limit Price Input (when in limit mode) */}
+      {isLimitMode && (
+        <div className={styles.ticketField}>
+          <div className={styles.ticketFieldHeader}>
+            <label htmlFor="ticket-limit-price">Price per claim</label>
+          </div>
+          <div className={styles.ticketInputWrapper}>
+            <input
+              id="ticket-limit-price"
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="0.00"
+              value={limitPriceInput}
+              onChange={(e) => setLimitPriceInput(e.target.value)}
+              inputMode="decimal"
+            />
+            <span className={styles.ticketInputUnit}>USDC</span>
+          </div>
+          <p className={styles.limitDisclaimer}>
+            Your order waits in the book and may not fill.
+          </p>
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="space-y-2 pt-2">
-        {needsApproval ? (
+      {/* Financial Summary */}
+      <div className={styles.ticketSummary}>
+        <div className={styles.summaryRow}>
+          <span>{isLimitMode ? "Limit price" : isBuy ? "Buy price" : "Sell price"}</span>
+          <b>{isLimitMode ? (limitPriceNum ? `$${limitPriceNum.toFixed(2)}` : "—") : isBookLoading ? <span className={styles.numberSkeleton} role="status" aria-label="Loading price" /> : selectedOrder ? `$${fillMetrics.priceUsd}` : "—"}</b>
+        </div>
+        <div className={styles.summaryRow}>
+          <span>{isBuy ? "You pay" : "You receive"}</span>
+          <b>{totalDisplay}</b>
+        </div>
+        <div className={`${styles.summaryRow} ${styles.summaryHighlight}`}>
+          <span>Value at ${scenarioPrice.toFixed(0)}</span>
+          <b>{scenarioDisplay}</b>
+        </div>
+        <div className={styles.summaryRow}>
+          <span>{isBuy ? "Gain / loss at that price" : "Value given up"}</span>
+          <b>
+            {isLimitMode
+              ? hasLimitQuote ? isBuy ? formatSignedDifference(limitDiff) : `$${limitScenarioWorth.toFixed(2)}` : "—"
+              : fillMetrics.isValid
+              ? isBuy
+                ? formatSignedDifference(fillMetrics.differenceFromCost)
+                : `$${fillMetrics.scenarioWorth.toFixed(2)}`
+              : "—"}
+          </b>
+        </div>
+      </div>
+
+      <p className={styles.ticketExplain}>
+        {isBuy
+          ? `Max loss: amount paid. Redeems in ${symbol}.`
+          : `Selling gives up this claim’s ${symbol} payout.`}
+      </p>
+
+      {/* Messages */}
+      {statusMessage && <div className={styles.statusBox}>{statusMessage}</div>}
+      {errorMessage && <div className={styles.errorBox}>{errorMessage}</div>}
+
+      {/* Primary Action Button */}
+      <div className={styles.ticketActionArea}>
+        {!isConnected ? (
+          <div className={styles.disconnectedNote}>Connect wallet to trade</div>
+        ) : needsApproval ? (
           <button
             type="button"
             onClick={handleApprove}
-            disabled={isTxPending || isWaitingReceipt}
-            className="w-full py-2.5 rounded bg-[#292a27] hover:bg-[#3f413c] text-white font-semibold tracking-wider uppercase transition-colors disabled:opacity-50"
+            disabled={isBusy}
+            className={`ui-button ${styles.primaryActionBtn}`}
           >
-            {isTxPending ? "Approving in Wallet..." : `Approve ${isBuy ? "USDC" : "Claim"} for Trading`}
+            {isBusy ? "Approving in Wallet…" : `Approve ${isBuy ? "USDC" : "Claims"} for Trading`}
           </button>
-        ) : orderMode === "FILL" ? (
+        ) : !isLimitMode ? (
           <button
             type="button"
             onClick={handleFillOrder}
-            disabled={isTxPending || isWaitingReceipt || !isConnected || claimDecimals === null || claimUnits <= BigInt(0) || !selectedOrderHash}
-            className={`w-full py-2.5 rounded font-semibold tracking-wider uppercase transition-colors disabled:opacity-50 ${
-              side === "BUY"
-                ? "bg-emerald-600 hover:bg-emerald-500 text-black"
-                : "bg-red-600 hover:bg-red-500 text-white"
-            }`}
+            disabled={
+              isBusy ||
+              !selectedOrder ||
+              !fillMetrics.isValid ||
+              claimDecimals === null ||
+              claimUnits <= BigInt(0)
+            }
+            className={`ui-button ${styles.primaryActionBtn}`}
           >
-            {isTxPending
-              ? "Executing Fill..."
-              : !selectedOrderHash
-              ? "Select an Order in Book"
-              : `Fill ${side} Order onchain`}
+            {isBusy
+              ? "Executing Fill…"
+              : !selectedOrder
+              ? `No ${isBuy ? "Offers" : "Bids"} to Fill`
+              : requestedAmtNum <= 0
+              ? "Enter Amount"
+              : `${isBuy ? "Buy" : "Sell"} ${fillMetrics.effectiveAmountClaims} ${claimLabel}`}
           </button>
         ) : (
           <button
             type="button"
             onClick={handlePlaceLimitOrder}
-            disabled={isSigning || !isConnected || claimDecimals === null || claimUnits <= BigInt(0) || totalUsdcUnits <= BigInt(0)}
-            className={`w-full py-2.5 rounded font-semibold tracking-wider uppercase transition-colors disabled:opacity-50 ${
-              side === "BUY"
-                ? "bg-emerald-600 hover:bg-emerald-500 text-black"
-                : "bg-red-600 hover:bg-red-500 text-white"
-            }`}
+            disabled={
+              isBusy ||
+              claimDecimals === null ||
+              claimUnits <= BigInt(0) ||
+              limitPriceNum <= 0 ||
+              totalUsdcUnits <= BigInt(0)
+            }
+            className={`ui-button ${styles.primaryActionBtn}`}
           >
-            {isSigning ? "Signing Order in Wallet..." : `Sign Limit ${side} Order`}
+            {isBusy ? "Signing in Wallet…" : `Sign Limit ${side} Order`}
           </button>
         )}
       </div>
 
-      <p className="text-[10px] text-zinc-500 text-center">
-        Zero custody: resting orders stay in your wallet until executed onchain via 0x ExchangeProxy.
-      </p>
-    </div>
+    </aside>
   );
 }

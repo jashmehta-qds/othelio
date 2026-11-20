@@ -53,12 +53,14 @@ export function useRiskSplitBook(seriesAddress: string, claimType: "protected" |
       return res.json();
     },
     enabled: Boolean(seriesAddress),
-    refetchInterval: 3000, // Refresh every 3 seconds
-    staleTime: 2000,
+    retry: false,
+    refetchInterval: (current) => current.state.error ? 30_000 : 5_000,
+    staleTime: 4_000,
   });
 
-  const bestBid = query.data?.bids?.[0] ?? null;
-  const bestAsk = query.data?.asks?.[0] ?? null;
+  const usableBook = query.isError ? null : query.data ?? null;
+  const bestBid = usableBook?.bids?.[0] ?? null;
+  const bestAsk = usableBook?.asks?.[0] ?? null;
 
   let spreadUsd: string | null = null;
   if (bestBid && bestAsk) {
@@ -69,15 +71,15 @@ export function useRiskSplitBook(seriesAddress: string, claimType: "protected" |
   }
 
   return {
-    book: query.data ?? null,
-    bids: query.data?.bids ?? [],
-    asks: query.data?.asks ?? [],
-    recentTrades: query.data?.recentTrades ?? [],
+    book: usableBook,
+    bids: usableBook?.bids ?? [],
+    asks: usableBook?.asks ?? [],
+    recentTrades: usableBook?.recentTrades ?? [],
     bestBid,
     bestAsk,
     spreadUsd,
-    sequence: query.data?.sequence ?? 0,
-    asOfBlock: query.data?.asOfBlock ?? 0,
+    sequence: usableBook?.sequence ?? 0,
+    asOfBlock: usableBook?.asOfBlock ?? 0,
     isLoading: query.isLoading,
     isError: query.isError,
     refetch: query.refetch,
