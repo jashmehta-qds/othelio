@@ -191,11 +191,11 @@ contract RiskSplitSecurityTest is Test {
     function test_Security_ZeroOrNegativeOraclePriceRejected() public {
         oracle.setPrice(0, expiry);
         vm.warp(expiry + 1);
-        vm.expectRevert(ISettlementAdapter.ZeroPrice.selector);
+        vm.expectRevert(ISettlementAdapter.StalePrice.selector);
         adapter.settleSeries(address(series));
 
         oracle.setPrice(-10e8, expiry);
-        vm.expectRevert(ISettlementAdapter.NegativePrice.selector);
+        vm.expectRevert(ISettlementAdapter.StalePrice.selector);
         adapter.settleSeries(address(series));
     }
 
