@@ -301,15 +301,17 @@ contract PR4Phase2SeriesAuditTest is Test {
         assertEq(env.underlying.balanceOf(address(env.series)), 3);
     }
 
-    function test_RiskSplit_ExtremeFloorMakesSettlementPermanentlyRevert() public {
+    function test_RiskSplit_ExtremeFloorAndCapAreRejectedAtCreation() public {
         uint256 floorPrice = type(uint256).max / 2 + 1;
-        RiskEnv memory env = _newRisk(floorPrice, type(uint256).max);
-        vm.warp(env.series.expiry() + 1);
+        Phase2Token underlying = new Phase2Token("Underlying", 18);
         vm.expectRevert();
-        env.series.settle(floorPrice);
+        new RiskSplitSeries(
+            address(underlying), address(this), floorPrice, type(uint256).max, block.timestamp + 1 days,
+            address(0x1234), 1, floorPrice
+        );
     }
 
-    function test_RiskSplit_MaxClaimAmountOverflowsRedemption() public {
+    function test_RiskSplit_MaxClaimAmountUsesOverflowSafeRedemption() public {
         RiskEnv memory env = _newRisk(100, 200);
         uint256 amount = type(uint256).max;
         _mintRisk(env, alice, amount);
@@ -317,8 +319,30 @@ contract PR4Phase2SeriesAuditTest is Test {
         env.series.settle(50);
 
         vm.prank(alice);
-        vm.expectRevert();
         env.series.redeemProtected(amount);
+    }
+
+    function testFuzz_RiskSplit_BoundedTermsAndClaimsSettleAndRedeem(
+        uint256 floorPrice,
+        uint256 capPrice,
+        uint256 settlementPrice,
+        uint256 amount
+    ) public {
+        uint256 maxPrice = type(uint256).max / 1e18;
+        floorPrice = bound(floorPrice, 1, maxPrice - 1);
+        capPrice = bound(capPrice, floorPrice + 1, maxPrice);
+        settlementPrice = bound(settlementPrice, 1, type(uint256).max);
+        amount = bound(amount, 1, type(uint256).max);
+
+        RiskEnv memory env = _newRisk(floorPrice, capPrice);
+        _mintRisk(env, alice, amount);
+        vm.warp(env.series.expiry() + 1);
+        env.series.settle(settlementPrice);
+
+        vm.startPrank(alice);
+        env.series.redeemProtected(amount);
+        env.series.redeemUpside(amount);
+        vm.stopPrank();
     }
 
     function test_FactoryPermissionsAndDuplicateTermsAreBlocked() public {
@@ -581,14 +605,18 @@ contract PR4Phase2BasketAuditTest is Test {
         oracle = new BasketOracle(address(registry), address(0));
         Phase2Token sixDecimalToken = new Phase2Token("USDC", 6);
         feed = new Phase2Feed(1e8, block.timestamp);
+        vm.expectRevert(
+            abi.encodeWithSelector(OthelioAssetRegistry.TokenDecimalsMismatch.selector, address(sixDecimalToken), 18, 6)
+        );
         registry.configure(block.chainid, address(sixDecimalToken), address(feed), true, 18, 8, false);
 
         address[] memory tokens = new address[](1);
         tokens[0] = address(sixDecimalToken);
         uint256[] memory balances = new uint256[](1);
         balances[0] = 1e6;
+        registry.configure(block.chainid, address(sixDecimalToken), address(feed), true, 6, 8, false);
         uint256 nav = oracle.calculateNAV(tokens, balances);
-        assertEq(nav, 0);
+        assertEq(nav, 1e6);
         assertEq(sixDecimalToken.decimals(), 6);
     }
 

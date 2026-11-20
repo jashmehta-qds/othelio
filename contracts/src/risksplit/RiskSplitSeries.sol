@@ -6,11 +6,14 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IRiskSplitSeries} from "./interfaces/IRiskSplitSeries.sol";
 import {IClaimToken} from "./interfaces/IClaimToken.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract RiskSplitSeries is IRiskSplitSeries, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 private constant WAD = 1e18;
+    // cap*WAD and 2*cap are used in settlement; this bound keeps both products within uint256.
+    uint256 public constant MAX_PRICE = type(uint256).max / WAD;
 
     address public immutable override factory;
     IERC20 public immutable override underlying;
@@ -46,7 +49,7 @@ contract RiskSplitSeries is IRiskSplitSeries, ReentrancyGuard {
         uint256 referencePrice_
     ) {
         if (underlying_ == address(0) || settlementAdapter_ == address(0)) revert ZeroAddress();
-        if (floorPrice_ >= capPrice_ || floorPrice_ == 0) revert InvalidParameters();
+        if (floorPrice_ == 0 || floorPrice_ >= capPrice_ || capPrice_ > MAX_PRICE) revert InvalidParameters();
         if (expiry_ <= block.timestamp) revert InvalidParameters();
 
         factory = msg.sender;
@@ -167,7 +170,7 @@ contract RiskSplitSeries is IRiskSplitSeries, ReentrancyGuard {
 
         protectedToken.burn(msg.sender, amount);
 
-        uint256 underlyingOut = (amount * protectedFraction) / WAD;
+        uint256 underlyingOut = Math.mulDiv(amount, protectedFraction, WAD);
         if (underlyingOut > 0) {
             underlying.safeTransfer(msg.sender, underlyingOut);
         }
@@ -182,7 +185,7 @@ contract RiskSplitSeries is IRiskSplitSeries, ReentrancyGuard {
 
         upsideToken.burn(msg.sender, amount);
 
-        uint256 underlyingOut = (amount * upsideFraction) / WAD;
+        uint256 underlyingOut = Math.mulDiv(amount, upsideFraction, WAD);
         if (underlyingOut > 0) {
             underlying.safeTransfer(msg.sender, underlyingOut);
         }

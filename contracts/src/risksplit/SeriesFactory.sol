@@ -8,6 +8,7 @@ import {ISettlementAdapter, AggregatorV3Interface} from "./interfaces/ISettlemen
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract SeriesFactory is ISeriesFactory {
+    uint256 private constant MAX_PRICE = type(uint256).max / 1e18;
     address public override owner;
     address public override pendingOwner;
 
@@ -67,7 +68,7 @@ contract SeriesFactory is ISeriesFactory {
         address settlementAdapter
     ) external override onlyOwner returns (address seriesAddress) {
         if (underlying == address(0) || settlementAdapter == address(0)) revert ZeroAddress();
-        if (floorPrice >= capPrice || floorPrice == 0) revert InvalidPriceRange();
+        if (floorPrice == 0 || floorPrice >= capPrice || capPrice > MAX_PRICE) revert InvalidPriceRange();
         if (expiry <= block.timestamp) revert ExpiryInPast();
         if (!approvedExpiry[underlying][expiry]) revert UnapprovedExpiry();
         if (!approvedAdapter[underlying][settlementAdapter]) revert InvalidAdapter();
