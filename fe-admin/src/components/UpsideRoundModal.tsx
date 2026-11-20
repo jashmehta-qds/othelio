@@ -9,7 +9,7 @@ import {
 import { adminApi } from '../lib/api';
 import { deployPresetStrikes } from '../lib/upside-launch';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
-import { decodeFunctionData, encodeFunctionData, parseEventLogs, parseUnits, type Hash } from 'viem';
+import { BaseError, decodeFunctionData, encodeFunctionData, parseEventLogs, parseUnits, type Hash } from 'viem';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 interface UpsideRoundModalProps {
@@ -99,15 +99,16 @@ export function UpsideRoundModal({
       const factory = transaction.target;
       const decoded = decodeFunctionData({ abi: upsideFactoryAbi, data: transaction.data });
       if (decoded.functionName !== 'registerRound') throw new Error('Invalid round preview calldata.');
-      setStepStatus('Confirming round registration…');
       let hash = registerHash;
       if (!hash) {
+        setStepStatus('Checking round registration…');
         const { request } = await publicClient.simulateContract({
           address: factory, abi: upsideFactoryAbi, functionName: 'registerRound', args: decoded.args, account: address,
         });
         hash = await writeContractAsync(request);
         setRegisterHash(hash);
       }
+      setStepStatus('Confirming round registration…');
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') {
         setRegisterHash(null);
@@ -127,7 +128,9 @@ export function UpsideRoundModal({
       setCompleted(true);
       onSuccess();
     } catch (err) {
-      setPreviewError(err instanceof Error ? err.message : 'Round launch failed.');
+      setStepStatus(null);
+      const message = err instanceof BaseError ? err.shortMessage : err instanceof Error ? err.message : '';
+      setPreviewError(message.trim().split('\n', 1)[0].slice(0, 240) || 'Round launch failed.');
       onSuccess();
     } finally {
       setIsSubmitting(false);
@@ -136,7 +139,7 @@ export function UpsideRoundModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl rounded-xl border border-[#292a27] bg-[#161715] p-6 shadow-2xl space-y-6">
+      <div className="w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-xl border border-[#292a27] bg-[#161715] p-6 shadow-2xl space-y-6">
         <div className="flex items-center justify-between border-b border-[#292a27] pb-4">
           <div>
             <h2 className="text-lg font-bold text-white tracking-wide">Launch New Upside Round</h2>
@@ -225,7 +228,7 @@ export function UpsideRoundModal({
         )}
 
         {previewError && (
-          <div className="p-3 rounded bg-red-950/40 border border-red-900 text-xs font-mono text-red-300">
+          <div role="alert" className="p-3 rounded bg-red-950/40 border border-red-900 text-xs font-mono text-red-300 break-words">
             {previewError}
           </div>
         )}
