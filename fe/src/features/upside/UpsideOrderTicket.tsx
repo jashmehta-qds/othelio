@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { WalletConnectModal } from "@/components/WalletConnectModal";
 import styles from "./UpsideMarkets.module.css";
-import { fetchSweepQuote, submitLimitOrder } from "./useUpside";
+import { fetchSweepQuote, submitLimitOrder, useUpsideOrderbook } from "./useUpside";
 import {
   UpsideSweepQuoteResponse,
   ZERO_EX_EXCHANGE_PROXY_BASE,
@@ -76,6 +76,8 @@ export function UpsideOrderTicket({
   const { writeContractAsync } = useWriteContract();
   const { signTypedDataAsync } = useSignTypedData();
   const { sendTransactionAsync } = useSendTransaction();
+  const { errorUpdatedAt: bookFailureRevision, isUnavailable: bookUnavailable } =
+    useUpsideOrderbook(chainId, seriesAddress, claimType);
 
   const activeClaimToken =
     claimType === "UPSIDE" ? upsideTokenAddress : residualTokenAddress;
@@ -91,14 +93,18 @@ export function UpsideOrderTicket({
     address,
     isLimitMode,
     quoteRevision,
+    bookFailureRevision,
+    bookUnavailable,
   ].join(":");
   const sweepQuote =
     quoteState?.key === quoteKey ? quoteState.quote : undefined;
-  const quoteError =
-    quoteState?.key === quoteKey ? quoteState.error : undefined;
+  const quoteError = bookUnavailable
+    ? "Order book unavailable. Retry the book to refresh your price."
+    : quoteState?.key === quoteKey ? quoteState.error : undefined;
   const isQuoting =
     !isLimitMode &&
     !tradingClosed &&
+    !bookUnavailable &&
     quantityValid &&
     quoteState?.key !== quoteKey;
   const claimLabel = claimType === "UPSIDE" ? "Upside" : "Remaining value";
@@ -119,7 +125,7 @@ export function UpsideOrderTicket({
   const scenarioValue = scenarioPayout * (quantityValid ? Number(quantity) : 0);
 
   useEffect(() => {
-    if (isLimitMode || tradingClosed || !quantityValid) return;
+    if (isLimitMode || tradingClosed || !quantityValid || bookUnavailable) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
@@ -154,6 +160,7 @@ export function UpsideOrderTicket({
     isLimitMode,
     tradingClosed,
     quantityValid,
+    bookUnavailable,
     quoteKey,
   ]);
 

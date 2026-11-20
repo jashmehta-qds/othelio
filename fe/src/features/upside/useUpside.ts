@@ -59,7 +59,7 @@ export function useUpsideOrderbook(
   seriesAddress?: string,
   claimType: 'UPSIDE' | 'RESIDUAL' = 'UPSIDE',
 ) {
-  return useQuery<UpsideOrderBookDepth>({
+  const query = useQuery<UpsideOrderBookDepth>({
     queryKey: ['upside-orderbook', chainId, seriesAddress?.toLowerCase(), claimType],
     queryFn: () =>
       fetchApi<UpsideOrderBookDepth>(
@@ -69,6 +69,11 @@ export function useUpsideOrderbook(
     staleTime: 2_000,
     refetchInterval: 3_000,
   });
+  return {
+    ...query,
+    // Keep the failure visible through background retries until a fetch succeeds.
+    isUnavailable: query.isError || query.errorUpdatedAt > query.dataUpdatedAt,
+  };
 }
 
 export function useUpsideUserOrders(chainId: number = 8453, userAddress?: string) {

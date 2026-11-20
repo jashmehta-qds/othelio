@@ -15,7 +15,7 @@ export function UpsideOrderBook({
   seriesAddress,
   claimType,
 }: UpsideOrderBookProps) {
-  const { data: depth, isLoading, isError, refetch } = useUpsideOrderbook(chainId, seriesAddress, claimType);
+  const { data: depth, isLoading, isUnavailable: isError, refetch } = useUpsideOrderbook(chainId, seriesAddress, claimType);
 
   const bids = depth?.bids || [];
   const asks = depth?.asks || [];
