@@ -32,7 +32,7 @@ import { networkLabelForChainId } from "@/lib/network";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isExchange = /^\/app\/(risk-split|upside)\/[^/]+/.test(pathname);
+  const isTradingDetail = /^\/app\/(risk-split|upside)\/[^/]+/.test(pathname);
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   const [mounted, setMounted] = useState<boolean>(false);
@@ -247,7 +247,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <main className="bank-app" data-theme="dark" data-layout={isExchange ? "exchange" : undefined}>
+    <main className="bank-app" data-theme="dark" data-layout={isTradingDetail ? "trading" : undefined}>
       <a href="#workspace-content" className="ui-skip-link">Skip to content</a>
       <Dialog open={showOnboarding} onClose={() => setShowOnboarding(false)} title="Make yourself at home" description="Add an optional display name. It stays on this device.">
         <form onSubmit={handleSaveName}>
@@ -261,21 +261,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </form>
       </Dialog>
-
-      {isExchange && (
-        <header className="exchange-header">
-          <Link href="/" className="bank-wordmark"><OthelioLogo size={26} /><span>Othelio</span></Link>
-          <nav aria-label="Trading navigation" className="exchange-navigation">
-            {mobileNavigation.map((item) => <Link key={item.id} href={item.href} aria-current={isActive(item.href) ? "page" : undefined}>{item.label}</Link>)}
-            <button type="button" onClick={() => setShowMoreNavigation(true)} aria-haspopup="dialog">More</button>
-          </nav>
-          {isWalletRestoring ? <span>Restoring…</span> : mounted && isConnected && address ? (
-            <button type="button" className="exchange-wallet" onClick={isWrongNetwork ? handleSwitchNetwork : handleDisconnect}>
-              {isWrongNetwork ? "Switch network" : `${formatAddress(address)} · Disconnect`}
-            </button>
-          ) : <button type="button" className="exchange-wallet" onClick={handleConnectWallet}>Connect wallet</button>}
-        </header>
-      )}
 
       {/* Left Sidebar */}
       <aside className="bank-sidebar">

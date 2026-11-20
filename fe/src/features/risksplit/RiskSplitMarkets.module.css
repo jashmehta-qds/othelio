@@ -290,7 +290,7 @@
   align-items: flex-end;
 }
 
-.marketStatus { font-size: 10px; line-height: 1.4; letter-spacing: 0; padding: 3px 7px; border-radius: 4px; background: #1b2c23; color: #91c9ac; margin-left: 8px; font-weight: 400; }
+.marketStatus { font-size: 10px; line-height: 1.4; letter-spacing: 0; padding: 3px 7px; border-radius: 4px; background: color-mix(in srgb, var(--positive) 12%, var(--panel)); color: var(--positive); margin-left: 8px; font-weight: 400; }
 
 .detailMeta div {
   display: flex;
@@ -370,8 +370,8 @@
 }
 
 .claimSideActive {
-  border-color: #717c64;
-  background: var(--panel-2);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .claimSideTop {
@@ -880,8 +880,8 @@
 }
 
 .manageActionTabs .manageActionTabActive {
-  background: #303c25;
-  color: var(--ink);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .walletActionPanel .positionSection {
@@ -1293,8 +1293,8 @@
 }
 
 .ticketSideBtnActive {
-  background: #303c25;
-  color: #e2edda;
+  background: var(--accent);
+  color: var(--canvas);
 }
 
 .ticketTitle {
@@ -2023,13 +2023,14 @@
   }
 }
 
-@media (min-width: 801px) and (max-width: 1100px) {
+@media (min-width: 761px) and (max-width: 1100px) {
   .workGrid {
-    grid-template-columns: minmax(0, 1fr) 310px;
+    grid-template-columns: minmax(0, 1fr);
   }
+  .ticketColumn { position: static; }
 }
 
-@media (min-width: 801px) and (max-height: 700px) {
+@media (min-width: 761px) and (max-height: 700px) {
   .ticketColumn {
     position: static;
   }
@@ -2040,7 +2041,7 @@
   }
 }
 
-@media (max-width: 800px) {
+@media (max-width: 760px) {
   .workGrid {
     grid-template-columns: 1fr;
   }
@@ -2202,7 +2203,7 @@
   }
 }
 /* Book first: compact side selector, order book, trade, optional payout. */
-@media (max-width: 800px) {
+@media (max-width: 760px) {
   .page { padding-inline: 0; }
   .workGrid { gap: 14px; }
   .marketViewTabs { order: 6; }
