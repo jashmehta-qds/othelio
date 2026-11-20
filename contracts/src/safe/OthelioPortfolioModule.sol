@@ -7,7 +7,6 @@ import {OthelioBaseModule, ISafe} from "./OthelioBaseModule.sol";
 import {OthelioAaveV3Adapter} from "../lending/OthelioAaveV3Adapter.sol";
 import {OthelioAerodromeSlipstreamAdapter} from "../dex/OthelioAerodromeSlipstreamAdapter.sol";
 import {AerodromeRoute, AerodromeRouteKind} from "../dex/AerodromeRouteTypes.sol";
-import {OthelioAssetRegistry} from "../registry/OthelioAssetRegistry.sol";
 
 /// @notice The sole basket executor. Protocol adapters prepare typed calls but never receive account authority.
 contract OthelioPortfolioModule is OthelioBaseModule {
@@ -17,6 +16,10 @@ contract OthelioPortfolioModule is OthelioBaseModule {
     bool public immutable newAaveSupplyEnabled;
     uint256 public immutable minimumAaveHealthFactor;
     OthelioAerodromeSlipstreamAdapter public immutable aerodromeAdapter;
+
+    address internal immutable aavePool;
+    address internal immutable aerodromeRouter;
+    address internal immutable usdc;
 
     uint256 public constant MAX_SWAP_VALUE_LOSS_BPS = 300; // 3% maximum allowed slippage/value-loss vs oracle
 
@@ -46,6 +49,9 @@ contract OthelioPortfolioModule is OthelioBaseModule {
         aaveAdapter = OthelioAaveV3Adapter(aaveAdapter_);
         require(aerodromeAdapter_ != address(0) && aerodromeAdapter_.code.length > 0, "INVALID_AERODROME_ADAPTER");
         aerodromeAdapter = OthelioAerodromeSlipstreamAdapter(aerodromeAdapter_);
+        aavePool = OthelioAaveV3Adapter(aaveAdapter_).pool();
+        aerodromeRouter = OthelioAerodromeSlipstreamAdapter(aerodromeAdapter_).router();
+        usdc = OthelioAerodromeSlipstreamAdapter(aerodromeAdapter_).usdc();
         newAaveSupplyEnabled = newAaveSupplyEnabled_;
         minimumAaveHealthFactor = minimumAaveHealthFactor_;
     }
@@ -56,7 +62,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
 
     /// @notice Returns true if the router and allowance spender are approved for module execution.
     function approvedDexRoutes(address target, address allowanceSpender) external view returns (bool) {
-        address router = aerodromeAdapter.router();
+        address router = aerodromeRouter;
         return target == router && allowanceSpender == router;
     }
 
@@ -66,13 +72,13 @@ contract OthelioPortfolioModule is OthelioBaseModule {
     }
 
     function _approveAave(address safe, address asset, uint256 amount) private {
-        address pool = aaveAdapter.pool();
+        address pool = aavePool;
         _tokenCall(safe, asset, abi.encodeWithSelector(IERC20.approve.selector, pool, 0), "AAVE_APPROVE_FAILED");
         if (amount > 0) _tokenCall(safe, asset, abi.encodeWithSelector(IERC20.approve.selector, pool, amount), "AAVE_APPROVE_FAILED");
     }
 
     function _callAave(address safe, address target, bytes memory data) private returns (bytes memory returned) {
-        if (target != aaveAdapter.pool()) revert InvalidAaveTarget();
+        if (target != aavePool) revert InvalidAaveTarget();
         (bool success, bytes memory result) = ISafe(safe).execTransactionFromModuleReturnData(target, 0, data, 0);
         if (!success) revert AaveExecFailed();
         return result;
@@ -159,7 +165,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
 
         _verifyOracleValueLoss(route.tokenIn, route.amountIn, route.tokenOut, route.minimumAmountOut);
 
-        address router = aerodromeAdapter.router();
+        address router = aerodromeRouter;
         _tokenCall(safe, route.tokenIn, abi.encodeWithSelector(IERC20.approve.selector, router, 0), "DEX_APPROVE_FAILED");
         _tokenCall(safe, route.tokenIn, abi.encodeWithSelector(IERC20.approve.selector, router, route.amountIn), "DEX_APPROVE_FAILED");
 
@@ -197,7 +203,7 @@ contract OthelioPortfolioModule is OthelioBaseModule {
         require(deadline <= block.timestamp + 5 minutes, "DEADLINE_TOO_FAR");
         require(routes.length > 0 && routes.length <= 16, "INVALID_ROUTE_COUNT");
         require(totalFundingAmount > 0, "ZERO_FUNDING_AMOUNT");
-        require(fundingToken == aerodromeAdapter.usdc(), "MUST_FUND_WITH_USDC");
+        require(fundingToken == usdc, "MUST_FUND_WITH_USDC");
 
         IERC20(fundingToken).safeTransferFrom(msg.sender, safe, totalFundingAmount);
 

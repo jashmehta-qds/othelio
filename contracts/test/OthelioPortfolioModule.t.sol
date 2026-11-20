@@ -96,6 +96,11 @@ contract OthelioPortfolioModuleTest is Test {
         assertFalse(success);
     }
 
+    function testCachedPoolDoesNotCallGetterDuringAaveLifecycle() public {
+        vm.mockCallRevert(address(adapter), abi.encodeWithSignature("pool()"), "");
+        testEnabledAaveLifecycleSuppliesAndWithdrawsToBasketOnly();
+    }
+
     function testEnabledAaveLifecycleSuppliesAndWithdrawsToBasketOnly() public {
         asset.mint(address(enabledBasket), 10 ether);
 

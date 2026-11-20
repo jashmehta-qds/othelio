@@ -97,6 +97,13 @@ contract OthelioConstrainedRoutingTest is Test {
         assertFalse(portfolio.approvedDexRoutes(stranger, address(router)));
     }
 
+    function testCachedDependenciesDoNotCallGettersDuringFunding() public {
+        vm.mockCallRevert(address(portfolio.aerodromeAdapter()), abi.encodeWithSignature("router()"), "");
+        vm.mockCallRevert(address(portfolio.aerodromeAdapter()), abi.encodeWithSignature("usdc()"), "");
+        vm.mockCallRevert(address(oracle), abi.encodeWithSignature("registry()"), "");
+        testDirectRouteFundingSucceeds();
+    }
+
     function testDirectRouteFundingSucceeds() public {
         usdc.mint(owner, 100 ether);
         nvda.mint(address(router), 1 ether); // $100 NVDA for $100 USDC
