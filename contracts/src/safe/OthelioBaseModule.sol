@@ -125,7 +125,10 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
             _executeTokenCall(safe, tokens[i], transferData, "TRANSFER_FAILED");
         }
 
-        uint256 redeemedNAV = oracle.calculateNAV(tokens, amounts);
+        uint256 redeemedNAV;
+        try oracle.calculateNAV(tokens, amounts) returns (uint256 nav) {
+            redeemedNAV = nav;
+        } catch {}
 
         uint256 remLen = remainingTokens.length;
         uint256[] memory remainingBalances = new uint256[](remLen);
@@ -134,7 +137,9 @@ abstract contract OthelioBaseModule is IOthelioEvents, IOthelioAccountCapabiliti
         }
         // This is intentionally limited to caller-supplied remaining tokens. The
         // indexer block snapshot, rather than this event field, is authoritative NAV.
-        remainingListedAssetsNavUsdc = oracle.calculateNAV(remainingTokens, remainingBalances);
+        try oracle.calculateNAV(remainingTokens, remainingBalances) returns (uint256 nav) {
+            remainingListedAssetsNavUsdc = nav;
+        } catch {}
 
         emit BasketWithdrawn(safe, msg.sender, address(0), redeemedNAV, tokens, amounts, remainingListedAssetsNavUsdc);
     }

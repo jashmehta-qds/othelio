@@ -412,7 +412,7 @@ contract PR4Phase2BasketAuditTest is Test {
         });
     }
 
-    function test_Basket_StaleFeedBlocksOwnerInKindExit() public {
+    function test_Fix_StaleFeedDoesNotBlockOwnerInKindExit() public {
         _setupModule();
         Phase2Token token = new Phase2Token("Asset", 18);
         feed = new Phase2Feed(100e8, block.timestamp);
@@ -426,12 +426,12 @@ contract PR4Phase2BasketAuditTest is Test {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1 ether;
         vm.prank(address(this));
-        vm.expectRevert("STALE_PRICE");
         module.withdrawInKind(address(safe), address(this), tokens, amounts, new address[](0));
-        assertEq(token.balanceOf(address(safe)), 1 ether);
+        assertEq(token.balanceOf(address(safe)), 0);
+        assertEq(token.balanceOf(address(this)), 1 ether);
     }
 
-    function test_Basket_RevertingFeedBlocksOwnerInKindExit() public {
+    function test_Fix_RevertingFeedDoesNotBlockOwnerInKindExit() public {
         _setupModule();
         Phase2Token token = new Phase2Token("Asset", 18);
         feed = new Phase2Feed(100e8, block.timestamp);
@@ -442,9 +442,9 @@ contract PR4Phase2BasketAuditTest is Test {
         tokens[0] = address(token);
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1 ether;
-        vm.expectRevert("PRICE_READ_FAILED");
         module.withdrawInKind(address(safe), address(this), tokens, amounts, new address[](0));
-        assertEq(token.balanceOf(address(safe)), 1 ether);
+        assertEq(token.balanceOf(address(safe)), 0);
+        assertEq(token.balanceOf(address(this)), 1 ether);
     }
 
     function test_Fix_StaleOracleAggregateCapAllowsExactlyThreePercentOracleLoss() public {
@@ -599,13 +599,11 @@ contract PR4Phase2BasketAuditTest is Test {
         assertEq(module.factory(), address(basketFactory));
     }
 
-    function test_ModuleReceiveAcceptsETHWithoutRecoveryPath() public {
+    function test_Fix_ModuleRejectsETH() public {
         _setupModule();
         vm.deal(address(this), 1 ether);
         (bool success,) = address(module).call{value: 1 ether}("");
-        assertTrue(success);
-        assertEq(address(module).balance, 1 ether);
-        (bool recoverySuccess,) = address(module).call(abi.encodeWithSignature("recoverETH(address)", address(this)));
-        assertFalse(recoverySuccess);
+        assertFalse(success);
+        assertEq(address(module).balance, 0);
     }
 }
