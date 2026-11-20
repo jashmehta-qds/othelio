@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { BookLevel, BookTrade } from "./useRiskSplitBook";
 import styles from "./RiskSplitMarkets.module.css";
+import bookStyles from "./TradingBook.module.css";
 
 interface OrderBookProps {
   claimType: "protected" | "upside";
@@ -32,7 +33,7 @@ export function OrderBook({
 }: OrderBookProps) {
   const [showFullBook, setShowFullBook] = useState(false);
 
-  const initialDepth = 5;
+  const initialDepth = 6;
   const visibleBids = showFullBook ? bids : bids.slice(0, initialDepth);
   const visibleAsks = showFullBook ? asks : asks.slice(0, initialDepth);
 
@@ -45,16 +46,14 @@ export function OrderBook({
   const isEmpty = !isLoading && !isError && bids.length === 0 && asks.length === 0;
 
   return (
-    <div className={styles.bookWrapper}>
-      <div className={styles.bookHeaderRow}>
-        <div>
-          <h2 className={styles.bookTitle}>Order book</h2>
-          <span className={styles.bookSub}>{claimLabel} · Prices per claim in USDC</span>
-        </div>
+    <div className={bookStyles.book}>
+      <div className={bookStyles.header}>
+        <h2>Order book</h2>
+        <span className={bookStyles.meta}>{claimLabel} · USDC</span>
       </div>
 
       {isError && (
-        <div role="alert" className={styles.bookUnavailable}>
+        <div role="alert" className={`${styles.bookUnavailable} ${bookStyles.state}`}>
           <div className={styles.bookUnavailableIcon} aria-hidden="true">
             <svg viewBox="0 0 32 32" fill="none">
               <path d="M6 9h8M6 16h5M6 23h8M19 9h7M22 16h4M19 23h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -68,7 +67,7 @@ export function OrderBook({
       )}
 
       {isEmpty && (
-        <div className={styles.bookEmptyState} role="status">
+        <div className={`${styles.bookEmptyState} ${bookStyles.state}`} role="status">
           <span className={styles.bookEmptyIcon} aria-hidden="true">≡</span>
           <strong>No orders for {claimLabel} yet</strong>
           <p>There are no bids or asks. Choose Limit in the trade panel to set your price and wait for a match.</p>
@@ -77,15 +76,16 @@ export function OrderBook({
       )}
 
       {/* Ladder Grid */}
-      {!isError && !isEmpty && <div className={styles.bookGrid} aria-busy={isLoading}>
+      {!isError && !isEmpty && <div className={bookStyles.grid} aria-busy={isLoading}>
         {/* Buyers Side (Bids) */}
-        <div className={styles.bookColumn}>
-          <div className={styles.bookColumnHeader}>
+        <div className={bookStyles.column}>
+          <div className={bookStyles.columnHeader}>
             <span>Bids</span>
             <span>Size</span>
+            <span className={bookStyles.total}>Total</span>
           </div>
 
-          <div className={styles.bookLevels}>
+          <div className={bookStyles.levels}>
             {isLoading ? (
               <div className={styles.bookSkeletonRows} role="status" aria-label="Loading bids">
                 {[0, 1, 2].map((row) => <div key={row} className={styles.bookSkeletonRow}><span className={styles.numberSkeleton} /><span className={styles.numberSkeletonShort} /></div>)}
@@ -104,18 +104,19 @@ export function OrderBook({
                     type="button"
                     key={bid.orderHash || i}
                     onClick={() => onSelectOrder?.(bid.orderHash, "SELL", cleanPrice, bid.amountClaim)}
-                    className={`${styles.bookRow} ${isSelected ? styles.bookRowSelected : ""}`}
+                    className={`${bookStyles.row} ${isSelected ? bookStyles.selected : ""}`}
                     title="Click to target this order"
                   >
                     <div
-                      className={styles.depthBarBid}
+                      className={bookStyles.depthBid}
                       style={{ width: `${depthPct}%` }}
                       aria-hidden="true"
                     />
-                    <span className={styles.bidPriceText}>
-                      {bid.priceUsd}
+                    <span className={bookStyles.bid}>
+                      {Number(cleanPrice).toFixed(2)}
                     </span>
-                    <span className={styles.bookSizeText}>{bid.amountClaim}</span>
+                    <span>{bid.amountClaim}</span>
+                    <span className={bookStyles.total}>{bid.totalClaim}</span>
                   </button>
                 );
               })
@@ -124,13 +125,14 @@ export function OrderBook({
         </div>
 
         {/* Sellers Side (Asks) */}
-        <div className={styles.bookColumn}>
-          <div className={styles.bookColumnHeader}>
+        <div className={bookStyles.column}>
+          <div className={bookStyles.columnHeader}>
             <span>Asks</span>
             <span>Size</span>
+            <span className={bookStyles.total}>Total</span>
           </div>
 
-          <div className={styles.bookLevels}>
+          <div className={bookStyles.levels}>
             {isLoading ? (
               <div className={styles.bookSkeletonRows} role="status" aria-label="Loading asks">
                 {[0, 1, 2].map((row) => <div key={row} className={styles.bookSkeletonRow}><span className={styles.numberSkeleton} /><span className={styles.numberSkeletonShort} /></div>)}
@@ -149,18 +151,19 @@ export function OrderBook({
                     type="button"
                     key={ask.orderHash || i}
                     onClick={() => onSelectOrder?.(ask.orderHash, "BUY", cleanPrice, ask.amountClaim)}
-                    className={`${styles.bookRow} ${isSelected ? styles.bookRowSelected : ""}`}
+                    className={`${bookStyles.row} ${isSelected ? bookStyles.selected : ""}`}
                     title="Click to target this order"
                   >
                     <div
-                      className={styles.depthBarAsk}
+                      className={bookStyles.depthAsk}
                       style={{ width: `${depthPct}%` }}
                       aria-hidden="true"
                     />
-                    <span className={styles.askPriceText}>
-                      {ask.priceUsd}
+                    <span className={bookStyles.ask}>
+                      {Number(cleanPrice).toFixed(2)}
                     </span>
-                    <span className={styles.bookSizeText}>{ask.amountClaim}</span>
+                    <span>{ask.amountClaim}</span>
+                    <span className={bookStyles.total}>{ask.totalClaim}</span>
                   </button>
                 );
               })
@@ -169,26 +172,19 @@ export function OrderBook({
         </div>
       </div>}
 
-      {!isLoading && !isError && hasMoreLevels && (
-        <div className={styles.seeFullBookRow}>
-          <button
-            type="button"
-            onClick={() => setShowFullBook(!showFullBook)}
-            className={styles.seeFullBookBtn}
-          >
-            {showFullBook ? "Show fewer levels" : `See full book (${bids.length} bids, ${asks.length} asks)`}
-          </button>
-        </div>
-      )}
-
       {/* Spread Bar */}
-      {!isLoading && !isError && <div className={styles.spreadBar}>
-        <span>Spread: <strong>{spreadUsd ?? "—"}</strong></span>
+      {!isLoading && !isError && <div className={bookStyles.spread}>
+        <span>Spread <b>{spreadUsd === null ? "—" : `$${Number(spreadUsd.replace(/[$,]/g, "")).toFixed(2)}`}</b></span>
+        <span>Prices per claim</span>
+      </div>}
+      {!isLoading && !isError && !isEmpty && <div className={bookStyles.footer}>
+        <span>Tap a price to use it in your order</span>
+        {hasMoreLevels && <button type="button" onClick={() => setShowFullBook(!showFullBook)}>{showFullBook ? "Show fewer levels" : "View full book ↗"}</button>}
       </div>}
 
       {/* Recent Confirmed Trades */}
       {!isError && recentTrades.length > 0 && (
-        <div className={styles.recentTradesBox}>
+        <div className={bookStyles.trades}>
           <div className={styles.recentTradesHeader}>
             Recent Confirmed Trades ({claimLabel})
           </div>

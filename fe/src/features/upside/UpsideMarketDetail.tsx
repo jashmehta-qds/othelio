@@ -8,6 +8,7 @@ import {
   useUpsideAssets,
   useUpsideRounds,
   useUpsideMarkets,
+  useUpsideOrderbook,
 } from "./useUpside";
 import { UpsideChart } from "./UpsideChart";
 import { UpsideOrderBook } from "./UpsideOrderBook";
@@ -49,6 +50,8 @@ export function UpsideMarketDetail({
   const activeRound = roundsQuery.data?.data.find(
     (r) => r.roundId === activeMarket?.roundId,
   );
+  const upsideBook = useUpsideOrderbook(chainId, activeMarket?.seriesAddress, "UPSIDE");
+  const remainingBook = useUpsideOrderbook(chainId, activeMarket?.seriesAddress, "RESIDUAL");
   const asset = assetsQuery.data?.assets.find(
     (a) =>
       a.tokenAddress.toLowerCase() ===
@@ -110,9 +113,7 @@ export function UpsideMarketDetail({
     );
 
   const strike = Number(activeMarket.strikePriceFormatted);
-  const targetChange = Number(currentPrice) > 0
-    ? (strike / Number(currentPrice) - 1) * 100
-    : null;
+  const quoteLabel = (book: typeof upsideBook) => book.isUnavailable ? "Unavailable" : book.isLoading ? "Loading…" : book.data?.asks[0] ? `$${Number(book.data.asks[0].priceUsd).toFixed(2)}` : "No offers";
   const scenarioPrice =
     activeMarket.isSettled && activeMarket.settledPriceFormatted !== null
       ? Number(activeMarket.settledPriceFormatted)
@@ -146,22 +147,19 @@ export function UpsideMarketDetail({
             size={46}
           />
           <div className={styles.detailIdentity}>
-            <h1>{symbol} Upside</h1>
+            <h1>{symbol}<span className={styles.marketStatus}>{activeMarket.isSettled ? "Settled" : expired ? "Ended" : "Open"}</span></h1>
             <p>
-              {name} · Stock price ${Number(currentPrice).toFixed(2)}
+              {name} · Ends {expiry}
             </p>
           </div>
         </div>
-        <div className={styles.expiryBadge}>
-          {activeMarket.isSettled ? "Settled" : expired ? "Ended" : "Ends"}{" "}
-          {expiry}
-        </div>
+        <div className={styles.stockPrice}><strong>${Number(currentPrice).toFixed(2)}</strong><span>Underlying stock price</span></div>
       </header>
       <section
         className={styles.targetsContainer}
         aria-label="Choose target price"
       >
-        <h2 className={styles.sectionTitle}>Target price</h2>
+        <h2 className={styles.targetsTitle}>Target</h2>
         <div className={styles.targetsGrid}>
           {roundMarkets.map((m) => (
             <button
@@ -171,7 +169,6 @@ export function UpsideMarketDetail({
               onClick={() => setSelectedSeriesAddress(m.seriesAddress)}
               className={`${styles.targetChip} ${m.seriesAddress === activeMarket.seriesAddress ? styles.targetChipActive : ""}`}
             >
-              <div className={styles.targetChipLabel}>Above</div>
               <div className={styles.targetChipStrike}>
                 ${Number(m.strikePriceFormatted).toFixed(2)}
               </div>
@@ -179,7 +176,7 @@ export function UpsideMarketDetail({
           ))}
         </div>
       </section>
-      <div className={styles.workGrid}>
+      <div className={`${styles.workGrid} ${walletAction === "redeem" ? styles.manageWorkspace : ""}`}>
         <div className={styles.marketColumn}>
           <section className={styles.choicePanel}>
             <div
@@ -193,7 +190,7 @@ export function UpsideMarketDetail({
                 onClick={() => setClaimType("UPSIDE")}
               >
                 <strong>Upside</strong>
-                <span>Above ${strike.toFixed(2)} · uncapped</span>
+                <span>{quoteLabel(upsideBook)}</span>
               </button>
               <button
                 type="button"
@@ -201,14 +198,9 @@ export function UpsideMarketDetail({
                 onClick={() => setClaimType("RESIDUAL")}
               >
                 <strong>Remaining value</strong>
-                <span>Up to ${strike.toFixed(2)}</span>
+                <span>{quoteLabel(remainingBook)}</span>
               </button>
             </div>
-            <p className={styles.helperText}>
-              Upside starts above ${strike.toFixed(2)}
-              {targetChange !== null && ` (${targetChange >= 0 ? "+" : ""}${targetChange.toFixed(1)}% from stock price)`}.
-              {" "}At or below target: zero. Remaining value falls with the stock.
-            </p>
           </section>
           <UpsideOrderBook
             chainId={chainId}
@@ -216,7 +208,7 @@ export function UpsideMarketDetail({
             claimType={claimType}
           />
           <details className={`${styles.advanced} ${styles.payoutDisclosure}`}>
-            <summary>Payout preview <span>Explore ending stock prices</span></summary>
+            <summary>Payout illustration <span>If stock ${scenarioPrice.toFixed(2)} → {claimType === "UPSIDE" ? "Upside" : "Remaining"} ${selectedPayout.toFixed(2)} <b aria-hidden="true">⌄</b></span></summary>
             <div className={styles.scenarioBox}>
               <h3>
                 {activeMarket.isSettled

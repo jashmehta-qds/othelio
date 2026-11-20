@@ -400,7 +400,7 @@ export function OrderTicket({
   }
 
   return (
-    <aside className={styles.ticketCard} aria-label="Trade ticket">
+    <aside className={styles.ticketCard} aria-label="Trade ticket" data-order-type={isLimitMode ? "limit" : "market"}>
       {/* Side Toggle: Buy / Sell */}
       <div className={styles.ticketSideToggle} role="group" aria-label="Trade direction">
         <button
@@ -425,24 +425,15 @@ export function OrderTicket({
         {isBuy ? "Buy" : "Sell"} {claimLabel}
       </h2>
       <div className={styles.ticketModeRow}>
-        <span>Order type</span>
         <div className={styles.ticketModeToggle} role="group" aria-label="Order type">
           <button type="button" className={!isLimitMode ? styles.ticketModeActive : ""} aria-pressed={!isLimitMode} onClick={() => { setIsLimitMode(false); setErrorMessage(null); }}>Market</button>
           <button type="button" className={isLimitMode ? styles.ticketModeActive : ""} aria-pressed={isLimitMode} onClick={() => { setIsLimitMode(true); setErrorMessage(null); }}>Limit</button>
         </div>
       </div>
-      {/* Available Balance in Wallet */}
-      <div className={styles.ticketBalanceRow}>
-        <span>In wallet:</span>
-        <b>
-          {userBalanceStr} {isBuy ? "USDC" : `${claimLabel} claims`}
-        </b>
-      </div>
-
       {/* Amount Input */}
       <div className={styles.ticketField}>
         <div className={styles.ticketFieldHeader}>
-          <label htmlFor="ticket-amount">How many claims?</label>
+          <label htmlFor="ticket-amount">Quantity</label>
           <button type="button" onClick={handleMax} className={styles.maxLink}>
             Max
           </button>
@@ -458,9 +449,11 @@ export function OrderTicket({
             onChange={(e) => setAmountClaimsInput(e.target.value)}
             inputMode="decimal"
           />
-          <span className={styles.ticketInputUnit}>claims</span>
+          <span className={styles.ticketInputUnit}>{claimLabel} claims</span>
         </div>
       </div>
+
+      <div className={styles.ticketBalanceRow}><span>Available: {userBalanceStr} {isBuy ? "USDC" : `${claimLabel} claims`}</span></div>
 
       {/* Capped Warning if user asks for more than selected order */}
       {!isLimitMode && fillMetrics.isCapped && (
@@ -497,14 +490,17 @@ export function OrderTicket({
       {!isLimitMode && !selectedOrder && <p className={styles.limitDisclaimer} role="status">{isBookLoading ? "Finding available prices…" : isBookError ? "Prices unavailable. Try again shortly." : `No ${isBuy ? "offers" : "bids"} yet. Choose Limit to leave an order.`}</p>}
       {/* Financial Summary */}
       <div className={styles.ticketSummary}>
-        <div className={styles.summaryRow}>
+        <div className={`${styles.summaryRow} ${styles.priceSummary}`}>
           <span>{isLimitMode ? "Limit price" : isBuy ? "Buy price" : "Sell price"}</span>
           <b>{isLimitMode ? (limitPriceNum ? `$${limitPriceNum.toFixed(2)}` : "—") : isBookLoading ? <span className={styles.numberSkeleton} role="status" aria-label="Loading price" /> : selectedOrder ? `$${fillMetrics.priceUsd}` : "—"}</b>
         </div>
-        <div className={styles.summaryRow}>
+        <div className={`${styles.summaryRow} ${styles.totalSummary}`}>
           <span>{isBuy ? "You pay" : "You receive"}</span>
           <b>{totalDisplay}</b>
         </div>
+      </div>
+      <details className={styles.ticketPayout}>
+        <summary>Trade outcome details</summary>
         <div className={`${styles.summaryRow} ${styles.summaryHighlight}`}>
           <span>Value if stock ends at ${scenarioPrice.toFixed(2)}</span>
           <b>{scenarioDisplay}</b>
@@ -521,13 +517,7 @@ export function OrderTicket({
               : "—"}
           </b>
         </div>
-      </div>
-
-      <p className={styles.ticketExplain}>
-        {isBuy
-          ? `Max loss: amount paid. Redeems in ${symbol}.`
-          : `Selling gives up this claim’s ${symbol} payout.`}
-      </p>
+      </details>
 
       {/* Messages */}
       {statusMessage && <div className={styles.statusBox}>{statusMessage}</div>}
@@ -585,6 +575,7 @@ export function OrderTicket({
         )}
       </div>
 
+      <p className={styles.ticketExplain}>{isBuy ? "Full amount at risk" : "Selling gives up the payout"} · Pays in {symbol}, not cash</p>
       <WalletConnectModal isOpen={showConnect} onClose={() => setShowConnect(false)} />
     </aside>
   );

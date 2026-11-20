@@ -41,7 +41,6 @@ interface UpsideOrderTicketProps {
 export function UpsideOrderTicket({
   chainId,
   seriesAddress,
-  strikeFormatted,
   claimType,
   symbol,
   scenarioPrice,
@@ -432,8 +431,7 @@ export function UpsideOrderTicket({
   };
 
   return (
-    <div className={styles.ticketPanel}>
-      <h2 className={styles.sectionTitle}>{ticketMode === "BUY" ? "Buy" : "Sell"} {claimLabel}</h2>
+    <div className={styles.ticketPanel} data-order-type={isLimitMode ? "limit" : "market"}>
       <div
         className={styles.ticketTypeTabs}
         role="group"
@@ -452,15 +450,8 @@ export function UpsideOrderTicket({
           </button>
         ))}
       </div>
-      <div className={styles.tradeIdentity}>
-        <strong>{claimLabel}</strong>
-        <span>
-          {claimType === "UPSIDE" ? "Growth above" : "Stock value up to"} $
-          {Number(strikeFormatted).toFixed(2)}
-        </span>
-      </div>
+      <h2 className={styles.sectionTitle}>{ticketMode === "BUY" ? "Buy" : "Sell"} {claimLabel}</h2>
       <div className={styles.orderTypeRow}>
-        <span>Order type</span>
         <div className={styles.orderTypeToggle} role="group" aria-label="Order type">
           {([false, true] as const).map((limit) => (
             <button
@@ -476,7 +467,7 @@ export function UpsideOrderTicket({
         </div>
       </div>
       <div className={styles.inputGroup}>
-        <label htmlFor="upside-quantity">How many claims?</label>
+        <label htmlFor="upside-quantity">Quantity</label>
         <div className={styles.inputWrapper}>
           <input
             id="upside-quantity"
@@ -488,7 +479,7 @@ export function UpsideOrderTicket({
             disabled={isExecuting || tradingClosed}
             inputMode="decimal"
           />
-          <span className={styles.inputUnit}>claims</span>
+          <span className={styles.inputUnit}>{claimLabel} claims</span>
         </div>
       </div>
       {isLimitMode && (
@@ -513,7 +504,7 @@ export function UpsideOrderTicket({
           </p>
         </div>
       )}
-      {!isLimitMode && !tradingClosed && (
+      {!isLimitMode && !tradingClosed && (!quantityValid || isQuoting || quoteError || (sweepQuote && !completeQuote)) && (
         <p className={styles.helperText} role="status">
           {!quantityValid
             ? "Enter an amount with up to 8 decimal places."
@@ -522,11 +513,11 @@ export function UpsideOrderTicket({
               : (quoteError ??
                 (sweepQuote && !completeQuote
                   ? "Not enough available at this amount. Try fewer claims."
-                  : "Uses the best available offers."))}
+                  : ""))}
         </p>
       )}
       <div className={styles.sweepSummary} aria-live="polite">
-        <div className={styles.summaryRow}>
+        <div className={`${styles.summaryRow} ${styles.totalSummary}`}>
           <span>
             {ticketMode === "BUY" ? "You pay" : "You receive"}
             {isLimitMode ? " if filled" : ""}
@@ -534,9 +525,12 @@ export function UpsideOrderTicket({
           <strong>
             {totalCost === null || !quantityValid
               ? "—"
-              : `${totalCost.toFixed(2)} USDC`}
+              : `$${totalCost.toFixed(2)}`}
           </strong>
         </div>
+      </div>
+      <details className={styles.ticketPayout}>
+        <summary>Trade outcome details</summary>
         <div className={styles.summaryRow}>
           <span>Value if stock ends at ${scenarioPrice.toFixed(2)}</span>
           <strong>
@@ -553,13 +547,8 @@ export function UpsideOrderTicket({
             </strong>
           </div>
         )}
-      </div>
-      <p className={styles.helperText}>
-        {ticketMode === "BUY"
-          ? "You can lose the full amount you pay."
-          : "Selling gives up this claim’s future payout."}{" "}
-        Payouts are in {symbol}, not USDC. Values exclude network fees.
-      </p>
+        <p className={styles.helperText}>Values exclude network fees.</p>
+      </details>
       {statusMessage && (
         <p className={styles.helperText} role="status">
           {statusMessage}
@@ -595,6 +584,7 @@ export function UpsideOrderTicket({
               : `${ticketMode === "BUY" ? "Buy" : "Sell"} ${claimLabel}`}
         </button>
       )}
+      <p className={styles.ticketRisk}>{ticketMode === "BUY" ? "Full amount at risk" : "Selling gives up the payout"} · Pays in {symbol}, not cash</p>
       <WalletConnectModal
         isOpen={showConnect}
         onClose={() => setShowConnect(false)}

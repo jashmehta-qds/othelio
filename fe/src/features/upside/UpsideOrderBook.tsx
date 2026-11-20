@@ -1,122 +1,72 @@
-'use client';
+"use client";
 
-import React from 'react';
-import styles from './UpsideMarkets.module.css';
-import { useUpsideOrderbook } from './useUpside';
+import { useState } from "react";
+import styles from "./UpsideMarkets.module.css";
+import bookStyles from "../risksplit/TradingBook.module.css";
+import { useUpsideOrderbook } from "./useUpside";
 
 interface UpsideOrderBookProps {
   chainId: number;
   seriesAddress: string;
-  claimType: 'UPSIDE' | 'RESIDUAL';
+  claimType: "UPSIDE" | "RESIDUAL";
 }
 
-export function UpsideOrderBook({
-  chainId,
-  seriesAddress,
-  claimType,
-}: UpsideOrderBookProps) {
+export function UpsideOrderBook({ chainId, seriesAddress, claimType }: UpsideOrderBookProps) {
   const { data: depth, isLoading, isUnavailable: isError, refetch } = useUpsideOrderbook(chainId, seriesAddress, claimType);
-
-  const bids = depth?.bids || [];
-  const asks = depth?.asks || [];
-  const recentTrades = depth?.recentTrades || [];
+  const [showFullBook, setShowFullBook] = useState(false);
+  const bids = depth?.bids ?? [];
+  const asks = depth?.asks ?? [];
+  const recentTrades = depth?.recentTrades ?? [];
+  const label = claimType === "UPSIDE" ? "Upside" : "Remaining value";
+  const isEmpty = bids.length === 0 && asks.length === 0;
+  const maxTotal = Math.max(...bids.map((level) => Number(level.totalClaim)), ...asks.map((level) => Number(level.totalClaim)), 1);
+  const spread = bids.length && asks.length ? Number(asks[0].priceUsd) - Number(bids[0].priceUsd) : null;
+  const hasMore = bids.length > 6 || asks.length > 6;
 
   return (
-    <div className={styles.bookPanel}>
-      <div className={styles.bookHeader}>
-        <div>
-          <h2 className={styles.sectionTitle}>Order book</h2>
-          <span className={styles.helperText}>
-            {claimType === 'UPSIDE' ? 'Upside' : 'Remaining value'} · Prices per claim in USDC
-          </span>
-        </div>
-
+    <div className={bookStyles.book}>
+      <div className={bookStyles.header}>
+        <h2>Order book</h2><span className={bookStyles.meta}>{label} · USDC</span>
       </div>
-
       {isError ? (
-        <div className={styles.bookEmpty} role="alert">
+        <div className={`${styles.bookEmpty} ${bookStyles.state}`} role="alert">
           <strong>Book temporarily unavailable</strong>
           <p>Quotes can’t be verified right now.</p>
           <button type="button" className={styles.bookRetry} onClick={() => void refetch()}>Try again</button>
         </div>
       ) : isLoading ? (
-        <div className="py-12 text-center text-xs font-mono text-zinc-500 animate-pulse">
-          Loading order depth...
-        </div>
-      ) : bids.length === 0 && asks.length === 0 ? (
-        <div className={styles.bookEmpty} role="status">
-          <strong>No orders for {claimType === 'UPSIDE' ? 'Upside' : 'Remaining value'} yet</strong>
-          <p>
-            There are no bids or asks. Choose Limit in the trade panel to set your price and wait for a match.
-          </p>
+        <div className={`${styles.bookEmpty} ${bookStyles.state}`} role="status">Loading order depth…</div>
+      ) : isEmpty ? (
+        <div className={`${styles.bookEmpty} ${bookStyles.state}`} role="status">
+          <strong>No orders for {label} yet</strong>
+          <p>Choose Limit to set your price and wait for a match.</p>
           <span>No market trades until a matching order is available.</span>
         </div>
       ) : (
-        <div className={styles.bookGrid}>
-          {/* Bids */}
-          <div>
-            <div className={styles.bookColumnTitle}>
-              <span>Buyers offer</span>
-              <span>Amount · Total</span>
-            </div>
-            <div>
-              {bids.length === 0 ? (
-                <div className="py-6 text-center text-[11px] font-mono text-zinc-600">No active bids</div>
-              ) : (
-                bids.map((b, idx) => (
-                  <div key={idx} className={styles.bookRow}>
-                    <span className={styles.bidPrice}>${b.priceUsd}</span>
-                    <span className="text-zinc-400">
-                      {(Number(b.amountClaim) / 1e8).toFixed(2)} · {(Number(b.totalClaim) / 1e8).toFixed(2)}
-                    </span>
+        <div className={bookStyles.grid}>
+          {([{ label: "Bids", levels: bids, bid: true }, { label: "Asks", levels: asks, bid: false }] as const).map(({ label: sideLabel, levels, bid }) => (
+            <div key={sideLabel} className={bookStyles.column}>
+              <div className={bookStyles.columnHeader}><span>{sideLabel}</span><span>Size</span><span className={bookStyles.total}>Total</span></div>
+              <div className={bookStyles.levels}>
+                {levels.length === 0 ? <p className={styles.helperText}>No active {sideLabel.toLowerCase()}</p> : (showFullBook ? levels : levels.slice(0, 6)).map((level, index) => (
+                  <div key={index} className={bookStyles.row}>
+                    <div className={bid ? bookStyles.depthBid : bookStyles.depthAsk} style={{ width: `${Math.min(100, Number(level.totalClaim) / maxTotal * 100)}%` }} aria-hidden="true" />
+                    <span className={bid ? bookStyles.bid : bookStyles.ask}>{Number(level.priceUsd).toFixed(2)}</span>
+                    <span>{(Number(level.amountClaim) / 1e8).toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
+                    <span className={bookStyles.total}>{(Number(level.totalClaim) / 1e8).toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
                   </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Asks */}
-          <div>
-            <div className={styles.bookColumnTitle}>
-              <span>Sellers ask</span>
-              <span>Amount · Total</span>
-            </div>
-            <div>
-              {asks.length === 0 ? (
-                <div className="py-6 text-center text-[11px] font-mono text-zinc-600">No active asks</div>
-              ) : (
-                asks.map((a, idx) => (
-                  <div key={idx} className={styles.bookRow}>
-                    <span className={styles.askPrice}>${a.priceUsd}</span>
-                    <span className="text-zinc-400">
-                      {(Number(a.amountClaim) / 1e8).toFixed(2)} · {(Number(a.totalClaim) / 1e8).toFixed(2)}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Recent Trades if any */}
-      {!isError && recentTrades.length > 0 && (
-        <div className="mt-6 pt-4 border-t border-[#292a27]">
-          <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-500 mb-2">
-            Recent Trades
-          </h3>
-          <div className="space-y-1.5 font-mono text-xs">
-            {recentTrades.slice(0, 5).map((tr) => (
-              <div key={tr.id} className="flex justify-between text-zinc-400">
-                <span className={tr.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}>
-                  {tr.side} {(Number(tr.amountClaim) / 1e8).toFixed(2)} @ ${tr.priceUsd}
-                </span>
-                <span className="text-zinc-500">{new Date(tr.occurredAt).toLocaleTimeString()}</span>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
+      {!isLoading && !isError && <div className={bookStyles.spread}><span>Spread <b>{spread === null ? "—" : `$${spread.toFixed(2)}`}</b></span><span>Prices per claim</span></div>}
+      {!isLoading && !isError && hasMore && <div className={bookStyles.footer}><span>Showing {showFullBook ? "all" : "six"} price levels</span><button type="button" onClick={() => setShowFullBook(!showFullBook)}>{showFullBook ? "Show fewer levels" : "View full book ↗"}</button></div>}
+      {!isError && recentTrades.length > 0 && <details className={bookStyles.trades}>
+        <summary className={styles.helperText}>Recent trades</summary>
+        {recentTrades.slice(0, 5).map((trade) => <div key={trade.id} className={styles.summaryRow}><span className={trade.side === "BUY" ? bookStyles.bid : bookStyles.ask}>{trade.side} {(Number(trade.amountClaim) / 1e8).toFixed(2)} @ ${trade.priceUsd}</span><span>{new Date(trade.occurredAt).toLocaleTimeString()}</span></div>)}
+      </details>}
     </div>
   );
 }

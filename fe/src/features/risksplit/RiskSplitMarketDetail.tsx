@@ -22,21 +22,12 @@ function formatExpiry(timestamp: number) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
+    year: "numeric",
     hour: "numeric",
     minute: "2-digit",
     timeZone: "UTC",
     timeZoneName: "short",
   }).format(timestamp * 1000);
-}
-
-function formatRelativeExpiry(timestamp: number, nowSeconds: number) {
-  const diffSec = timestamp - nowSeconds;
-  if (diffSec <= 0) return "Expired";
-  const days = Math.floor(diffSec / 86400);
-  if (days > 1) return `Expires in ${days} days`;
-  const hours = Math.floor(diffSec / 3600);
-  if (hours > 1) return `Expires in ${hours} hours`;
-  return "Expires soon";
 }
 
 export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected" }: { seriesAddress: string; initialClaim?: "protected" | "upside" }) {
@@ -219,29 +210,19 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
         <div className={styles.detailIdentity}>
           <StockLogo symbol={symbol} address={activeSeries.underlyingAddress} size={46} />
           <div>
-            <h1>
-              {symbol}{" "}
-              <span className={asset?.status === "FRESH" ? styles.detailStockPrice : styles.detailStockPriceMuted}>
-                ({stockPriceFormatted})
-              </span>
-            </h1>
+            <h1>{symbol}<span className={styles.marketStatus}>{settledOrExpired ? "Ended" : "Open"}</span></h1>
             <p className={styles.detailSub}>
-              {name} · {settledOrExpired ? "Expired / settled" : "Open"}
+              {name} · Ends {formatExpiry(activeSeries.expiryTimestamp)}
             </p>
           </div>
         </div>
         <div className={styles.detailMeta}>
-          <div className={styles.detailExpiry}>
-            <span>Ends</span>
-            <strong>{formatExpiry(activeSeries.expiryTimestamp)}</strong>
-            <span className={styles.expiryTag}>
-              {formatRelativeExpiry(activeSeries.expiryTimestamp, nowSeconds)}
-            </span>
-          </div>
+          <strong className={asset?.status === "FRESH" ? styles.detailStockPrice : styles.detailStockPriceMuted}>{stockPriceFormatted}</strong>
+          <span>Underlying stock price</span>
         </div>
       </header>
       {/* Market information and wallet actions share one workspace. */}
-      <div className={styles.workGrid}>
+      <div className={`${styles.workGrid} ${walletTab === "manage" ? styles.manageWorkspace : ""}`}>
         <div className={`${styles.marketColumn} ${marketTab !== "overview" ? styles.marketColumnCompact : ""}`}>
           <div className={styles.marketViewTabs} role="tablist" aria-label="Market view" onKeyDown={handleMarketTabKeyDown}>
             <button type="button" id="market-overview-tab" role="tab" tabIndex={marketTab === "overview" ? 0 : -1} aria-controls="market-overview-panel" aria-selected={marketTab === "overview"} className={marketTab === "overview" ? styles.marketViewTabActive : ""} onClick={() => setMarketTab("overview")}>Overview</button>
@@ -258,9 +239,6 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
               protectedError={protectedBook.isError}
               upsideError={upsideBook.isError}
               stockSymbol={symbol}
-              floor={floor}
-              cap={cap}
-              referencePrice={asset?.status === "FRESH" ? stockPriceUsd : undefined}
             />
             <OrderBook
               claimType={selectedClaim}
@@ -268,7 +246,7 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
               asks={activeBook.asks}
               recentTrades={activeBook.recentTrades}
               spreadUsd={activeBook.spreadUsd}
-              selectedOrderHash={activeSelectedOrder?.orderHash}
+              selectedOrderHash={selectedOrderHash}
               onSelectOrder={handleSelectBookOrder}
               isLoading={activeBook.isLoading}
               isError={activeBook.isError}
@@ -276,7 +254,7 @@ export function RiskSplitMarketDetail({ seriesAddress, initialClaim = "protected
               sequence={activeBook.sequence}
             />
             <details className={styles.scenarioDisclosure}>
-              <summary>Payout preview <span>Explore ending stock prices</span></summary>
+              <summary>Payout illustration <span>If stock ${scenarioPrice.toFixed(2)} → {selectedClaim === "protected" ? "Protected" : "Upside"} ${scenarioPayoffPerClaim.toFixed(2)} <b aria-hidden="true">⌄</b></span></summary>
               <RiskSplitScenario
                 scenarioPrice={scenarioPrice}
                 onChangeScenarioPrice={setChosenScenarioPrice}

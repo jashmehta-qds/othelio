@@ -237,10 +237,8 @@
   display: flex;
   justify-content: space-between;
   gap: 24px;
-  align-items: flex-start;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 16px;
-  margin-bottom: 8px;
+  align-items: center;
+  margin-bottom: 28px;
 }
 
 .detailIdentity {
@@ -250,20 +248,20 @@
 }
 
 .detailIdentity h1 {
-  font-size: 26px;
+  font-size: 32px;
   line-height: 1.15;
   margin: 0 0 5px;
   letter-spacing: -0.03em;
   font-weight: 680;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
   gap: 6px;
 }
 
 .detailStockPrice {
-  color: var(--positive);
-  font-size: 20px;
+  color: var(--ink);
+  font-size: 23px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   margin-left: 2px;
@@ -286,10 +284,13 @@
 
 .detailMeta {
   display: flex;
-  gap: 20px;
+  flex-direction: column;
+  gap: 5px;
   text-align: right;
-  align-items: flex-start;
+  align-items: flex-end;
 }
+
+.marketStatus { font-size: 10px; line-height: 1.4; letter-spacing: 0; padding: 3px 7px; border-radius: 4px; background: #1b2c23; color: #91c9ac; margin-left: 8px; font-weight: 400; }
 
 .detailMeta div {
   display: flex;
@@ -322,7 +323,7 @@
    ========================================================================== */
 
 .claimChoiceSection {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .claimChoiceHead h2 {
@@ -341,7 +342,7 @@
 
 .claimSides {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 185px));
   gap: 8px;
 }
 
@@ -351,9 +352,9 @@
   appearance: none;
   text-align: left;
   color: var(--ink);
-  border-radius: 10px;
+  border-radius: 7px;
   padding: 12px 14px;
-  min-height: 48px;
+  min-height: 46px;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -369,7 +370,7 @@
 }
 
 .claimSideActive {
-  border-color: var(--accent);
+  border-color: #717c64;
   background: var(--panel-2);
 }
 
@@ -430,14 +431,15 @@
 
 .scenarioDisclosure {
   margin-top: 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  background: transparent;
   overflow: hidden;
 }
 
-.scenarioDisclosure > summary { padding: 14px 16px; cursor: pointer; font-size: 13px; font-weight: 600; }
-.scenarioDisclosure > summary span { margin-left: 12px; font-size: 11px; color: var(--muted-ink); font-weight: 400; }
+.scenarioDisclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 2px; cursor: pointer; font-size: 12px; color: var(--muted-ink); list-style: none; }
+.scenarioDisclosure > summary::-webkit-details-marker { display: none; }
+.scenarioDisclosure > summary span { font-size: 12px; color: var(--ink); font-weight: 400; text-align: right; }
+.scenarioDisclosure > summary b { padding-left: 8px; font-weight: 400; }
 .scenarioDisclosure > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 .scenarioDisclosure .scenarioCard { border: 0; border-radius: 0; border-top: 1px solid var(--line); margin: 0; }
 
@@ -678,8 +680,8 @@
 
 .workGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 34%);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 24px;
   margin-bottom: 18px;
   align-items: start;
 }
@@ -723,8 +725,8 @@
 .marketViewTabs {
   display: flex;
   gap: 14px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 16px;
+  order: 2;
+  margin: 22px 0 0;
 }
 
 .marketViewTabs button,
@@ -733,7 +735,7 @@
   border-radius: 6px;
   background: transparent;
   color: var(--muted-ink);
-  padding: 10px 14px;
+  padding: 10px 0;
   font: inherit;
   font-size: 12px;
   font-weight: 650;
@@ -749,7 +751,7 @@
 
 .marketViewTabs .marketViewTabActive {
   color: var(--ink);
-  background: var(--panel-2);
+  background: transparent;
 }
 
 .marketViewTabs button:focus-visible {
@@ -778,17 +780,15 @@
   height: auto;
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 21px;
+  border-radius: 11px;
 }
 
 .walletActionTabs {
   display: flex;
   gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--canvas);
-  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
 }
 
 .walletActionTabs button,
@@ -798,7 +798,7 @@
   flex: 1;
   background: transparent;
   color: var(--muted-ink);
-  padding: 10px 14px;
+  padding: 8px 0 12px;
   font: inherit;
   font-size: 13px;
   font-weight: 650;
@@ -814,7 +814,7 @@
 
 .walletActionTabs .walletActionTabActive {
   color: var(--ink);
-  background: var(--panel-2);
+  background: transparent;
 }
 
 .walletActionTabs button:focus-visible,
@@ -848,8 +848,8 @@
 }
 
 .walletActionPanel .ticketActionArea {
-  margin-top: 12px;
-  padding-top: 10px;
+  margin-top: 8px;
+  padding-top: 0;
   position: static;
   background: var(--panel);
   z-index: 2;
@@ -1304,7 +1304,8 @@
   padding: 4px;
   border-radius: 8px;
   margin-bottom: 12px;
-  border: 1px solid var(--line);
+  border: 0;
+  margin-bottom: 22px;
 }
 
 .ticketSideBtn {
@@ -1320,14 +1321,14 @@
 }
 
 .ticketSideBtnActive {
-  background: var(--accent);
-  color: var(--canvas);
+  background: #303c25;
+  color: #e2edda;
 }
 
 .ticketTitle {
-  font-size: 19px;
+  font-size: 22px;
   font-weight: 700;
-  margin: 0 0 6px;
+  margin: 0 0 20px;
   letter-spacing: -0.03em;
 }
 
@@ -1335,7 +1336,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 6px 0 12px;
+  margin: 0 0 20px;
+  border-bottom: 1px solid var(--line);
   color: var(--muted-ink);
   font-size: 11px;
 }
@@ -1344,18 +1346,17 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 2px;
-  padding: 2px;
-  background: var(--canvas);
-  border: 1px solid var(--line);
-  border-radius: 7px;
+  padding: 0;
+  background: transparent;
 }
 
 .ticketModeToggle button {
-  min-width: 76px;
+  min-width: 60px;
   min-height: 40px;
   border: 0;
   border-radius: 5px;
-  padding: 6px 9px;
+  padding: 6px 14px 12px 0;
+  text-align: left;
   background: transparent;
   color: var(--muted-ink);
   font: inherit;
@@ -1365,8 +1366,7 @@
 
 .ticketModeToggle .ticketModeActive {
   color: var(--ink);
-  background: var(--panel-2);
-  box-shadow: 0 1px 3px #0002;
+  background: transparent;
 }
 
 .ticketModeToggle button:focus-visible,
@@ -1379,10 +1379,10 @@
 
 .ticketBalanceRow {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   font-size: 11px;
   color: var(--muted-ink);
-  margin-bottom: 10px;
+  margin: 0 0 22px;
 }
 
 .ticketBalanceRow b {
@@ -1467,9 +1467,9 @@
   background: transparent;
   border: 0;
   color: var(--ink);
-  font-size: 20px;
-  font-weight: 650;
-  padding: 7px 0;
+  font-size: 27px;
+  font-weight: 400;
+  padding: 14px 0;
   outline: none;
   font-variant-numeric: tabular-nums;
 }
@@ -1501,13 +1501,11 @@
 }
 
 .ticketSummary {
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 9px 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 9px;
+  gap: 16px;
+  margin-bottom: 14px;
 }
 
 .summaryRow {
@@ -1530,11 +1528,19 @@
 }
 
 .ticketExplain {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted-ink);
   line-height: 1.5;
-  margin: 0 0 10px;
+  margin: 0;
+  text-align: center;
 }
+
+.totalSummary { border-top: 1px solid var(--line); padding-top: 16px; }
+.totalSummary b { font-size: 22px; font-weight: 400; }
+.ticketPayout { color: var(--muted-ink); font-size: 11px; margin-bottom: 12px; }
+.ticketPayout summary { cursor: pointer; padding-block: 4px; }
+.ticketPayout .summaryRow { margin-top: 10px; font-size: 11px; }
+.detailMeta .detailStockPrice, .detailMeta .detailStockPriceMuted { font-size: 23px; }
 
 .ticketActionArea {
   margin-bottom: 8px;
@@ -2043,7 +2049,7 @@
 
 @media (min-width: 801px) and (max-width: 1100px) {
   .workGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr) 310px;
   }
 }
 
@@ -2223,7 +2229,7 @@
 @media (max-width: 800px) {
   .page { padding-inline: 0; }
   .workGrid { gap: 14px; }
-  .marketViewTabs { order: 1; }
+  .marketViewTabs { order: 6; }
   .marketTabPanel { order: 2; }
   .overviewPanel:not([hidden]) { display: contents; }
   .claimChoiceSection { order: 2; margin: 0; }
@@ -2237,7 +2243,8 @@
   .claimChoiceHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .claimChoiceHead h2 { font-size: 15px; margin: 0 0 10px; }
   .claimChoiceHead p { display: none; }
-  .claimSideCard { padding: 10px; flex-wrap: wrap; gap: 4px 8px; }
+  .claimSides { grid-template-columns: 1fr 1fr; }
+  .claimSideCard { padding: 11px 10px; gap: 4px; min-height: 44px; }
   .claimSideDesc { font-size: 12px; line-height: 1.5; }
   .claimSideBottom { grid-template-columns: 1fr; gap: 4px; }
   .claimSideQuote { font-size: 11px; }
@@ -2250,9 +2257,41 @@
   .scenarioPresets button { flex: 1; min-height: 44px; }
   .payoutCard { padding: 8px 10px; }
   .payoutAmount { font-size: 18px; }
-  .walletActionPanel { padding: 14px; }
-  .ticketModeToggle button, .ticketSideBtn, .marketViewTabs button, .walletActionTabs button, .bookRow { min-height: 44px; }
+  .walletActionPanel { padding: 12px 14px; }
+  .ticketModeToggle button, .ticketSideBtn, .marketViewTabs button { min-height: 40px; }
   .ticketFieldHeader, .ticketSummary div, .ticketBalanceRow { font-size: 12px; }
-  .ticketInputWrapper input { min-height: 48px; font-size: 20px; }
+  .ticketInputWrapper input { min-height: 46px; font-size: 22px; padding-block: 8px; }
   .bookWrapper { padding: 14px; }
+  .detailHead { flex-direction: row; gap: 12px; margin-bottom: 22px; }
+  .detailIdentity { gap: 9px; }
+  .detailIdentity h1 { font-size: 23px; margin-bottom: 3px; gap: 0; }
+  .detailSub { display: block !important; font-size: 10px; max-width: 205px; }
+  .detailMeta { width: auto; gap: 4px; }
+  .detailMeta .detailStockPrice, .detailMeta .detailStockPriceMuted { font-size: 20px; }
+  .detailMeta > span { font-size: 9px; }
+  .marketStatus { font-size: 9px; margin-left: 6px; padding: 2px 5px; }
+  .scenarioDisclosure > summary, .scenarioDisclosure > summary span { font-size: 10px; }
+  .scenarioDisclosure > summary { padding: 13px 1px; }
+  .ticketColumn { position: fixed; z-index: 25; top: auto; left: 16px; right: 16px; bottom: calc(68px + env(safe-area-inset-bottom)); }
+  .walletActionPanel { max-height: min(55dvh, 440px); overflow-y: auto; box-shadow: 0 -8px 32px #0008; overscroll-behavior: contain; }
+  .walletActionTabs { margin-bottom: 8px; }
+  .walletActionTabs button { padding: 4px 0 8px; min-height: 32px; font-size: 11px; }
+  .walletActionPanel .ticketCard { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+  .ticketSideToggle { grid-column: 1; grid-row: 1; margin: 0 0 10px; padding: 2px; width: 124px; }
+  .ticketSideBtn { padding: 4px 8px; font-size: 11px; }
+  .ticketModeRow { grid-column: 2; grid-row: 1; margin: 0 0 10px; border: 0; justify-content: flex-end; }
+  .ticketModeToggle button { min-width: 46px; padding: 4px; font-size: 11px; text-align: center; }
+  .ticketCard > :not(.ticketSideToggle):not(.ticketModeRow) { grid-column: 1 / -1; }
+  .ticketTitle, .ticketBalanceRow, .priceSummary { display: none; }
+  .ticketFieldHeader { margin: 0; }
+  .ticketFieldHeader label[for="ticket-amount"], .maxLink { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+  .ticketField { margin-bottom: 8px; }
+  .ticketSummary { margin: 1px 0 6px; gap: 0; }
+  .totalSummary { border: 0; padding: 0; }
+  .totalSummary b { font-size: 13px; font-weight: 600; }
+  .ticketPayout { margin-bottom: 4px; font-size: 10px; }
+  .ticketExplain { font-size: 9px; }
+  .ticketActionArea { margin-bottom: 6px; }
+  .primaryActionBtn { min-height: 44px; padding: 10px; }
+  .manageWorkspace .walletActionPanel { max-height: 62dvh; }
 }

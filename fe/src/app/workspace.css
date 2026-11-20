@@ -28,6 +28,44 @@
   background: var(--canvas);
 }
 
+/* The trading detail workspace follows the selected book-first design. */
+.bank-app[data-layout="exchange"] {
+  --panel: #171a14;
+  --panel-2: #242a20;
+  --line: #30362a;
+  --ink: #f1f1eb;
+  --muted-ink: #a0a795;
+  --accent: #ff6836;
+  --positive: #8bd0ad;
+  --book-bid: #8bd0ad;
+  --book-ask: #ec9e79;
+  --book-bid-depth: #25392b;
+  --book-ask-depth: #3a2c20;
+  display: block;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.bank-app[data-layout="exchange"] > .bank-sidebar,
+.bank-app[data-layout="exchange"] .mobile-header { display: none; }
+.bank-app[data-layout="exchange"] .bank-content { padding: 30px 38px 64px; }
+.bank-app[data-layout="exchange"] .app-page-frame { max-width: 1276px; margin-inline: auto; padding: 0; }
+.exchange-header { height: 68px; display: flex; align-items: center; gap: 48px; padding: 0 38px; border-bottom: 1px solid var(--line); }
+.bank-app .exchange-header .bank-wordmark { padding: 0; font: 700 22px Arial, Helvetica, sans-serif; gap: 10px; }
+.exchange-navigation { display: flex; align-items: center; gap: 28px; flex: 1; font-size: 13px; color: var(--muted-ink); }
+.exchange-navigation a { text-decoration: none; }
+.exchange-navigation a[aria-current="page"] { color: var(--ink); }
+.exchange-navigation button { padding: 10px 0; border: 0; background: none; color: inherit; cursor: pointer; font: inherit; }
+.exchange-wallet { margin-left: auto; min-height: 40px; padding: 9px 15px; border: 1px solid #3a3e35; border-radius: 7px; background: transparent; color: var(--ink); font-size: 12px; cursor: pointer; }
+
+@media (max-width: 800px) {
+  .exchange-header { height: 56px; padding: 0 16px; gap: 12px; }
+  .exchange-navigation { display: none; }
+  .bank-app .exchange-header .bank-wordmark { font-size: 19px; gap: 8px; }
+  .exchange-wallet { min-height: 36px; font-size: 11px; padding: 7px 11px; }
+  .bank-app[data-layout="exchange"] .bank-content { padding: 20px 16px calc(440px + env(safe-area-inset-bottom)); }
+  .bank-app[data-layout="exchange"] .mobile-nav { height: calc(58px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); }
+}
+
 .ui-dialog * {
   box-sizing: border-box;
 }
