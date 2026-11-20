@@ -15,6 +15,7 @@ contract SettlementAdapter is ISettlementAdapter {
         uint80 answeredInRound;
         bool valid;
     }
+
     AggregatorV3Interface public immutable override priceFeed;
     uint256 public immutable override maxStaleness;
     uint8 public immutable override decimals;
@@ -86,8 +87,13 @@ contract SettlementAdapter is ISettlementAdapter {
             bool found = false;
 
             for (uint256 i = 0; i < 100; i++) {
-                if (aggRoundId == 0) break;
-                aggRoundId--;
+                if (aggRoundId == 0) {
+                    if (phaseId <= 1) break;
+                    phaseId--;
+                    aggRoundId = 1000;
+                } else {
+                    aggRoundId--;
+                }
                 uint80 roundToCheck = (uint80(phaseId) << 64) | aggRoundId;
 
                 RoundObservation memory candidate = _readRound(roundToCheck);
@@ -95,19 +101,6 @@ contract SettlementAdapter is ISettlementAdapter {
                     candidateRoundId = roundToCheck;
                     found = true;
                     break;
-                }
-            }
-
-            if (!found && phaseId > 1) {
-                uint16 prevPhaseId = phaseId - 1;
-                for (uint64 offset = 1000; offset > 0; offset--) {
-                    uint80 roundToCheck = (uint80(prevPhaseId) << 64) | offset;
-                    RoundObservation memory candidate = _readRound(roundToCheck);
-                    if (candidate.valid && candidate.updatedAt <= expiry) {
-                        candidateRoundId = roundToCheck;
-                        found = true;
-                        break;
-                    }
                 }
             }
 
@@ -168,6 +161,7 @@ contract SettlementAdapter is ISettlementAdapter {
     }
 
     function _requireValidCandidate(RoundObservation memory candidate, uint80 roundId) private pure {
+        if (candidate.valid) return;
         if (candidate.returnedId != roundId) revert RoundNotComplete();
         if (candidate.answer == 0) revert ZeroPrice();
         if (candidate.answer < 0) revert NegativePrice();

@@ -168,6 +168,7 @@ contract UpsideFixingAdapter is IUpsideFixingAdapter {
     }
 
     function _requireValidCandidate(RoundObservation memory candidate, uint80 roundId) private pure {
+        if (candidate.valid) return;
         if (candidate.returnedId != roundId) revert RoundNotComplete();
         if (candidate.answer == 0) revert ZeroPrice();
         if (candidate.answer < 0) revert NegativePrice();
