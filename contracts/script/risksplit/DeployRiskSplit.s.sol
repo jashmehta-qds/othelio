@@ -20,6 +20,7 @@ contract DeployRiskSplit is Script {
         uint256 maxStaleness = vm.envOr("RISK_SPLIT_MAX_STALENESS_SECONDS", uint256(86400));
         SettlementAdapter adapter = new SettlementAdapter(feedMsft, maxStaleness);
         adapterAddr = address(adapter);
+        factory.setApprovedAdapter(TokenizedAssetConstants.MSFTc, adapterAddr, true);
 
         console2.log("SeriesFactory deployed at:", factoryAddr);
         console2.log("SettlementAdapter deployed at:", adapterAddr);

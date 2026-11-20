@@ -83,6 +83,7 @@ contract BaseForkFixingTest is Test {
         // Create series with expiry in the future relative to block.timestamp
         uint256 expiry = block.timestamp + 3600;
         factory.setApprovedExpiry(MSFTc, expiry, true);
+        factory.setApprovedAdapter(MSFTc, address(adapter), true);
 
         address seriesAddr = factory.createSeries(MSFTc, floorPrice, capPrice, expiry, address(adapter));
         RiskSplitSeries series = RiskSplitSeries(seriesAddr);

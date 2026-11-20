@@ -112,7 +112,7 @@ contract RiskSplitSeries is IRiskSplitSeries, ReentrancyGuard {
         nonReentrant
     {
         if (msg.sender != settlementAdapter) revert Unauthorized();
-        if (block.timestamp < expiry) revert ExpiryNotReached();
+        if (block.timestamp <= expiry) revert ExpiryNotReached();
         if (isSettled) revert AlreadySettled();
 
         settledRoundId = roundId_;
@@ -124,7 +124,7 @@ contract RiskSplitSeries is IRiskSplitSeries, ReentrancyGuard {
 
     function settle(uint256 settlementPrice_) external override nonReentrant {
         if (msg.sender != settlementAdapter) revert Unauthorized();
-        if (block.timestamp < expiry) revert ExpiryNotReached();
+        if (block.timestamp <= expiry) revert ExpiryNotReached();
         if (isSettled) revert AlreadySettled();
 
         _applySettlement(settlementPrice_);

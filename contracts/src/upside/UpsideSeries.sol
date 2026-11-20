@@ -143,7 +143,7 @@ contract UpsideSeries is IUpsideSeries, ReentrancyGuard {
         nonReentrant
     {
         if (msg.sender != settlementAdapter) revert Unauthorized();
-        if (block.timestamp < expiry) revert ExpiryNotReached();
+        if (block.timestamp <= expiry) revert ExpiryNotReached();
         if (isSettled) revert AlreadySettled();
 
         isSettled = true;

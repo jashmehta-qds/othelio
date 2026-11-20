@@ -32,6 +32,30 @@ contract SeriesFactoryPermissionsTest is Test {
 
         expiry = block.timestamp + 7 days;
         factory.setApprovedExpiry(address(stock), expiry, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
+    }
+
+    function test_Permissions_AdapterAllowlist() public {
+        factory.setPublicCreationEnabled(true);
+        SettlementAdapter untrusted = new SettlementAdapter(address(oracle), 86400);
+        vm.prank(alice);
+        vm.expectRevert(ISeriesFactory.Unauthorized.selector);
+        factory.setApprovedAdapter(address(stock), address(untrusted), true);
+        vm.prank(alice);
+        vm.expectRevert(ISeriesFactory.InvalidAdapter.selector);
+        factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(untrusted));
+        factory.setApprovedAdapter(address(stock), address(untrusted), true);
+        vm.prank(alice);
+        address created = factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(untrusted));
+        assertTrue(factory.isSeries(created));
+        factory.setApprovedAdapter(address(stock), address(untrusted), false);
+        vm.prank(alice);
+        vm.expectRevert(ISeriesFactory.InvalidAdapter.selector);
+        factory.createSeries(address(stock), FLOOR_PRICE + 1, CAP_PRICE, expiry, address(untrusted));
+        vm.expectRevert(ISeriesFactory.ZeroAddress.selector);
+        factory.setApprovedAdapter(address(stock), address(0), true);
+        vm.expectRevert(ISeriesFactory.InvalidAdapter.selector);
+        factory.setApprovedAdapter(address(stock), address(0xBAD), true);
     }
 
     function test_Permissions_InitialState() public view {
@@ -94,6 +118,7 @@ contract SeriesFactoryPermissionsTest is Test {
 
         // Approving expiry allows creation
         factory.setApprovedExpiry(address(stock), unapprovedExpiry, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
         address seriesAddr =
             factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, unapprovedExpiry, address(adapter));
         assertTrue(factory.isSeries(seriesAddr));
@@ -126,6 +151,7 @@ contract SeriesFactoryPermissionsTest is Test {
 
         // Past expiry
         factory.setApprovedExpiry(address(stock), block.timestamp - 1, true);
+        factory.setApprovedAdapter(address(stock), address(adapter), true);
         vm.expectRevert(ISeriesFactory.ExpiryInPast.selector);
         factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, block.timestamp - 1, address(adapter));
     }

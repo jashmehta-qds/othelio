@@ -23,6 +23,11 @@ interface ISeriesFactory {
     event PublicCreationToggled(bool enabled);
     event ExpiryApprovalUpdated(address indexed underlying, uint256 indexed timestamp, bool approved);
 
+    event AdapterApprovalUpdated(address indexed underlying, address indexed adapter, bool approved);
+
+    function approvedAdapter(address underlying, address adapter) external view returns (bool);
+    function setApprovedAdapter(address underlying, address adapter, bool approved) external;
+
     error InvalidPriceRange();
     error ExpiryInPast();
     error ZeroAddress();

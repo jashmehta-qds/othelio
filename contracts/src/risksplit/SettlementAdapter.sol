@@ -135,7 +135,7 @@ contract SettlementAdapter is ISettlementAdapter {
     function settleSeries(address series, uint80 roundId) external override {
         IRiskSplitSeries seriesContract = IRiskSplitSeries(series);
         uint256 expiry = seriesContract.expiry();
-        if (block.timestamp < expiry) revert ExpiryNotReached();
+        if (block.timestamp <= expiry) revert ExpiryNotReached();
         if (seriesContract.isSettled()) revert SeriesAlreadySettled();
 
         FixingData memory fixing = verifyFixingRound(expiry, roundId);
@@ -150,7 +150,7 @@ contract SettlementAdapter is ISettlementAdapter {
     function settleSeries(address series) external override {
         IRiskSplitSeries seriesContract = IRiskSplitSeries(series);
         uint256 expiry = seriesContract.expiry();
-        if (block.timestamp < expiry) revert ExpiryNotReached();
+        if (block.timestamp <= expiry) revert ExpiryNotReached();
         if (seriesContract.isSettled()) revert SeriesAlreadySettled();
 
         FixingData memory fixing = getFixingRound(expiry);

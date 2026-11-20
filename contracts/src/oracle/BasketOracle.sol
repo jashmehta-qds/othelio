@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {OthelioAssetRegistry} from "../registry/OthelioAssetRegistry.sol";
 
 interface AggregatorV3Interface {
@@ -59,7 +60,13 @@ contract BasketOracle {
 
                 uint256 tokenScale = 10 ** asset.tokenDecimals;
                 uint256 feedScale = 10 ** asset.feedDecimals;
-                uint256 tokenValue = (balances[i] * uint256(price) * 1e6) / (tokenScale * feedScale);
+                uint256 denominator = tokenScale * feedScale;
+                uint256 tokenValue;
+                if (denominator >= 1e6) {
+                    tokenValue = Math.mulDiv(balances[i], uint256(price), denominator / 1e6);
+                } else {
+                    tokenValue = Math.mulDiv(balances[i], uint256(price), 1) * (1e6 / denominator);
+                }
                 totalNAV += tokenValue;
             } catch {
                 revert("PRICE_READ_FAILED");

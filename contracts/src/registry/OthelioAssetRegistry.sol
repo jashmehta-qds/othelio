@@ -3,6 +3,10 @@ pragma solidity ^0.8.24;
 
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
+interface IFeedDecimals {
+    function decimals() external view returns (uint8);
+}
+
 interface IB20Factory {
     function isB20(address token) external view returns (bool);
     function isB20Initialized(address token) external view returns (bool);
@@ -55,6 +59,13 @@ contract OthelioAssetRegistry is Ownable2Step {
         require(token != address(0), "ZERO_TOKEN");
         require(!supported || priceFeed != address(0), "ZERO_FEED");
         require(tokenDecimals <= 38 && feedDecimals <= 38, "DECIMALS_TOO_LARGE");
+        if (supported && priceFeed.code.length > 0) {
+            try IFeedDecimals(priceFeed).decimals() returns (uint8 actualDecimals) {
+                require(actualDecimals == feedDecimals, "FEED_DECIMALS_MISMATCH");
+            } catch {
+                revert("FEED_DECIMALS_MISMATCH");
+            }
+        }
 
         // B20 assets are native/precompile-backed, so code-length is not a valid
         // authenticity check. On Base, verify the official B20 factory's address

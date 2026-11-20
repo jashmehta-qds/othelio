@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IUpsideFactory} from "./interfaces/IUpsideFactory.sol";
+import {IUpsideFixingAdapter, AggregatorV3Interface} from "./interfaces/IUpsideFixingAdapter.sol";
 import {IOthelioAssetRegistry} from "./interfaces/IOthelioAssetRegistry.sol";
 import {UpsideSeries} from "./UpsideSeries.sol";
 import {UpsideClaimToken} from "./UpsideClaimToken.sol";
@@ -45,6 +46,12 @@ contract UpsideFactory is IUpsideFactory, Ownable2Step {
             IOthelioAssetRegistry(assetRegistry).getAsset(block.chainid, config.underlying);
         if (!asset.supported) revert AssetNotSupported();
         if (asset.priceFeed != config.feed) revert MismatchedFeed();
+        if (config.adapter.code.length == 0) revert ZeroAddress();
+        try IUpsideFixingAdapter(config.adapter).priceFeed() returns (AggregatorV3Interface feed) {
+            if (address(feed) != config.feed) revert MismatchedFeed();
+        } catch {
+            revert MismatchedFeed();
+        }
         if (asset.tokenDecimals > 18) revert UnsupportedDecimals(asset.tokenDecimals);
 
         if (config.strikeTick == 0) revert InvalidParameters();

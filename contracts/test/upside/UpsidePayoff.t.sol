@@ -113,7 +113,7 @@ contract UpsidePayoffTest is Test {
 
         // Warp to expiry and settle at S = 190 (below K = 205)
         uint256 exp = series.expiry();
-        vm.warp(exp);
+        vm.warp(exp + 1);
         vm.prank(adapter);
         series.settleWithFixing(190e8, 10, exp);
 
@@ -145,7 +145,7 @@ contract UpsidePayoffTest is Test {
         vm.stopPrank();
 
         uint256 exp = series.expiry();
-        vm.warp(exp);
+        vm.warp(exp + 1);
         vm.prank(adapter);
         series.settleWithFixing(205e8, 10, exp);
 
@@ -167,7 +167,7 @@ contract UpsidePayoffTest is Test {
         vm.stopPrank();
 
         uint256 exp = series.expiry();
-        vm.warp(exp);
+        vm.warp(exp + 1);
         vm.prank(adapter);
         series.settleWithFixing(230e8, 10, exp);
 
@@ -205,7 +205,7 @@ contract UpsidePayoffTest is Test {
         vm.stopPrank();
 
         uint256 exp = series.expiry();
-        vm.warp(exp);
+        vm.warp(exp + 1);
         vm.prank(adapter);
         series.settleWithFixing(230e8, 10, exp);
 
@@ -234,7 +234,7 @@ contract UpsidePayoffTest is Test {
         s0.mint(100);
         vm.stopPrank();
         uint256 exp0 = s0.expiry();
-        vm.warp(exp0);
+        vm.warp(exp0 + 1);
         vm.prank(adapter);
         s0.settleWithFixing(230e8, 10, exp0);
         assertEq(s0.upsideAllocation() + s0.residualAllocation(), 100);
@@ -247,7 +247,7 @@ contract UpsidePayoffTest is Test {
         s6.mint(1_000_000);
         vm.stopPrank();
         uint256 exp6 = s6.expiry();
-        vm.warp(exp6);
+        vm.warp(exp6 + 1);
         vm.prank(adapter);
         s6.settleWithFixing(230e8, 10, exp6);
         assertEq(s6.upsideAllocation() + s6.residualAllocation(), 1_000_000);
@@ -260,7 +260,7 @@ contract UpsidePayoffTest is Test {
         s8.mint(100_000_000);
         vm.stopPrank();
         uint256 exp8 = s8.expiry();
-        vm.warp(exp8);
+        vm.warp(exp8 + 1);
         vm.prank(adapter);
         s8.settleWithFixing(230e8, 10, exp8);
         assertEq(s8.upsideAllocation() + s8.residualAllocation(), 100_000_000);
@@ -290,7 +290,7 @@ contract UpsidePayoffTest is Test {
         sZero.mint(1 ether);
         vm.stopPrank();
         uint256 exp0 = sZero.expiry();
-        vm.warp(exp0);
+        vm.warp(exp0 + 1);
         vm.prank(adapter);
         sZero.settleWithFixing(0, 10, exp0);
         assertEq(sZero.upsideAllocation(), 0);
@@ -304,7 +304,7 @@ contract UpsidePayoffTest is Test {
         sHuge.mint(1 ether);
         vm.stopPrank();
         uint256 expHuge = sHuge.expiry();
-        vm.warp(expHuge);
+        vm.warp(expHuge + 1);
         vm.prank(adapter);
         uint256 hugePrice = 1e23;
         sHuge.settleWithFixing(hugePrice, 10, expHuge);
@@ -337,7 +337,7 @@ contract UpsidePayoffTest is Test {
         vm.stopPrank();
 
         uint256 exp = series.expiry();
-        vm.warp(exp);
+        vm.warp(exp + 1);
         vm.prank(adapter);
         series.settleWithFixing(230e8, 10, exp);
 

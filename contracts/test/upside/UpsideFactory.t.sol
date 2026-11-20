@@ -27,9 +27,13 @@ contract UpsideFactoryTest is Test {
     uint256 public constant MAX_STRIKE = 300e8;
 
     function setUp() public {
+        vm.etch(adapter, hex"00");
+        vm.mockCall(adapter, abi.encodeWithSignature("priceFeed()"), abi.encode(feedA));
         registry = new MockAssetRegistry();
         factory = new UpsideFactory(address(registry));
 
+        vm.etch(address(0xBB), hex"00");
+        vm.mockCall(address(0xBB), abi.encodeWithSignature("priceFeed()"), abi.encode(feedB));
         stockA = new MockUnderlyingToken("Stock A", "STKA", 18);
         stockB = new MockUnderlyingToken("Stock B", "STKB", 18);
         stock38 = new MockUnderlyingToken("Stock 38", "STK38", 38);
@@ -37,6 +41,20 @@ contract UpsideFactoryTest is Test {
         registry.setAsset(block.chainid, address(stockA), true, feedA, 18, 8);
         registry.setAsset(block.chainid, address(stockB), true, feedB, 18, 8);
         registry.setAsset(block.chainid, address(stock38), true, feedA, 38, 8);
+    }
+
+    function test_Factory_RejectsInvalidAdapter() public {
+        IUpsideFactory.RoundConfig memory cfg = _validConfig(address(stockA), feedA, block.timestamp + 7 days);
+        cfg.adapter = address(0xDEAD);
+        vm.expectRevert(IUpsideFactory.ZeroAddress.selector);
+        factory.registerRound(cfg);
+        cfg.adapter = adapter;
+        vm.mockCall(adapter, abi.encodeWithSignature("priceFeed()"), abi.encode(feedB));
+        vm.expectRevert(IUpsideFactory.MismatchedFeed.selector);
+        factory.registerRound(cfg);
+        vm.mockCallRevert(adapter, abi.encodeWithSignature("priceFeed()"), "");
+        vm.expectRevert(IUpsideFactory.MismatchedFeed.selector);
+        factory.registerRound(cfg);
     }
 
     function _validConfig(address underlying, address feed, uint256 expiry)
@@ -47,7 +65,7 @@ contract UpsideFactoryTest is Test {
         return IUpsideFactory.RoundConfig({
             underlying: underlying,
             feed: feed,
-            adapter: adapter,
+            adapter: feed == feedB ? address(0xBB) : adapter,
             referenceRoundId: 100,
             referencePrice: 200e8,
             referenceTime: block.timestamp,
@@ -205,7 +223,7 @@ contract UpsideFactoryTest is Test {
 
         // 4. And after settlement, redemption still succeeds!
         uint256 seriesExp = series.expiry();
-        vm.warp(seriesExp);
+        vm.warp(seriesExp + 1);
         vm.prank(adapter);
         series.settleWithFixing(250e8, 10, seriesExp);
 

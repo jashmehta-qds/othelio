@@ -74,15 +74,18 @@ contract UpsideBatchFillRouter is ReentrancyGuard {
             LimitOrder calldata order = orders[i];
             uint128 fillAmount = takerTokenFillAmounts[i];
 
-            // 1. Pull takerToken from msg.sender
-            IERC20(order.takerToken).safeTransferFrom(msg.sender, address(this), fillAmount);
-
-            // 2. Approve 0x Exchange Proxy
-            IERC20(order.takerToken).forceApprove(exchangeProxy, fillAmount);
+            IERC20 takerToken = IERC20(order.takerToken);
+            uint256 balanceBefore = takerToken.balanceOf(address(this));
+            uint256 maxFee = uint256(fillAmount) * order.takerTokenFeeAmount / order.takerAmount;
+            uint256 totalInput = uint256(fillAmount) + maxFee;
+            takerToken.safeTransferFrom(msg.sender, address(this), totalInput);
+            takerToken.forceApprove(exchangeProxy, totalInput);
 
             // 3. Fill on 0x Exchange Proxy
             (uint128 filledTaker, uint128 filledMaker) =
                 IZeroExExchangeProxy(exchangeProxy).fillLimitOrder(order, signatures[i], fillAmount);
+
+            takerToken.forceApprove(exchangeProxy, 0);
 
             if (revertIfIncomplete && filledTaker < fillAmount) {
                 revert IncompleteFill(i, fillAmount, filledTaker);
@@ -97,7 +100,7 @@ contract UpsideBatchFillRouter is ReentrancyGuard {
             }
 
             // 5. Refund any unspent takerToken
-            uint128 unspent = fillAmount - filledTaker;
+            uint256 unspent = takerToken.balanceOf(address(this)) - balanceBefore;
             if (unspent > 0) {
                 IERC20(order.takerToken).safeTransfer(msg.sender, unspent);
             }
