@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IUpsideFactory} from "./interfaces/IUpsideFactory.sol";
 import {IUpsideFixingAdapter, AggregatorV3Interface} from "./interfaces/IUpsideFixingAdapter.sol";
@@ -10,7 +11,10 @@ import {UpsideSeries} from "./UpsideSeries.sol";
 import {UpsideClaimToken} from "./UpsideClaimToken.sol";
 
 contract UpsideFactory is IUpsideFactory, Ownable2Step {
+    using Clones for address;
+
     address public immutable override assetRegistry;
+    address private immutable _claimTokenImplementation;
 
     uint256 public override totalRounds;
     mapping(uint256 => RoundConfig) private _rounds;
@@ -22,6 +26,7 @@ contract UpsideFactory is IUpsideFactory, Ownable2Step {
     constructor(address assetRegistry_) Ownable(msg.sender) {
         if (assetRegistry_ == address(0)) revert ZeroAddress();
         assetRegistry = assetRegistry_;
+        _claimTokenImplementation = address(new UpsideClaimToken("", "", address(this), 0));
     }
 
     function getRound(uint256 roundId) external view override returns (RoundConfig memory) {
@@ -91,10 +96,10 @@ contract UpsideFactory is IUpsideFactory, Ownable2Step {
         uint8 decimals = IERC20Metadata(round.underlying).decimals();
         string memory symbol = IERC20Metadata(round.underlying).symbol();
 
-        UpsideClaimToken up =
-            new UpsideClaimToken(string.concat("Upside Claim ", symbol), "UP", address(series), decimals);
-        UpsideClaimToken res =
-            new UpsideClaimToken(string.concat("Residual Claim ", symbol), "RES", address(series), decimals);
+        UpsideClaimToken up = UpsideClaimToken(_claimTokenImplementation.clone());
+        up.initialize(string.concat("Upside Claim ", symbol), "UP", address(series), decimals);
+        UpsideClaimToken res = UpsideClaimToken(_claimTokenImplementation.clone());
+        res.initialize(string.concat("Residual Claim ", symbol), "RES", address(series), decimals);
         series.initializeTokens(address(up), address(res));
 
         seriesAddress = address(series);

@@ -6,8 +6,12 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IClaimToken} from "./interfaces/IClaimToken.sol";
 
 contract ClaimToken is ERC20, IClaimToken {
-    address public immutable override seriesVault;
-    uint8 private immutable _tokenDecimals;
+    address private immutable _factory;
+    address public override seriesVault;
+    uint8 private _tokenDecimals;
+    string private _tokenName;
+    string private _tokenSymbol;
+    bool private _initialized;
 
     modifier onlySeries() {
         if (msg.sender != seriesVault) revert Unauthorized();
@@ -15,11 +19,33 @@ contract ClaimToken is ERC20, IClaimToken {
     }
 
     constructor(string memory name_, string memory symbol_, address seriesVault_, uint8 decimals_)
-        ERC20(name_, symbol_)
+        ERC20("", "")
     {
         if (seriesVault_ == address(0)) revert ZeroAddress();
+        _factory = seriesVault_;
         seriesVault = seriesVault_;
         _tokenDecimals = decimals_;
+        _tokenName = name_;
+        _tokenSymbol = symbol_;
+        _initialized = true;
+    }
+
+    function initialize(string memory name_, string memory symbol_, address seriesVault_, uint8 decimals_) external {
+        if (_initialized || msg.sender != _factory) revert Unauthorized();
+        if (seriesVault_ == address(0)) revert ZeroAddress();
+        _initialized = true;
+        _tokenName = name_;
+        _tokenSymbol = symbol_;
+        seriesVault = seriesVault_;
+        _tokenDecimals = decimals_;
+    }
+
+    function name() public view override(ERC20, IERC20Metadata) returns (string memory) {
+        return _tokenName;
+    }
+
+    function symbol() public view override(ERC20, IERC20Metadata) returns (string memory) {
+        return _tokenSymbol;
     }
 
     function decimals() public view override(ERC20, IERC20Metadata) returns (uint8) {
