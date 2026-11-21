@@ -2,13 +2,17 @@
 pragma solidity ^0.8.24;
 
 import {ISeriesFactory} from "./interfaces/ISeriesFactory.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {RiskSplitSeries} from "./RiskSplitSeries.sol";
 import {ClaimToken} from "./ClaimToken.sol";
 import {ISettlementAdapter, AggregatorV3Interface} from "./interfaces/ISettlementAdapter.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract SeriesFactory is ISeriesFactory {
+    using Clones for address;
+
     uint256 private constant MAX_PRICE = type(uint256).max / 1e18;
+    address private immutable _claimTokenImplementation;
     address public override owner;
     address public override pendingOwner;
 
@@ -33,6 +37,7 @@ contract SeriesFactory is ISeriesFactory {
 
     constructor() {
         owner = msg.sender;
+        _claimTokenImplementation = address(new ClaimToken("", "", address(this), 0));
         emit OwnershipTransferred(address(0), msg.sender);
     }
 
@@ -90,10 +95,11 @@ contract SeriesFactory is ISeriesFactory {
             underlying, settlementAdapter, floorPrice, capPrice, expiry, feedAddr, refRoundId, uint256(refPrice)
         );
 
-        ClaimToken protectedToken =
-            new ClaimToken("RiskSplit Protected Claim", "PROT", address(series), underlyingDecimals);
+        ClaimToken protectedToken = ClaimToken(_claimTokenImplementation.clone());
+        protectedToken.initialize("RiskSplit Protected Claim", "PROT", address(series), underlyingDecimals);
 
-        ClaimToken upsideToken = new ClaimToken("RiskSplit Upside Claim", "UP", address(series), underlyingDecimals);
+        ClaimToken upsideToken = ClaimToken(_claimTokenImplementation.clone());
+        upsideToken.initialize("RiskSplit Upside Claim", "UP", address(series), underlyingDecimals);
 
         series.initializeTokens(address(protectedToken), address(upsideToken));
 

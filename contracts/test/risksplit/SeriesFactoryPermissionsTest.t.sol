@@ -2,10 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {SeriesFactory} from "../../src/risksplit/SeriesFactory.sol";
 import {ISeriesFactory} from "../../src/risksplit/interfaces/ISeriesFactory.sol";
 import {RiskSplitSeries} from "../../src/risksplit/RiskSplitSeries.sol";
+import {ClaimToken} from "../../src/risksplit/ClaimToken.sol";
 import {IRiskSplitSeries} from "../../src/risksplit/interfaces/IRiskSplitSeries.sol";
+import {IClaimToken} from "../../src/risksplit/interfaces/IClaimToken.sol";
 import {SettlementAdapter} from "../../src/risksplit/SettlementAdapter.sol";
 import {MockStockToken, MockOracle} from "./RiskSplitSeriesTest.t.sol";
 
@@ -22,6 +25,14 @@ contract SeriesFactoryPermissionsTest is Test {
     uint256 internal constant FLOOR_PRICE = 45e8;
     uint256 internal constant CAP_PRICE = 55e8;
     uint256 internal expiry;
+
+    function _implementation(address clone) internal view returns (address implementation) {
+        bytes memory code = new bytes(45);
+        assembly {
+            extcodecopy(clone, add(code, 32), 0, 45)
+            implementation := shr(0x60, mload(add(code, 42)))
+        }
+    }
 
     function setUp() public {
         owner = address(this);
@@ -118,6 +129,51 @@ contract SeriesFactoryPermissionsTest is Test {
         // Attempting to deploy identical series reverts
         vm.expectRevert(ISeriesFactory.DuplicateSeriesTerms.selector);
         factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
+    }
+
+    function test_Gas_CreateSeries() public {
+        uint256 gasBefore = gasleft();
+        factory.createSeries(address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter));
+        emit log_named_uint("createSeries gas", gasBefore - gasleft());
+    }
+
+    function test_ClaimTokenClones_InitializationAndMintAccess() public {
+        RiskSplitSeries series = RiskSplitSeries(factory.createSeries(
+            address(stock), FLOOR_PRICE, CAP_PRICE, expiry, address(adapter)
+        ));
+        IClaimToken token = series.protectedToken();
+
+        assertLt(address(token).code.length, 100);
+        assertEq(token.name(), "RiskSplit Protected Claim");
+        assertEq(token.symbol(), "PROT");
+        assertEq(token.seriesVault(), address(series));
+
+        address implementation = _implementation(address(token));
+        assertGt(implementation.code.length, 1000);
+        vm.prank(address(factory));
+        vm.expectRevert(IClaimToken.Unauthorized.selector);
+        ClaimToken(implementation).initialize("Reinitialized", "BAD", address(this), 18);
+
+        ClaimToken fresh = ClaimToken(Clones.clone(implementation));
+        vm.expectRevert(IClaimToken.Unauthorized.selector);
+        fresh.initialize("Fresh", "NEW", address(series), 6);
+        vm.prank(address(factory));
+        vm.expectRevert(IClaimToken.ZeroAddress.selector);
+        fresh.initialize("Fresh", "NEW", address(0), 6);
+        vm.prank(address(factory));
+        fresh.initialize("", "", address(series), 6);
+        assertEq(fresh.name(), "");
+        assertEq(fresh.symbol(), "");
+        assertEq(fresh.decimals(), 6);
+
+        vm.prank(address(factory));
+        vm.expectRevert(IClaimToken.Unauthorized.selector);
+        ClaimToken(address(token)).initialize("Reinitialized", "BAD", address(this), 18);
+
+        vm.expectRevert(IClaimToken.Unauthorized.selector);
+        token.mint(address(this), 1);
+        vm.expectRevert(IClaimToken.Unauthorized.selector);
+        token.burn(address(this), 1);
     }
 
     function test_Permissions_InvalidParametersRevert() public {

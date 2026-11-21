@@ -2,10 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {UpsideFactory} from "../../src/upside/UpsideFactory.sol";
 import {IUpsideFactory} from "../../src/upside/interfaces/IUpsideFactory.sol";
 import {IUpsideSeries} from "../../src/upside/interfaces/IUpsideSeries.sol";
 import {UpsideSeries} from "../../src/upside/UpsideSeries.sol";
+import {UpsideClaimToken} from "../../src/upside/UpsideClaimToken.sol";
+import {IUpsideClaimToken} from "../../src/upside/interfaces/IUpsideClaimToken.sol";
 import {MockUnderlyingToken, MockAssetRegistry} from "./UpsidePayoff.t.sol";
 
 contract UpsideFactoryTest is Test {
@@ -21,6 +24,14 @@ contract UpsideFactoryTest is Test {
     address public feedB = address(0x222);
     address public user = address(0x333);
     address public newOwner = address(0x444);
+
+    function _implementation(address clone) internal view returns (address implementation) {
+        bytes memory code = new bytes(45);
+        assembly {
+            extcodecopy(clone, add(code, 32), 0, 45)
+            implementation := shr(0x60, mload(add(code, 42)))
+        }
+    }
 
     uint256 public constant STRIKE_TICK = 1e8; // $1.00 tick
     uint256 public constant MIN_STRIKE = 150e8;
@@ -163,6 +174,54 @@ contract UpsideFactoryTest is Test {
         vm.expectRevert(IUpsideFactory.Unauthorized.selector);
         factory.createMarket(0, 0);
 
+    }
+
+    function test_Gas_CreateMarket() public {
+        uint256 expiry = block.timestamp + 7 days;
+        uint256 roundId = factory.registerRound(_validConfig(address(stockA), feedA, expiry));
+
+        uint256 gasBefore = gasleft();
+        factory.createMarket(roundId, 200e8);
+        emit log_named_uint("createMarket gas", gasBefore - gasleft());
+    }
+
+    function test_ClaimTokenClones_InitializationAndMintAccess() public {
+        uint256 expiry = block.timestamp + 7 days;
+        uint256 roundId = factory.registerRound(_validConfig(address(stockA), feedA, expiry));
+        UpsideSeries series = UpsideSeries(factory.createMarket(roundId, 200e8));
+        IUpsideClaimToken token = series.upsideToken();
+
+        assertLt(address(token).code.length, 100);
+        assertEq(token.name(), "Upside Claim STKA");
+        assertEq(token.symbol(), "UP");
+        assertEq(token.seriesVault(), address(series));
+
+        address implementation = _implementation(address(token));
+        assertGt(implementation.code.length, 1000);
+        vm.prank(address(factory));
+        vm.expectRevert(IUpsideClaimToken.Unauthorized.selector);
+        UpsideClaimToken(implementation).initialize("Reinitialized", "BAD", address(this), 18);
+
+        UpsideClaimToken fresh = UpsideClaimToken(Clones.clone(implementation));
+        vm.expectRevert(IUpsideClaimToken.Unauthorized.selector);
+        fresh.initialize("Fresh", "NEW", address(series), 6);
+        vm.prank(address(factory));
+        vm.expectRevert(IUpsideClaimToken.ZeroAddress.selector);
+        fresh.initialize("Fresh", "NEW", address(0), 6);
+        vm.prank(address(factory));
+        fresh.initialize("", "", address(series), 6);
+        assertEq(fresh.name(), "");
+        assertEq(fresh.symbol(), "");
+        assertEq(fresh.decimals(), 6);
+
+        vm.prank(address(factory));
+        vm.expectRevert(IUpsideClaimToken.Unauthorized.selector);
+        UpsideClaimToken(address(token)).initialize("Reinitialized", "BAD", address(this), 18);
+
+        vm.expectRevert(IUpsideClaimToken.Unauthorized.selector);
+        token.mint(address(this), 1);
+        vm.expectRevert(IUpsideClaimToken.Unauthorized.selector);
+        token.burn(address(this), 1);
     }
 
     function test_Factory_MultipleExpiries_Coexist() public {

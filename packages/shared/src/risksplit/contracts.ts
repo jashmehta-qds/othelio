@@ -289,6 +289,7 @@ export const settlementAdapterAbi = [
 ] as const;
 
 export const claimTokenAbi = [
+  { type: "function", name: "initialize", inputs: [{ name: "name_", type: "string" }, { name: "symbol_", type: "string" }, { name: "seriesVault_", type: "address" }, { name: "decimals_", type: "uint8" }], outputs: [], stateMutability: "nonpayable" },
   { type: "function", name: "name", inputs: [], outputs: [{ name: "", type: "string" }], stateMutability: "view" },
   { type: "function", name: "symbol", inputs: [], outputs: [{ name: "", type: "string" }], stateMutability: "view" },
   { type: "function", name: "decimals", inputs: [], outputs: [{ name: "", type: "uint8" }], stateMutability: "view" },
